@@ -319,6 +319,10 @@ app.get('/api/binance/open-orders', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`✅ Institutional Proxy running on http://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    app.listen(PORT, () => {
+        console.log(`✅ Institutional Proxy running on http://localhost:${PORT}`);
+    });
+}
+
+export default app;
