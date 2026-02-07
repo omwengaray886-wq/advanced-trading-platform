@@ -349,24 +349,25 @@ export class AnalysisOrchestrator {
                 // STRICT ALIGNMENT ENFORCEMENT
                 // Ensure Entry/SL/TP logic is geometrically valid before proceeding
                 if (riskParams.entry && riskParams.stopLoss && riskParams.targets?.length > 0) {
+                    const entryPrice = riskParams.entry.optimal;
                     // 1. Correct Directionality
-                    if (direction === 'LONG' && riskParams.stopLoss >= riskParams.entry) {
-                        riskParams.stopLoss = riskParams.entry * 0.99; // Force 1% SL if invalid
-                    } else if (direction === 'SHORT' && riskParams.stopLoss <= riskParams.entry) {
-                        riskParams.stopLoss = riskParams.entry * 1.01; // Force 1% SL if invalid
+                    if (direction === 'LONG' && riskParams.stopLoss >= entryPrice) {
+                        riskParams.stopLoss = entryPrice * 0.99; // Force 1% SL if invalid
+                    } else if (direction === 'SHORT' && riskParams.stopLoss <= entryPrice) {
+                        riskParams.stopLoss = entryPrice * 1.01; // Force 1% SL if invalid
                     }
 
                     // 2. Enforce Minimum R:R of 1.5
-                    const risk = Math.abs(riskParams.entry - riskParams.stopLoss);
+                    const risk = Math.abs(entryPrice - riskParams.stopLoss);
                     const minReward = risk * 1.5;
 
                     if (direction === 'LONG') {
-                        if (riskParams.targets[0].price <= riskParams.entry + minReward) {
-                            riskParams.targets[0].price = riskParams.entry + minReward;
+                        if (riskParams.targets[0].price <= entryPrice + minReward) {
+                            riskParams.targets[0].price = entryPrice + minReward;
                         }
                     } else {
-                        if (riskParams.targets[0].price >= riskParams.entry - minReward) {
-                            riskParams.targets[0].price = riskParams.entry - minReward;
+                        if (riskParams.targets[0].price >= entryPrice - minReward) {
+                            riskParams.targets[0].price = entryPrice - minReward;
                         }
                     }
                 }
@@ -413,10 +414,16 @@ export class AnalysisOrchestrator {
                     hasBuffer: true
                 } : null;
 
-                // Calculate news penalty (Phase 39)
+                // Calculate final suitability with News and Consensus penalties (Phase 66)
+                const correlation = marketState.correlation;
+                let consensusAdjustment = 0;
+                if (correlation && correlation.bias !== 'NEUTRAL' && correlation.bias !== 'SELF' && correlation.bias !== direction) {
+                    consensusAdjustment = 0.2; // 20% penalty for correlation conflict
+                }
+
                 const newsPenalty = fundamentals.suitabilityPenalty || 0;
-                const finalSuitability = Math.max(0.1, c.suitability - newsPenalty);
-                const finalQuantScore = Math.max(0, quantScore - (newsPenalty * 100));
+                const finalSuitability = Math.max(0.1, c.suitability - newsPenalty - consensusAdjustment);
+                const finalQuantScore = Math.max(0, quantScore - (newsPenalty * 100) - (consensusAdjustment * 100));
 
                 validSetups.push({
                     id: String.fromCharCode(65 + validSetups.length), // A, B, C, D dynamically
@@ -1088,6 +1095,22 @@ export class AnalysisOrchestrator {
                     t.price = direction === 'LONG' ? wallBeforeTarget.price - adjustment : wallBeforeTarget.price + adjustment;
                     t.note = "Liquidity Aligned Target";
                 }
+
+                // Phase 66: Market Obligation Alignment
+                // If there's a primary obligation (magnet) in the same direction, stretch TP to hit it
+                const primaryMagnet = marketState.obligations?.primaryObligation;
+                if (primaryMagnet && primaryMagnet.urgency > 80) {
+                    const isMagnetDirection = (direction === 'LONG' && primaryMagnet.price > riskParams.entry?.optimal) ||
+                        (direction === 'SHORT' && primaryMagnet.price < riskParams.entry?.optimal);
+
+                    if (isMagnetDirection) {
+                        // If magnet is further than current target, potentially extend
+                        if (direction === 'LONG' ? primaryMagnet.price > t.price : primaryMagnet.price < t.price) {
+                            t.price = primaryMagnet.price;
+                            t.note = "Obligation Reaching Target";
+                        }
+                    }
+                }
             });
         }
 
@@ -1216,40 +1239,31 @@ export class AnalysisOrchestrator {
         // 1. Technical Suitability (20 points)
         score += (setup.suitability * 20);
 
-        // 2. MTF Alignment (25 points)
-        if (marketState.mtf?.globalBias === setup.direction) score += 25;
-        else if (marketState.mtf?.globalBias === 'NEUTRAL') score += 12;
+        // 2. MTF Alignment (20 points)
+        if (marketState.mtf?.globalBias === setup.direction) score += 20;
 
-        // 3. Correlation (15 points)
-        if (marketState.correlation?.bias === setup.direction) score += 15;
-        else if (marketState.correlation?.bias === 'NEUTRAL') score += 7;
+        // 3. Correlation Consensus (10 points) (Phase 66)
+        if (marketState.correlation?.bias === setup.direction) score += 10;
 
-        // 4. Liquidity Targeting (15 points)
-        // Refined (Phase 49): Institutional Pools give full bonus, Retail Pools give 50%
+        // 4. Timing & Killzone (10 points) (Phase 66)
+        if (marketState.session?.killzone) score += 10;
+
+        // 5. Liquidity Targeting (15 points)
         const institutionalLiq = marketState.liquidityPools?.some(p =>
             p.type === 'INSTITUTIONAL_POOL' &&
             ((setup.direction === 'LONG' && p.side === 'SELL_SIDE') ||
                 (setup.direction === 'SHORT' && p.side === 'BUY_SIDE'))
         );
-        const retailLiq = marketState.liquidityPools?.some(p =>
-            p.type === 'STOP_POOL' &&
-            ((setup.direction === 'LONG' && p.side === 'SELL_SIDE') ||
-                (setup.direction === 'SHORT' && p.side === 'BUY_SIDE'))
-        );
-
         if (institutionalLiq) score += 15;
-        else if (retailLiq) score += 7;
 
-        // 5. Structure & CHoCH (15 points)
-        // Refined (Phase 49): Massive boost for setups triggered by or aligned with a CHoCH
+        // 6. Market Obligations (10 points) (Phase 66)
+        if (marketState.obligations?.primaryObligation?.urgency > 75) score += 10;
+
+        // 7. Structure & CHoCH (15 points)
         const hasCHoCH = (marketState.structuralEvents || []).some(e =>
             e.markerType === 'CHOCH' && e.direction === setup.direction
         );
         if (hasCHoCH) score += 15;
-        else if (marketState.fundamentalAlignment) score += 10; // Shared slot
-
-        // 6. Regime Confidence (10 points)
-        score += (marketState.confidence * 10);
 
         return Math.round(Math.min(score, 100));
     }

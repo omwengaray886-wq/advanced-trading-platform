@@ -49,6 +49,40 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                 </div>
             </div>
 
+            {/* Executive AI Narrative [Phase 68] */}
+            {explanation.sections.executiveNarrative && (
+                <div style={{
+                    padding: '14px',
+                    background: 'var(--color-bg-tertiary)',
+                    borderRadius: '8px',
+                    borderLeft: '4px solid var(--color-accent-primary)',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                    position: 'relative'
+                }}>
+                    <div style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        opacity: 0.1
+                    }}>
+                        <Layers size={24} />
+                    </div>
+                    <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-accent-primary)', marginBottom: '8px', letterSpacing: '0.05em' }}>
+                        INSTITUTIONAL TRUTH SUMMARY
+                    </div>
+                    <p style={{
+                        fontSize: '13px',
+                        lineHeight: '1.6',
+                        color: 'var(--color-text-primary)',
+                        margin: 0,
+                        fontStyle: 'italic',
+                        fontWeight: '500'
+                    }}>
+                        {explanation.sections.executiveNarrative}
+                    </p>
+                </div>
+            )}
+
             {/* Market Overview */}
             <div>
                 <h3 style={{ fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>

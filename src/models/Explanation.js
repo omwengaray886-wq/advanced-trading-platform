@@ -21,6 +21,7 @@ export class Explanation {
     buildSections(analysis) {
         // Initialize empty sections - ExplanationEngine will populate these
         return {
+            executiveNarrative: '',
             htfBias: '',
             regime: '',
             strategyRationale: '',

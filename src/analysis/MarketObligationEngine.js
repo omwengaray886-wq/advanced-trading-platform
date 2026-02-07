@@ -52,8 +52,10 @@ export class MarketObligationEngine {
                 if (distPercent < 0.5) urgency += 30; // Very close
                 else if (distPercent < 1.5) urgency += 10;
 
-                // Freshness boost
-                if (candles.length - fvg.index < 20) urgency += 15;
+                // Freshness vs Time Pressure boost
+                const ageInCandles = candles.length - fvg.index;
+                if (ageInCandles < 20) urgency += 15; // Fresh imbalance
+                else if (ageInCandles > 100) urgency += 10; // "Old business" pressure - market effectively magnetized to resolve long-standing gaps
 
                 // Structural Confluence (Only care if gap aligns with trend)
                 const trend = marketState.trend?.direction || 'NEUTRAL';
@@ -110,6 +112,12 @@ export class MarketObligationEngine {
             score += 35;
         }
 
+        // 2.5 Time Pressure (Aging)
+        // Pools that persist for many candles become "Obvious" magnets
+        const age = pool.age || 0;
+        if (age > 200) score += 15;
+        else if (age > 50) score += 5;
+
         // 3. Trend Compatibility (Easier to take liquidity WITH trend)
         const trend = marketState.trend?.direction || 'NEUTRAL';
         const isWithTrend = (trend === 'BULLISH' && pool.type === 'BUY_SIDE') ||
@@ -118,9 +126,12 @@ export class MarketObligationEngine {
         if (isWithTrend) score += 15;
         else score -= 15; // Harder to take counter-trend liquidity without a reversal setup
 
-        // 4. Volume Profile / Cluster Confluence (If available)
-        // Assuming marketState has clusters injected
-        // if (marketState.clusters?.some(c => Math.abs(c.price - pool.price) < c.price * 0.001)) score += 10;
+        // 4. Volume Profile / Cluster Confluence (Layer 3)
+        // If a pool sits right at a Naked POC or High Volume Node, its magnet strength is massive
+        const hasCluster = marketState.nPOCs?.some(npoc => Math.abs(npoc.price - pool.price) / pool.price < 0.001) ||
+            marketState.hvns?.some(hvn => Math.abs(hvn.price - pool.price) / pool.price < 0.001);
+
+        if (hasCluster) score += 20;
 
         return Math.min(Math.max(score, 0), 100);
     }

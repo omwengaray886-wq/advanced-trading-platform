@@ -666,9 +666,9 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
 
                         <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden', display: 'flex' }}>
                             {(() => {
-                                const total = overlays.liquidityMap.reduce((s, i) => s + i.volume, 0);
-                                const bids = overlays.liquidityMap.filter(i => i.side === 'BID').reduce((s, i) => s + i.volume, 0);
-                                const bidPct = (bids / total) * 100;
+                                const total = (overlays.liquidityMap || []).reduce((s, i) => s + (i.volume || 0), 0);
+                                const bids = (overlays.liquidityMap || []).filter(i => i.side === 'BID').reduce((s, i) => s + (i.volume || 0), 0);
+                                const bidPct = total > 0 ? (bids / total) * 100 : 50;
                                 return (
                                     <>
                                         <div style={{ width: `${bidPct}%`, height: '100%', background: '#10b981', transition: 'width 0.5s ease' }} />
@@ -679,8 +679,17 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                         </div>
 
                         <div className="flex-row justify-between" style={{ fontSize: '11px', fontWeight: 'bold' }}>
-                            <span style={{ color: '#10b981' }}>{((overlays.liquidityMap.filter(i => i.side === 'BID').reduce((s, i) => s + i.volume, 0) / overlays.liquidityMap.reduce((s, i) => s + i.volume, 0)) * 100).toFixed(1)}%</span>
-                            <span style={{ color: '#ef4444' }}>{((overlays.liquidityMap.filter(i => i.side === 'ASK').reduce((s, i) => s + i.volume, 0) / overlays.liquidityMap.reduce((s, i) => s + i.volume, 0)) * 100).toFixed(1)}%</span>
+                            {(() => {
+                                const total = (overlays.liquidityMap || []).reduce((s, i) => s + (i.volume || 0), 0);
+                                const bids = (overlays.liquidityMap || []).filter(i => i.side === 'BID').reduce((s, i) => s + (i.volume || 0), 0);
+                                const asks = (overlays.liquidityMap || []).filter(i => i.side === 'ASK').reduce((s, i) => s + (i.volume || 0), 0);
+                                return (
+                                    <>
+                                        <span style={{ color: '#10b981' }}>{total > 0 ? ((bids / total) * 100).toFixed(1) : '50.0'}%</span>
+                                        <span style={{ color: '#ef4444' }}>{total > 0 ? ((asks / total) * 100).toFixed(1) : '50.0'}%</span>
+                                    </>
+                                );
+                            })()}
                         </div>
                     </div>
                 )}

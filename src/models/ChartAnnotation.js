@@ -15,7 +15,7 @@ export class ChartAnnotation {
 
         // Universal Zone Mapping Properties (Phase 20)
         this.state = metadata.state || 'fresh';
-        this.intent = metadata.intent || 'unknown';
+        this.intent = metadata.intent || null;
         this.allowedDirection = metadata.allowedDirection || 'BOTH';
         this.entryModels = metadata.entryModels || [];
         this.invalidationRule = metadata.invalidationRule || '';

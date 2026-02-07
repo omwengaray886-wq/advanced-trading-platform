@@ -19,6 +19,9 @@ export class ExplanationEngine {
         // Get asset-specific context
         const assetContext = AssetClassAdapter.getExplanationContext(analysis.assetClass || 'FOREX');
 
+        // Build Executive Narrative (Phase 68: Synthesis)
+        explanation.sections.executiveNarrative = this.buildExecutiveNarrative(analysis, mode);
+
         // Build explanation sections using the 7-step Zone Mapping Flow (Phase 20)
         explanation.sections.htfBias = this.buildHTFBias(analysis, assetContext, mode);
         explanation.sections.strategicIntent = this.buildStrategicIntent(analysis, mode);
@@ -52,6 +55,46 @@ export class ExplanationEngine {
         }
 
         return explanation;
+    }
+
+    /**
+     * Build Executive Narrative Synthesis (Phase 68)
+     */
+    buildExecutiveNarrative(analysis, mode = 'ADVANCED') {
+        const state = analysis.marketState;
+        const trend = state.trend.direction;
+        const setup = analysis.setups?.[0];
+        const bias = state.mtf?.globalBias || 'NEUTRAL';
+        const isMTFAligned = state.mtfBiasAligned;
+        const institutionalVol = state.volumeAnalysis?.isInstitutional;
+        const smtDir = state.smtDivergence?.direction;
+        const hasObligation = !!analysis.setups?.some(s => s.hasObligation);
+
+        let narrative = `The institutional narrative for ${analysis.symbol} is currently **${trend.toLowerCase()}** within a ${bias.toLowerCase()} structural context. `;
+
+        if (isMTFAligned) {
+            narrative += `We have rare **Fractal Synchronicity**, where high-timeframe truth and local price action are fully synchronized. `;
+        }
+
+        if (smtDir) {
+            narrative += `The detection of a **${smtDir} SMT Divergence** indicates smart money is actively accumulating this move through inter-market manipulation. `;
+        } else if (institutionalVol) {
+            narrative += `VHF Order Flow analysis confirms high-magnitude institutional participation at current levels. `;
+        }
+
+        if (hasObligation) {
+            narrative += `The market currently carries an **Institutional Obligation** (Magnet) to the ${trend === 'BULLISH' ? 'upside' : 'downside'}, making the current setup high-urgency. `;
+        }
+
+        // Add closing risk synthesis
+        if (state.executionHazards && state.executionHazards.length > 0) {
+            const hazard = state.executionHazards[0].label;
+            narrative += `\n\n⚠️ **Operational Caution**: While the technical truth is clear, we are monitoring for ${hazard.toLowerCase()}, which could induce high-frequency volatility before the expansion target is met.`;
+        } else {
+            narrative += ` Risk-to-reward parameters are optimally defined against structural invalidation.`;
+        }
+
+        return narrative;
     }
 
     /**

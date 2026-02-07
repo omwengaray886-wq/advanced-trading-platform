@@ -128,7 +128,7 @@ export class AnnotationMapper {
                     y2: y2,
                     color: visuals.background,
                     borderColor: visuals.borderColor,
-                    label: `${visuals.icon} ${anno.type.replace('_ZONE', '').replace('_', ' ')}`,
+                    label: anno.type === 'ENTRY_ZONE' ? visuals.icon : `${visuals.icon} ${anno.type.replace('_ZONE', '').replace('_', ' ')}`,
                     isHTF: visuals.isHTF,
                     isConfluence: anno.type === 'CONFLUENCE_ZONE',
                     state: anno.state,

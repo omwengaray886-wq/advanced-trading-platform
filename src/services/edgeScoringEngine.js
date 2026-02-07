@@ -55,24 +55,38 @@ export class EdgeScoringEngine {
             risks.push('HTF Bias conflict');
         }
 
-        // 4. Institutional Confluence (up to 20 points)
+        // 4. Institutional Confluence (up to 35 points - Expanded)
         const hasInstitutionalVolume = marketState.volumeAnalysis?.isInstitutional;
         const hasSMT = marketState.divergences?.length > 0;
+        const inKillzone = !!marketState.session?.killzone;
+        const targetsObligation = marketState.obligations?.primaryObligation?.urgency > 70;
 
         if (hasInstitutionalVolume) {
-            totalPoints += 10;
+            totalPoints += 5;
             positives.push('Institutional volume participation');
         }
         if (hasSMT) {
             totalPoints += 10;
             positives.push('Inter-market divergence (SMT) present');
         }
+        if (inKillzone) {
+            totalPoints += 10;
+            positives.push(`Killzone alignment (${marketState.session.killzone})`);
+        }
+        if (targetsObligation) {
+            totalPoints += 10;
+            positives.push('Primary obligation target (Magnet theory)');
+        }
 
-        // 5. Volume Profile Confluence (up to 10 points) (Phase 55)
+        // 5. Volume Profile & DOM Confluence (up to 15 points) (Phase 55/66)
         const vp = marketState.volumeProfile;
+        const entryPrice = setup.entryZone?.optimal || marketState.currentPrice;
+        const hasDOMWall = marketState.orderBook?.walls?.some(w =>
+            Math.abs(w.price - entryPrice) / entryPrice < 0.001
+        );
+
         if (vp) {
-            const price = marketState.currentPrice;
-            const isNearPOC = Math.abs(price - vp.poc) / vp.poc < 0.002;
+            const isNearPOC = Math.abs(marketState.currentPrice - vp.poc) / vp.poc < 0.002;
             const hasNPOCMagnet = marketState.nPOCs?.length > 0;
 
             if (isNearPOC) {
@@ -84,7 +98,23 @@ export class EdgeScoringEngine {
                 positives.push('Institutional nPOC magnet detected');
             }
         }
+        if (hasDOMWall) {
+            totalPoints += 5;
+            positives.push('Entry supported by DOM Liquidity Wall');
+        }
 
+
+        // 6. Cross-Asset Consensus (Phase 66)
+        const correlation = marketState.correlation;
+        if (correlation && correlation.bias !== 'NEUTRAL' && correlation.bias !== 'SELF') {
+            if (correlation.bias !== setup.direction) {
+                totalPoints -= 15;
+                risks.push(`Correlation Conflict: Benchmark is ${correlation.bias}`);
+            } else {
+                totalPoints += 5;
+                positives.push('Macro Correlation alignment');
+            }
+        }
 
         // Apply News Penalty
         if (marketState.activeShock?.severity === 'HIGH') {

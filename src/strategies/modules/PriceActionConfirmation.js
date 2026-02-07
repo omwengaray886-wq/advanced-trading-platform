@@ -30,8 +30,8 @@ export class PriceActionConfirmation extends StrategyBase {
 
         if (patterns.length === 0) return [];
 
-        // Check the most recent 5 patterns
-        const recentPatterns = patterns.slice(-5);
+        // Check the most recent pattern only to avoid chart clutter (Bible: Focus on the present)
+        const recentPatterns = patterns.slice(-1);
 
         recentPatterns.forEach(pattern => {
             // 1. Level Validation (Existing Structure + Bible Rule: Confluence)
