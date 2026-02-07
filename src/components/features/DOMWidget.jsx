@@ -81,8 +81,8 @@ const DOMWidget = ({ symbol = 'BTCUSDT' }) => {
                                     transition: 'width 0.3s ease'
                                 }}
                             />
-                            <span style={{ position: 'relative', zIndex: 1, color: '#ef4444', fontWeight: 'bold' }}>{ask.price.toFixed(2)}</span>
-                            <span style={{ position: 'relative', zIndex: 1, color: 'rgba(255,255,255,0.5)' }}>{ask.volume.toFixed(4)}</span>
+                            <span style={{ position: 'relative', zIndex: 1, color: '#ef4444', fontWeight: 'bold' }}>{ask.price?.toFixed(2) || '0.00'}</span>
+                            <span style={{ position: 'relative', zIndex: 1, color: 'rgba(255,255,255,0.5)' }}>{ask.volume?.toFixed(4) || '0.0000'}</span>
                         </div>
                     ))}
                 </div>
@@ -100,7 +100,7 @@ const DOMWidget = ({ symbol = 'BTCUSDT' }) => {
                     fontSize: '12px'
                 }}>
                     <span style={{ color: 'rgba(255,255,255,0.4)', marginRight: '8px', fontWeight: 'normal' }}>SPREAD</span>
-                    {Math.abs(depth.asks[0]?.price - depth.bids[0]?.price).toFixed(2) || '0.00'}
+                    {Math.abs((depth.asks[0]?.price || 0) - (depth.bids[0]?.price || 0))?.toFixed(2) || '0.00'}
                 </div>
 
                 {/* Bids (Buy Walls) - Bottom */}
@@ -119,8 +119,8 @@ const DOMWidget = ({ symbol = 'BTCUSDT' }) => {
                                     transition: 'width 0.3s ease'
                                 }}
                             />
-                            <span style={{ position: 'relative', zIndex: 1, color: '#10b981', fontWeight: 'bold' }}>{bid.price.toFixed(2)}</span>
-                            <span style={{ position: 'relative', zIndex: 1, color: 'rgba(255,255,255,0.5)' }}>{bid.volume.toFixed(4)}</span>
+                            <span style={{ position: 'relative', zIndex: 1, color: '#10b981', fontWeight: 'bold' }}>{bid.price?.toFixed(2) || '0.00'}</span>
+                            <span style={{ position: 'relative', zIndex: 1, color: 'rgba(255,255,255,0.5)' }}>{bid.volume?.toFixed(4) || '0.0000'}</span>
                         </div>
                     ))}
                 </div>

@@ -47,7 +47,7 @@ const PathProjection = ({ pathProjection }) => {
                             </span>
                         </div>
                         <div className="target-price">
-                            {target.price.toFixed(5)}
+                            {target.price?.toFixed(5) || 'N/A'}
                         </div>
                         <div className="target-reason">{target.reason}</div>
                     </div>

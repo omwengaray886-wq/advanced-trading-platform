@@ -168,11 +168,11 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
                             <span style={{ color: 'var(--color-text-secondary)' }}>Point of Control (POC)</span>
-                            <span style={{ fontWeight: 'bold' }}>{marketState.volProfile.poc.toFixed(5)}</span>
+                            <span style={{ fontWeight: 'bold' }}>{marketState.volProfile.poc?.toFixed(5) || 'N/A'}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
                             <span style={{ color: 'var(--color-text-secondary)' }}>Value Area (VAH-VAL)</span>
-                            <span style={{ fontWeight: '500' }}>{marketState.volProfile.vah.toFixed(5)} - {marketState.volProfile.val.toFixed(5)}</span>
+                            <span style={{ fontWeight: '500' }}>{marketState.volProfile.vah?.toFixed(5) || 'N/A'} - {marketState.volProfile.val?.toFixed(5) || 'N/A'}</span>
                         </div>
 
                         {/* Position relative to value */}
@@ -212,7 +212,7 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                                     fontWeight: 'bold',
                                     color: wall.type === 'BUY_WALL' ? 'var(--color-success)' : 'var(--color-danger)'
                                 }}>
-                                    {wall.price.toFixed(5)} ({(wall.intensity * 100).toFixed(0)}% Stacked)
+                                    {wall.price?.toFixed(5) || 'N/A'} ({(wall.intensity * 100)?.toFixed(0) || '0'}% Stacked)
                                 </span>
                             </div>
                         ))}
@@ -316,7 +316,7 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                             <div style={{ fontSize: '11px', display: 'flex', justifyContent: 'space-between' }}>
                                 <span style={{ color: 'var(--color-text-secondary)' }}>Regime Stability</span>
                                 <span style={{ fontWeight: 'bold', color: analysis.regimeTransition.probability < 30 ? 'var(--color-danger)' : 'var(--color-success)' }}>
-                                    {(100 - analysis.regimeTransition.probability).toFixed(0)}% Stable
+                                    {(100 - analysis.regimeTransition.probability)?.toFixed(0) || '0'}% Stable
                                 </span>
                             </div>
                         )}
@@ -483,7 +483,7 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
                                 <span style={{ color: 'var(--color-text-secondary)' }}>Entry Zone</span>
                                 <span style={{ fontWeight: '500', fontFamily: 'monospace' }}>
-                                    {riskParameters.entry.optimal.toFixed(5)}
+                                    {riskParameters.entry.optimal?.toFixed(5) || 'N/A'}
                                 </span>
                             </div>
                         )}
@@ -491,7 +491,7 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
                                 <span style={{ color: 'var(--color-danger)' }}>Stop Loss</span>
                                 <span style={{ fontWeight: '500', fontFamily: 'monospace', color: 'var(--color-danger)' }}>
-                                    {riskParameters.stopLoss.toFixed(5)}
+                                    {riskParameters.stopLoss?.toFixed(5) || 'N/A'}
                                 </span>
                             </div>
                         )}
@@ -501,7 +501,7 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                                     Target {target.level} {target.riskReward && `(${target.riskReward}R)`}
                                 </span>
                                 <span style={{ fontWeight: '500', fontFamily: 'monospace', color: 'var(--color-success)' }}>
-                                    {target.price.toFixed(5)}
+                                    {target.price?.toFixed(5) || 'N/A'}
                                 </span>
                             </div>
                         ))}

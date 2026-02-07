@@ -41,7 +41,7 @@ export default function PortfolioRiskDashboard() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px' }}>
                     <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>RISK CAPACITY</div>
-                    <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{(riskMultiplier * 100).toFixed(0)}%</div>
+                    <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{(riskMultiplier * 100)?.toFixed(0) || '0'}%</div>
                 </div>
                 <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px' }}>
                     <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>PORTFOLIO BETA</div>

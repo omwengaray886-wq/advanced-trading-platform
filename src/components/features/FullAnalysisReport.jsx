@@ -337,7 +337,7 @@ export default function FullAnalysisReport({ analysis, loading }) {
                                         </div>
                                         <div>
                                             <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>R:R</div>
-                                            <div style={{ fontWeight: 'bold', fontSize: '13px', color: 'var(--color-accent-primary)' }}>{setup.rr.toFixed(1)}:1</div>
+                                            <div style={{ fontWeight: 'bold', fontSize: '13px', color: 'var(--color-accent-primary)' }}>{setup.rr?.toFixed(1) || '0.0'}:1</div>
                                         </div>
                                     </div>
 
@@ -451,15 +451,15 @@ export default function FullAnalysisReport({ analysis, loading }) {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                                         <span style={{ color: 'rgba(255,255,255,0.7)' }}>Point of Control</span>
-                                        <span style={{ color: '#8b5cf6', fontWeight: 'bold' }}>{analysis.marketState.volumeProfile.poc.toFixed(5)}</span>
+                                        <span style={{ color: '#8b5cf6', fontWeight: 'bold' }}>{analysis.marketState.volumeProfile.poc?.toFixed(5) || 'N/A'}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                                         <span style={{ color: 'rgba(255,255,255,0.7)' }}>Value Area High</span>
-                                        <span>{analysis.marketState.volumeProfile.vah.toFixed(5)}</span>
+                                        <span>{analysis.marketState.volumeProfile.vah?.toFixed(5) || 'N/A'}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                                         <span style={{ color: 'rgba(255,255,255,0.7)' }}>Value Area Low</span>
-                                        <span>{analysis.marketState.volumeProfile.val.toFixed(5)}</span>
+                                        <span>{analysis.marketState.volumeProfile.val?.toFixed(5) || 'N/A'}</span>
                                     </div>
                                 </div>
                             </div>
@@ -482,7 +482,7 @@ export default function FullAnalysisReport({ analysis, loading }) {
                                         {analysis.marketState.nPOCs.slice(0, 3).map((npoc, idx) => (
                                             <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                                                 <span>{npoc.label}</span>
-                                                <span style={{ color: '#a78bfa', fontWeight: 'bold' }}>{npoc.price.toFixed(5)}</span>
+                                                <span style={{ color: '#a78bfa', fontWeight: 'bold' }}>{npoc.price?.toFixed(5) || 'N/A'}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -502,11 +502,11 @@ export default function FullAnalysisReport({ analysis, loading }) {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                                         <span style={{ color: 'rgba(255,255,255,0.7)' }}>High Volume Peak</span>
-                                        <span>{analysis.marketState.hvns?.[0]?.price.toFixed(5) || 'N/A'}</span>
+                                        <span>{analysis.marketState.hvns?.[0]?.price?.toFixed(5) || 'N/A'}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                                         <span style={{ color: 'rgba(255,255,255,0.7)' }}>Low Volume Valley</span>
-                                        <span>{analysis.marketState.lvns?.[0]?.price.toFixed(5) || 'N/A'}</span>
+                                        <span>{analysis.marketState.lvns?.[0]?.price?.toFixed(5) || 'N/A'}</span>
                                     </div>
                                 </div>
                             </div>

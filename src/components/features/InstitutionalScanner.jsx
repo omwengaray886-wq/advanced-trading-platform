@@ -179,7 +179,7 @@ const InstitutionalScanner = ({ onSelectSymbol }) => {
                                                 fontWeight: 'bold',
                                                 color: res.confidence > 0.8 ? 'var(--color-primary)' : 'var(--color-text-secondary)'
                                             }}>
-                                                {(res.confidence * 100).toFixed(0)}%
+                                                {(res.confidence * 100)?.toFixed(0) || '0'}%
                                             </div>
                                             {res.hasSetup && (
                                                 <div className="pulse-primary" style={{

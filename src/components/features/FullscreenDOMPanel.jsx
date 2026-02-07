@@ -67,7 +67,7 @@ export default function DOMPanel({ symbol, currentPrice }) {
                                 borderRadius: '2px'
                             }} />
                             <span style={{ color: '#ef4444', fontWeight: 'bold', position: 'relative', zIndex: 1 }}>
-                                {ask.price.toFixed(2)}
+                                {ask.price?.toFixed(2) || 'N/A'}
                             </span>
                             <span style={{ color: 'rgba(255,255,255,0.6)', textAlign: 'right', position: 'relative', zIndex: 1 }}>
                                 {ask.volume.toLocaleString()}
@@ -87,7 +87,7 @@ export default function DOMPanel({ symbol, currentPrice }) {
                 fontSize: '11px',
                 color: 'rgba(255,255,255,0.6)'
             }}>
-                SPREAD: {((mockDOM.asks[mockDOM.asks.length - 1].price - mockDOM.bids[0].price) / currentPrice * 100).toFixed(3)}%
+                SPREAD: {(((mockDOM.asks[mockDOM.asks.length - 1]?.price || 0) - (mockDOM.bids[0]?.price || 0)) / (currentPrice || 1) * 100)?.toFixed(3) || '0.000'}%
             </div>
 
             {/* Bids (Buy orders) */}

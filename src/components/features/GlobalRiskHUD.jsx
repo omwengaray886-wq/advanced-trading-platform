@@ -34,12 +34,12 @@ export default function GlobalRiskHUD({ setups = [], accountSize = 10000 }) {
             <div className="card glass-panel flex-row justify-between items-center" style={{ padding: '12px 20px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.6)' }}>
                 <div className="flex-row items-center gap-md">
                     <div className={`badge ${metrics.riskPct > 3 ? 'badge-danger' : 'badge-success'}`} style={{ padding: '4px 8px', fontSize: '9px', fontWeight: '900' }}>
-                        RISK: {metrics.riskPct.toFixed(1)}%
+                        RISK: {metrics.riskPct?.toFixed(1) || '0.0'}%
                     </div>
                     <div className="flex-col">
                         <span style={{ fontSize: '10px', opacity: 0.4, fontWeight: 'bold' }}>EXPOSURE HUD</span>
                         <div className="flex-row items-center gap-xs">
-                            <span style={{ fontSize: '14px', fontWeight: 'bold', letterSpacing: '-0.5px' }}>${metrics.totalOpenRisk.toFixed(2)} AT RISK</span>
+                            <span style={{ fontSize: '14px', fontWeight: 'bold', letterSpacing: '-0.5px' }}>${metrics.totalOpenRisk?.toFixed(2) || '0.00'} AT RISK</span>
                         </div>
                     </div>
                 </div>
@@ -47,7 +47,7 @@ export default function GlobalRiskHUD({ setups = [], accountSize = 10000 }) {
                 <div className="flex-row gap-lg">
                     <div className="flex-col items-end">
                         <span style={{ fontSize: '10px', opacity: 0.4, fontWeight: 'bold' }}>VaR (95%)</span>
-                        <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#f59e0b' }}>-${metrics.vaR.dollarVaR.toFixed(1)}</span>
+                        <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#f59e0b' }}>-${metrics.vaR.dollarVaR?.toFixed(1) || '0.0'}</span>
                     </div>
                     {metrics.correlations.length > 0 && (
                         <div className="flex-col items-end">
@@ -137,7 +137,7 @@ export default function GlobalRiskHUD({ setups = [], accountSize = 10000 }) {
                                         <div className="badge badge-danger" style={{ fontSize: '10px' }}>LIQ. RISK: {activeScenario.liquidationRisk}</div>
                                     </div>
                                     <div style={{ fontSize: '18px', fontWeight: '900', color: '#ef4444', marginBottom: '8px' }}>
-                                        EST. LOSS: -${activeScenario.estimatedLoss.toFixed(2)}
+                                        EST. LOSS: -${activeScenario.estimatedLoss?.toFixed(2) || '0.00'}
                                     </div>
                                     <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', margin: 0, lineHeight: '1.4' }}>
                                         {activeScenario.message}

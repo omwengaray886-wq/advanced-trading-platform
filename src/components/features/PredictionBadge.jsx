@@ -62,13 +62,13 @@ const PredictionBadge = ({ prediction }) => {
                 {prediction.target && (
                     <div className="level-item target">
                         <span className="level-label">Target:</span>
-                        <span className="level-value">{prediction.target.toFixed(5)}</span>
+                        <span className="level-value">{prediction.target?.toFixed(5) || 'N/A'}</span>
                     </div>
                 )}
                 {prediction.invalidation && (
                     <div className="level-item invalidation">
                         <span className="level-label">Stop:</span>
-                        <span className="level-value">{prediction.invalidation.toFixed(5)}</span>
+                        <span className="level-value">{prediction.invalidation?.toFixed(5) || 'N/A'}</span>
                     </div>
                 )}
             </div>

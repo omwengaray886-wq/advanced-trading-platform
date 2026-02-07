@@ -67,7 +67,7 @@ export default function MarketHeatmap() {
                                 >
                                     <div style={{ fontSize: '11px', fontWeight: 'bold' }}>{asset.replace('USDT', '')}</div>
                                     <div style={{ fontSize: '9px', opacity: 0.8 }}>
-                                        {loading ? '...' : (val >= 0 ? '+' : '') + val.toFixed(2) + '%'}
+                                        {loading ? '...' : (val >= 0 ? '+' : '') + (val?.toFixed(2) || '0.00') + '%'}
                                     </div>
                                 </motion.div>
                             );

@@ -73,7 +73,7 @@ const SetupDetailView = ({ setup, onClose }) => {
                                 </span>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <TrendingUp size={14} />
-                                    R:R {riskReward.toFixed(2)}
+                                    R:R {riskReward?.toFixed(2) || 'N/A'}
                                 </span>
                             </div>
                         </div>
@@ -142,7 +142,7 @@ const SetupDetailView = ({ setup, onClose }) => {
                                                 vs {setup.smtDivergence.siblingSymbol}
                                             </div>
                                             <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
-                                                {setup.smtDivergence.type} detected at {setup.smtDivergence.price?.toFixed(5)}
+                                                {setup.smtDivergence.type} detected at {setup.smtDivergence.price?.toFixed(5) || 'N/A'}
                                             </div>
                                         </div>
                                     )}
@@ -189,7 +189,7 @@ const SetupDetailView = ({ setup, onClose }) => {
                                                     alignItems: 'center'
                                                 }}>
                                                     <div style={{ fontSize: '12px' }}>
-                                                        <div style={{ color: 'var(--color-text-primary)', fontWeight: 'bold' }}>{pool.price.toFixed(5)}</div>
+                                                        <div style={{ color: 'var(--color-text-primary)', fontWeight: 'bold' }}>{pool.price?.toFixed(5) || 'N/A'}</div>
                                                         <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)' }}>{pool.side}</div>
                                                     </div>
                                                     <div className={`badge ${pool.strength === 'High' ? 'badge-danger' : 'badge-neutral'}`} style={{ fontSize: '10px' }}>
@@ -247,7 +247,7 @@ const SetupDetailView = ({ setup, onClose }) => {
                                     <div style={{ marginBottom: '12px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '12px' }}>
                                             <span style={{ color: 'var(--color-text-tertiary)' }}>R:R Ratio</span>
-                                            <span style={{ fontWeight: 'bold' }}>1 : {riskReward.toFixed(2)}</span>
+                                            <span style={{ fontWeight: 'bold' }}>1 : {riskReward?.toFixed(2) || 'N/A'}</span>
                                         </div>
                                     </div>
 

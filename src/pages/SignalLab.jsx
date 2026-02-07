@@ -110,11 +110,11 @@ export default function SignalLab() {
                                         <div className="flex-row justify-between items-center" style={{ marginBottom: '16px' }}>
                                             <div>
                                                 <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)' }}>Profit Factor</div>
-                                                <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--color-success)' }}>{results.best.profitFactor.toFixed(2)}</div>
+                                                <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--color-success)' }}>{results.best.profitFactor?.toFixed(2) || 'N/A'}</div>
                                             </div>
                                             <div>
                                                 <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)' }}>Sharpe Ratio</div>
-                                                <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#c084fc' }}>{results.best.sharpe.toFixed(2)}</div>
+                                                <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#c084fc' }}>{results.best.sharpe?.toFixed(2) || 'N/A'}</div>
                                             </div>
                                             <div>
                                                 <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)' }}>Max DD</div>
@@ -122,7 +122,7 @@ export default function SignalLab() {
                                             </div>
                                             <div>
                                                 <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)' }}>Alpha Score</div>
-                                                <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--color-accent-primary)' }}>{results.best.score.toFixed(1)}</div>
+                                                <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--color-accent-primary)' }}>{results.best.score?.toFixed(1) || 'N/A'}</div>
                                             </div>
                                         </div>
                                         <div style={{ marginTop: '20px', display: 'flex', gap: '12px' }}>
@@ -147,7 +147,7 @@ export default function SignalLab() {
                                                 <div key={i} className="flex-row justify-between items-center" style={{ padding: '12px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
                                                     <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>SL: {res.sl}% | TP: {res.tp}x</span>
                                                     <div className="flex-row gap-md">
-                                                        <span style={{ fontSize: '12px', color: 'var(--color-success)' }}>PF: {res.profitFactor.toFixed(2)}</span>
+                                                        <span style={{ fontSize: '12px', color: 'var(--color-success)' }}>PF: {res.profitFactor?.toFixed(2) || 'N/A'}</span>
                                                         <span style={{ fontSize: '12px', opacity: 0.5 }}>Win: {res.winRate}%</span>
                                                     </div>
                                                 </div>
