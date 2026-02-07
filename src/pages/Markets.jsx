@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLocation } from 'react-router-dom';
 import Chart from '../components/ui/Chart';
 import FullAnalysisReport from '../components/features/FullAnalysisReport';
 import { marketData } from '../services/marketData.js';
@@ -19,6 +20,8 @@ import { AnnotationMapper } from '../services/annotationMapper.js';
 import FullscreenControls from '../components/features/FullscreenControls';
 import FullscreenDOMPanel from '../components/features/FullscreenDOMPanel';
 import NewsContextPanel from '../components/features/NewsContextPanel';
+import MacroCalendar from '../components/features/MacroCalendar';
+import GlobalRiskHUD from '../components/features/GlobalRiskHUD';
 
 export default function Markets() {
     const assetRegistry = {
@@ -140,6 +143,15 @@ export default function Markets() {
     const { addToast } = useToast();
     const [chartData, setChartData] = useState([]);
     const [manualStrategy, setManualStrategy] = useState(null); // null means "Auto"
+    const location = useLocation();
+
+    // Handle incoming state from Command Center
+    useEffect(() => {
+        if (location.state?.pair) {
+            setSelectedPair(location.state.pair);
+            addToast(`Loaded ${location.state.pair} from Command Center`, 'success');
+        }
+    }, [location.state]);
 
     const strategyCategories = {
         'Market Structure': [
@@ -1227,6 +1239,8 @@ export default function Markets() {
                                             padding: '16px'
                                         }}
                                     >
+                                        <MacroCalendar />
+                                        <div style={{ height: '24px' }} />
                                         <NewsContextPanel
                                             newsEvents={analysis?.newsEvents}
                                             correlations={analysis?.marketState?.correlation}

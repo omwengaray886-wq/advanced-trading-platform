@@ -334,11 +334,33 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                 {/* SVG Layer for Lines and Paths */}
                 <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
                     <defs>
-                        <marker id="arrowhead-long" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                            <polygon points="0 0, 10 3.5, 0 7" fill="#10B981" />
+                        {/* Premium Glow Filters */}
+                        <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feGaussianBlur stdDeviation="3" result="blur" />
+                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                        </filter>
+
+                        <filter id="institutional-flicker">
+                            <feTurbulence type="fractalNoise" baseFrequency="0.5" numOctaves="3" result="noise" />
+                            <feDisplacementMap in="SourceGraphic" in2="noise" scale="1" />
+                        </filter>
+
+                        {/* Path Gradients */}
+                        <linearGradient id="long-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#10B981" stopOpacity="1" />
+                            <stop offset="100%" stopColor="#10B981" stopOpacity="0.2" />
+                        </linearGradient>
+                        <linearGradient id="short-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#EF4444" stopOpacity="1" />
+                            <stop offset="100%" stopColor="#EF4444" stopOpacity="0.2" />
+                        </linearGradient>
+
+                        {/* Modernized Arrowhead Markers */}
+                        <marker id="arrowhead-long" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+                            <path d="M0,0 L12,6 L0,12 L3,6 Z" fill="#10B981" filter="url(#neon-glow)" />
                         </marker>
-                        <marker id="arrowhead-short" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                            <polygon points="0 0, 10 3.5, 0 7" fill="#EF4444" />
+                        <marker id="arrowhead-short" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+                            <path d="M0,0 L12,6 L0,12 L3,6 Z" fill="#EF4444" filter="url(#neon-glow)" />
                         </marker>
                         <marker id="arrowhead-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                             <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
@@ -380,17 +402,39 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
 
                         const arrowId = path.direction === 'LONG' ? 'arrowhead-long' : path.direction === 'SHORT' ? 'arrowhead-short' : 'arrowhead-gray';
 
+                        // Conviction Scaling (High probability = bolder, brighter)
+                        const conviction = path.probability || 70;
+                        const convictionScale = 0.5 + (conviction / 200); // 0.85 to 1.0 approx
+                        const finalStrokeWidth = strokeWidth * convictionScale;
+                        const isHighConviction = conviction > 85;
+
                         return (
                             <g key={path.id || i}>
+                                {/* Path Shadow/Outer Glow */}
+                                {isHighConviction && (
+                                    <polyline
+                                        points={path.mappedPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                                        fill="none"
+                                        stroke={path.color || (path.direction === 'LONG' ? '#10B981' : '#EF4444')}
+                                        strokeWidth={finalStrokeWidth + 4}
+                                        opacity={0.15}
+                                        filter="blur(4px)"
+                                    />
+                                )}
+
                                 <polyline
                                     points={path.mappedPoints.map(p => `${p.x},${p.y}`).join(' ')}
                                     fill="none"
-                                    stroke={path.color || (path.direction === 'LONG' ? '#10B981' : '#EF4444')}
-                                    strokeWidth={strokeWidth}
+                                    stroke={path.color || (path.direction === 'LONG' ? 'url(#long-gradient)' : 'url(#short-gradient)')}
+                                    strokeWidth={finalStrokeWidth}
                                     strokeDasharray={dashArray}
                                     opacity={opacity}
                                     markerEnd={`url(#${arrowId})`}
-                                    style={{ transition: 'all 0.2s ease-out', filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.5))' }}
+                                    filter={isHighConviction ? 'url(#neon-glow)' : 'none'}
+                                    style={{
+                                        transition: 'all 0.3s ease-out',
+                                        animation: isHighConviction ? 'pulse 2s infinite ease-in-out' : 'none'
+                                    }}
                                 />
                                 {/* Path Labels */}
                                 {path.mappedPoints.map((p, idx) => p.label && (
@@ -567,34 +611,79 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                     </React.Fragment>
                 ))}
 
-                {/* Liquidity Map Strips (Phase 24) */}
-                {overlayItems.liquidity.map((strip) => (
-                    <div key={strip.id} style={{
+                {/* Institutional Liquidity Heatmap (Phase 59) */}
+                <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    width: '60px',
+                    bottom: 0,
+                    background: 'rgba(0,0,0,0.2)',
+                    borderLeft: '1px solid rgba(255,255,255,0.05)',
+                    zIndex: 0,
+                    pointerEvents: 'none'
+                }}>
+                    {overlayItems.liquidity.map((strip) => (
+                        <div key={strip.id} style={{
+                            position: 'absolute',
+                            top: strip.top,
+                            right: 0,
+                            width: `${strip.intensity * 100}%`,
+                            height: '2px',
+                            background: strip.side === 'BID' ? '#10b981' : '#ef4444',
+                            opacity: 0.1 + (strip.intensity * 0.7),
+                            boxShadow: strip.intensity > 0.8 ? `0 0 8px ${strip.side === 'BID' ? '#10b981' : '#ef4444'}` : 'none',
+                            transition: 'all 0.3s'
+                        }} />
+                    ))}
+                </div>
+
+                {/* DOM Imbalance HUD (Phase 59) */}
+                {overlays.liquidityMap && overlays.liquidityMap.length > 0 && (
+                    <div style={{
                         position: 'absolute',
-                        top: strip.top,
-                        left: 0,
-                        width: '100%',
-                        height: '4px',
-                        background: strip.color,
-                        boxShadow: `0 0 4px ${strip.color}`,
-                        zIndex: 0,
-                        pointerEvents: 'none',
-                        transition: 'top 0.3s'
+                        top: '20px',
+                        right: '80px',
+                        background: 'rgba(15, 23, 42, 0.8)',
+                        backdropFilter: 'blur(8px)',
+                        padding: '12px',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(255,b255,255,0.1)',
+                        zIndex: 20,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        minWidth: '150px',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.3)'
                     }}>
-                        {strip.intensity > 0.8 && (
-                            <div style={{
-                                position: 'absolute',
-                                right: '10px',
-                                top: '-8px',
-                                fontSize: '8px',
-                                color: strip.color,
-                                fontWeight: 'bold'
-                            }}>
-                                {strip.side} WALL
+                        <div className="flex-row justify-between items-center">
+                            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', fontWeight: 'bold' }}>DOM PRESSURE</span>
+                            <div className="flex-row items-center gap-xs">
+                                <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#10b981', animation: 'animate-pulse 1s infinite' }} />
+                                <span style={{ fontSize: '9px', color: '#10b981', fontWeight: 'bold' }}>LIVE</span>
                             </div>
-                        )}
+                        </div>
+
+                        <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden', display: 'flex' }}>
+                            {(() => {
+                                const total = overlays.liquidityMap.reduce((s, i) => s + i.volume, 0);
+                                const bids = overlays.liquidityMap.filter(i => i.side === 'BID').reduce((s, i) => s + i.volume, 0);
+                                const bidPct = (bids / total) * 100;
+                                return (
+                                    <>
+                                        <div style={{ width: `${bidPct}%`, height: '100%', background: '#10b981', transition: 'width 0.5s ease' }} />
+                                        <div style={{ flex: 1, height: '100%', background: '#ef4444', transition: 'width 0.5s ease' }} />
+                                    </>
+                                );
+                            })()}
+                        </div>
+
+                        <div className="flex-row justify-between" style={{ fontSize: '11px', fontWeight: 'bold' }}>
+                            <span style={{ color: '#10b981' }}>{((overlays.liquidityMap.filter(i => i.side === 'BID').reduce((s, i) => s + i.volume, 0) / overlays.liquidityMap.reduce((s, i) => s + i.volume, 0)) * 100).toFixed(1)}%</span>
+                            <span style={{ color: '#ef4444' }}>{((overlays.liquidityMap.filter(i => i.side === 'ASK').reduce((s, i) => s + i.volume, 0) / overlays.liquidityMap.reduce((s, i) => s + i.volume, 0)) * 100).toFixed(1)}%</span>
+                        </div>
                     </div>
-                ))}
+                )}
 
                 {/* Divergence Badges (Phase 25) */}
                 {overlayItems.divergences.map((div) => (

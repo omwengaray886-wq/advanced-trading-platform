@@ -17,6 +17,24 @@ export const calculateSharpeRatio = (returns, riskFreeRate = 0) => {
     return (mean - riskFreeRate) / stdDev;
 };
 
+/**
+ * Sortino Ratio: Measures risk-adjusted return relative to downside volatility only
+ */
+export const calculateSortinoRatio = (returns, targetReturn = 0) => {
+    if (!returns || returns.length < 2) return 0;
+
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const downsideReturns = returns.filter(r => r < targetReturn);
+
+    if (downsideReturns.length < 1) return mean > 0 ? 10 : 0; // High ratio if no downside
+
+    const sumSquaredDownside = downsideReturns.reduce((sum, r) => sum + Math.pow(r - targetReturn, 2), 0);
+    const downsideDeviation = Math.sqrt(sumSquaredDownside / returns.length);
+
+    if (downsideDeviation === 0) return 0;
+    return (mean - targetReturn) / downsideDeviation;
+};
+
 export const calculateProfitFactor = (trades) => {
     let grossProfit = 0;
     let grossLoss = 0;
@@ -47,7 +65,8 @@ export const calculateDrawdown = (equityCurve) => {
 
     return {
         maxDrawdown: parseFloat((maxDD * 100).toFixed(2)),
-        currentDrawdown: parseFloat((currentDD * 100).toFixed(2))
+        currentDrawdown: parseFloat((currentDD * 100).toFixed(2)),
+        recoveryFactor: maxDD > 0 ? parseFloat(((equityCurve[equityCurve.length - 1] - equityCurve[0]) / (maxEquity * maxDD)).toFixed(2)) : 0
     };
 };
 

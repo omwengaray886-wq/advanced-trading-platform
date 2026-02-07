@@ -1,6 +1,6 @@
 import { AnalysisOrchestrator } from './analysisOrchestrator';
 import { marketData } from './marketData';
-import { calculateSharpeRatio, calculateProfitFactor, calculateDrawdown, calculateWinRate } from './analyticsUtils';
+import { calculateSharpeRatio, calculateSortinoRatio, calculateProfitFactor, calculateDrawdown, calculateWinRate } from './analyticsUtils';
 
 export class BacktestService {
     constructor() {
@@ -35,6 +35,12 @@ export class BacktestService {
             ote: { wins: 0, total: 0 }
         };
 
+        const sessionPerformance = {
+            ASIAN: { wins: 0, total: 0 },
+            LONDON: { wins: 0, total: 0 },
+            NY: { wins: 0, total: 0 }
+        };
+
         for (let i = 50; i < allCandles.length - 10; i++) {
             const lookbackCandles = allCandles.slice(0, i + 1);
             const analysis = await this.orchestrator.analyze(lookbackCandles, symbol, timeframe);
@@ -63,6 +69,15 @@ export class BacktestService {
                     equityCurve.push(currentBalance);
                     returns.push(trade.pnlPercent);
 
+                    // Track Session Performance
+                    const hour = new Date(trade.time * 1000).getUTCHours();
+                    let sessionKey = 'ASIAN';
+                    if (hour >= 8 && hour < 16) sessionKey = 'LONDON';
+                    else if (hour >= 13 && hour < 21) sessionKey = 'NY';
+
+                    sessionPerformance[sessionKey].total++;
+                    if (trade.outcome === 'TP') sessionPerformance[sessionKey].wins++;
+
                     // Update Attribution Stats
                     Object.keys(factors).forEach(f => {
                         if (factors[f]) {
@@ -80,6 +95,7 @@ export class BacktestService {
         const winRate = calculateWinRate(trades);
         const profitFactor = calculateProfitFactor(trades);
         const sharpe = calculateSharpeRatio(returns);
+        const sortino = calculateSortinoRatio(returns);
         const drawdown = calculateDrawdown(equityCurve);
 
         // Calculate Attribution Percentages
@@ -102,9 +118,12 @@ export class BacktestService {
                 winRate,
                 profitFactor,
                 sharpe,
+                sortino,
                 maxDrawdown: drawdown.maxDrawdown,
+                recoveryFactor: drawdown.recoveryFactor,
                 finalBalance: currentBalance,
-                totalReturn: ((currentBalance - 10000) / 10000 * 100).toFixed(2)
+                totalReturn: ((currentBalance - 10000) / 10000 * 100).toFixed(2),
+                sessionEdge: sessionPerformance
             }
         };
     }

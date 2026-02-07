@@ -442,6 +442,9 @@ export class AnalysisOrchestrator {
                     rationale: `${direction} opportunity detected via ${c.strategy.name}. Trend: ${marketState.mtf.globalBias}. Institutional Volume: ${marketState.volumeAnalysis.isInstitutional ? 'DETECTED' : 'LOW'}. ${activeShock ? 'Warning: High volatility news pending.' : ''}`,
                     detailedRationale: `This ${direction} setup is triggered by ${c.strategy.name} confluence on the ${timeframe} timeframe. Technical basis includes: 1) Significant ${marketState.volumeAnalysis.isInstitutional ? 'Institutional' : 'Retail'} participation. 2) Structure alignment with ${marketState.mtf.globalBias} bias. 3) Proximity to ${marketState.relevantGap ? 'Fair Value Gap' : 'Liquidity Pool'}.${marketState.mtfBiasAligned ? ' 4) FULL MTF BIAS ALIGNMENT (4H/1D).' : ''} ${newsPenalty > 0 ? 'Note: Suitability reduced due to upcoming news shock.' : ''}`,
                     institutionalTheme: c.strategy.getInstitutionalTheme(),
+                    smtDivergence: marketState.smtDivergence,
+                    liquidityPools: marketState.liquidityPools?.slice(0, 5),
+                    scenarios: marketState.scenarios,
                     annotations
                 });
             }

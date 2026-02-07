@@ -1,12 +1,16 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Target, Shield, AlertTriangle, TrendingUp, Calendar, ArrowRight } from 'lucide-react';
+import { X, Target, Shield, AlertTriangle, TrendingUp, Calendar, ArrowRight, Zap, Layers, Activity } from 'lucide-react';
 
 const SetupDetailView = ({ setup, onClose }) => {
     if (!setup) return null;
 
     const isLong = setup.direction === 'LONG';
     const riskReward = Math.abs((setup.targets[0]?.price || setup.targets[0]) - setup.entryZone.optimal) / Math.abs(setup.entryZone.optimal - setup.stopLoss);
+
+    // Scenario probabilities
+    const primaryScenario = setup.scenarios?.find(s => s.type === 'PRIMARY') || setup.scenarios?.[0];
+    const alternateScenario = setup.scenarios?.find(s => s.type === 'ALTERNATE') || setup.scenarios?.[1];
 
     return (
         <AnimatePresence>
@@ -38,7 +42,7 @@ const SetupDetailView = ({ setup, onClose }) => {
                     className="card glass-panel"
                     style={{
                         width: '100%',
-                        maxWidth: '800px',
+                        maxWidth: '850px',
                         maxHeight: '90vh',
                         overflowY: 'auto',
                         padding: 0,
@@ -65,7 +69,7 @@ const SetupDetailView = ({ setup, onClose }) => {
                             <div style={{ display: 'flex', gap: '16px', color: 'var(--color-text-secondary)', fontSize: '13px' }}>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <Calendar size={14} />
-                                    {new Date(setup.timestamp).toLocaleString()}
+                                    {new Date(setup.timestamp || Date.now()).toLocaleString()}
                                 </span>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <TrendingUp size={14} />
@@ -86,7 +90,7 @@ const SetupDetailView = ({ setup, onClose }) => {
                                     <Target size={14} /> ENTRY ZONE
                                 </div>
                                 <div style={{ fontSize: '18px', fontWeight: 'bold', color: 'var(--color-text-primary)' }}>
-                                    {setup.entryZone.optimal.toFixed(5)}
+                                    {setup.entryZone?.optimal?.toFixed(5) || 'N/A'}
                                 </div>
                             </div>
                             <div className="card" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)', padding: '16px' }}>
@@ -94,7 +98,7 @@ const SetupDetailView = ({ setup, onClose }) => {
                                     <Shield size={14} /> STOP LOSS
                                 </div>
                                 <div style={{ fontSize: '18px', fontWeight: 'bold', color: 'var(--color-danger)' }}>
-                                    {setup.stopLoss.toFixed(5)}
+                                    {setup.stopLoss?.toFixed(5) || 'N/A'}
                                 </div>
                             </div>
                             <div className="card" style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.2)', padding: '16px' }}>
@@ -102,29 +106,102 @@ const SetupDetailView = ({ setup, onClose }) => {
                                     <Target size={14} /> TARGET 1
                                 </div>
                                 <div style={{ fontSize: '18px', fontWeight: 'bold', color: 'var(--color-success)' }}>
-                                    {setup.targets[0]?.price?.toFixed(5) || setup.targets[0]?.toFixed(5)}
+                                    {setup.targets?.[0]?.price?.toFixed(5) || setup.targets?.[0]?.toFixed(5) || 'N/A'}
                                 </div>
                             </div>
                         </div>
 
                         {/* Analysis Content */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '32px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: '24px' }}>
                             <div>
-                                <h3 style={{ fontSize: '18px', marginBottom: '16px', color: 'var(--color-text-primary)' }}>Institutional Rationale</h3>
+                                <h3 style={{ fontSize: '16px', marginBottom: '12px', color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Activity size={18} /> Institutional Rationale
+                                </h3>
                                 <div style={{
                                     lineHeight: '1.6',
                                     color: 'var(--color-text-secondary)',
-                                    fontSize: '14px',
+                                    fontSize: '13px',
                                     whiteSpace: 'pre-line',
                                     background: 'var(--color-bg-secondary)',
-                                    padding: '20px',
-                                    borderRadius: '12px',
-                                    border: '1px solid var(--border-color)'
+                                    padding: '16px',
+                                    borderRadius: '8px',
+                                    border: '1px solid var(--border-color)',
+                                    marginBottom: '24px'
                                 }}>
                                     {setup.detailedRationale || setup.rationale || setup.thesis}
                                 </div>
 
-                                <div style={{ marginTop: '24px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                                    {/* SMT Divergence Panel */}
+                                    {setup.smtDivergence && (
+                                        <div className="card" style={{ padding: '12px', background: 'rgba(99, 102, 241, 0.05)', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+                                            <h4 style={{ fontSize: '12px', color: 'var(--color-text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <Zap size={14} color="#6366f1" /> SMT DIVERGENCE
+                                            </h4>
+                                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--color-text-primary)' }}>
+                                                vs {setup.smtDivergence.siblingSymbol}
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
+                                                {setup.smtDivergence.type} detected at {setup.smtDivergence.price?.toFixed(5)}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Scenario Panel */}
+                                    {(primaryScenario || alternateScenario) && (
+                                        <div className="card" style={{ padding: '12px' }}>
+                                            <h4 style={{ fontSize: '12px', color: 'var(--color-text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <TrendingUp size={14} /> SCENARIOS
+                                            </h4>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                {primaryScenario && (
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                                                        <span style={{ color: 'var(--color-success)' }}>Primary</span>
+                                                        <span style={{ fontWeight: 'bold' }}>{primaryScenario.probability}%</span>
+                                                    </div>
+                                                )}
+                                                {alternateScenario && (
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                                                        <span style={{ color: 'var(--color-warning)' }}>Alternate</span>
+                                                        <span style={{ fontWeight: 'bold' }}>{alternateScenario.probability}%</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Liquidity Context */}
+                                {setup.liquidityPools && setup.liquidityPools.length > 0 && (
+                                    <div style={{ marginBottom: '24px' }}>
+                                        <h4 style={{ fontSize: '14px', marginBottom: '12px', color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <Layers size={16} /> Key Liquidity Clusters
+                                        </h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
+                                            {setup.liquidityPools.map((pool, idx) => (
+                                                <div key={idx} style={{
+                                                    padding: '8px 12px',
+                                                    background: 'var(--color-bg-tertiary)',
+                                                    borderRadius: '6px',
+                                                    border: '1px solid var(--border-color)',
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center'
+                                                }}>
+                                                    <div style={{ fontSize: '12px' }}>
+                                                        <div style={{ color: 'var(--color-text-primary)', fontWeight: 'bold' }}>{pool.price.toFixed(5)}</div>
+                                                        <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)' }}>{pool.side}</div>
+                                                    </div>
+                                                    <div className={`badge ${pool.strength === 'High' ? 'badge-danger' : 'badge-neutral'}`} style={{ fontSize: '10px' }}>
+                                                        {pool.strength}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div>
                                     <h4 style={{ fontSize: '14px', marginBottom: '12px', color: 'var(--color-text-primary)' }}>Confluence Factors</h4>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                         {setup.annotations?.map((anno, idx) => (

@@ -6,7 +6,9 @@ import PerformanceComparisonChart from '../components/features/PerformanceCompar
 import AlphaReport from '../components/features/AlphaReport';
 import { motion, AnimatePresence } from 'framer-motion';
 import Footer from '../components/layout/Footer';
-import { User, LayoutDashboard } from 'lucide-react';
+import { User, LayoutDashboard, PenLine } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
+import StrategyJournalModal from '../components/features/StrategyJournalModal';
 
 export default function Performance() {
     const [backtest, setBacktest] = React.useState(null);
@@ -15,6 +17,14 @@ export default function Performance() {
     const [showReport, setShowReport] = React.useState(false);
     const [selectedPair, setSelectedPair] = React.useState('BTCUSDT');
     const [viewMode, setViewMode] = React.useState('SYSTEM'); // 'SYSTEM' | 'USER'
+    const [journalingTrade, setJournalingTrade] = React.useState(null);
+    const { addToast } = useToast();
+
+    const handleSaveJournal = (journalData) => {
+        // In a real app, this would be saved to Firestore
+        console.log('Saving journal:', journalData);
+        addToast(`Journal for ${journalData.tradeId} archived successfully.`, 'success');
+    };
 
     // Load System Backtest
     React.useEffect(() => {
@@ -213,56 +223,57 @@ export default function Performance() {
                                     <div className="progress-bar" style={{ height: '4px' }}><div className="progress-fill" style={{ width: `${Math.min(stats.sharpe * 50, 100)}%` }}></div></div>
 
                                     <div className="flex-row justify-between" style={{ marginTop: '8px' }}>
-                                        <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Expectancy</span>
-                                        <span style={{ fontSize: '12px', fontWeight: 'bold' }}>
-                                            {loading ? '...' : `$${((stats.finalBalance - 10000) / (stats.totalTrades || 1)).toFixed(0)} / trade`}
+                                        <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Sortino Ratio</span>
+                                        <span style={{ fontSize: '12px', fontWeight: 'bold', color: stats.sortino > 1.5 ? 'var(--color-success)' : 'white' }}>
+                                            {loading ? '...' : stats.sortino?.toFixed(2) || 'N/A'}
                                         </span>
                                     </div>
-                                    <div className="progress-bar" style={{ height: '4px' }}><div className="progress-fill" style={{ width: '65%' }}></div></div>
+                                    <div className="progress-bar" style={{ height: '4px' }}><div className="progress-fill" style={{ width: `${Math.min((stats.sortino || 0) * 40, 100)}%`, background: '#f59e0b' }}></div></div>
+
+                                    <div className="flex-row justify-between" style={{ marginTop: '8px' }}>
+                                        <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Recovery Factor</span>
+                                        <span style={{ fontSize: '12px', fontWeight: 'bold' }}>
+                                            {loading ? '...' : stats.recoveryFactor || 'N/A'}
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: '9px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>Net Profit / Max Drawdown</div>
                                 </div>
                             </div>
 
                             <div className="card glass-panel" style={{ padding: '20px', flex: 1 }}>
                                 <div className="flex-row items-center gap-sm" style={{ marginBottom: '12px' }}>
                                     <Activity size={18} color="#38bdf8" />
-                                    <h3 style={{ margin: 0, fontSize: '14px' }}>Edge Attribution</h3>
+                                    <h3 style={{ margin: 0, fontSize: '14px' }}>Session Edge Heatmap</h3>
                                 </div>
                                 <div className="flex-col gap-sm">
                                     {loading ? (
-                                        <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>Calculating factors...</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>Mapping killzones...</div>
                                     ) : (
-                                        viewMode === 'SYSTEM' ? (
-                                            backtest?.alphaAttribution?.map((attr, i) => (
-                                                <div key={i} className="flex-row justify-between items-center" style={{ marginBottom: '4px' }}>
-                                                    <div className="flex-col">
-                                                        <span style={{ fontSize: '11px', fontWeight: 'bold' }}>{attr.factor} Edge</span>
-                                                        <span style={{ fontSize: '9px', color: 'var(--color-text-tertiary)' }}>{attr.impact} occurrences</span>
+                                        stats.sessionEdge ? (
+                                            Object.entries(stats.sessionEdge).map(([session, data], i) => {
+                                                const wr = data.total > 0 ? Math.round((data.wins / data.total) * 100) : 0;
+                                                return (
+                                                    <div key={i} className="flex-col" style={{ marginBottom: '8px' }}>
+                                                        <div className="flex-row justify-between items-center" style={{ marginBottom: '4px' }}>
+                                                            <span style={{ fontSize: '11px', fontWeight: 'bold' }}>{session} KILLZONE</span>
+                                                            <span style={{ fontSize: '10px', color: wr > 60 ? 'var(--color-success)' : 'white' }}>{wr}% WR</span>
+                                                        </div>
+                                                        <div className="progress-bar" style={{ height: '6px', background: 'rgba(255,255,255,0.05)' }}>
+                                                            <div
+                                                                className="progress-fill"
+                                                                style={{
+                                                                    width: `${wr}%`,
+                                                                    background: wr > 60 ? 'var(--color-success)' : wr > 50 ? 'var(--color-warning)' : '#ef4444',
+                                                                    boxShadow: wr > 60 ? '0 0 10px rgba(16, 185, 129, 0.3)' : 'none'
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div style={{ fontSize: '8px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>{data.total} Trades Executed</div>
                                                     </div>
-                                                    <div className="badge" style={{
-                                                        background: attr.winRate > 60 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                                                        color: attr.winRate > 60 ? 'var(--color-success)' : 'white',
-                                                        fontSize: '10px'
-                                                    }}>
-                                                        {attr.winRate}% WR
-                                                    </div>
-                                                </div>
-                                            ))
+                                                );
+                                            })
                                         ) : (
-                                            Object.entries(userStats?.edgeAttribution || {}).map(([label, wr], i) => (
-                                                <div key={i} className="flex-row justify-between items-center" style={{ marginBottom: '4px' }}>
-                                                    <div className="flex-col">
-                                                        <span style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'capitalize' }}>{label} Edge Quality</span>
-                                                        <span style={{ fontSize: '9px', color: 'var(--color-text-tertiary)' }}>Audited Win Rate</span>
-                                                    </div>
-                                                    <div className="badge" style={{
-                                                        background: wr > 65 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                                                        color: wr > 65 ? 'var(--color-success)' : 'white',
-                                                        fontSize: '10px'
-                                                    }}>
-                                                        {wr}% WR
-                                                    </div>
-                                                </div>
-                                            ))
+                                            <div style={{ fontSize: '11px', opacity: 0.5 }}>No session data available.</div>
                                         )
                                     )}
                                 </div>
@@ -283,15 +294,16 @@ export default function Performance() {
                                     <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--color-text-secondary)' }}>SYMBOL</th>
                                     <th style={{ padding: '12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--color-text-secondary)' }}>EDGE</th>
                                     <th style={{ padding: '12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--color-text-secondary)' }}>OUTCOME</th>
+                                    <th style={{ padding: '12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--color-text-secondary)' }}>JOURNAL</th>
                                     <th style={{ padding: '12px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--color-text-secondary)' }}>TIMESTAMP</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {loading ? (
-                                    <tr><td colSpan="5" style={{ padding: '24px', textAlign: 'center', fontSize: '12px', opacity: 0.5 }}>Syncing with Firestore...</td></tr>
+                                    <tr><td colSpan="6" style={{ padding: '24px', textAlign: 'center', fontSize: '12px', opacity: 0.5 }}>Syncing with Firestore...</td></tr>
                                 ) : (
                                     (stats.history || stats.byStrategy || []).length === 0 ? (
-                                        <tr><td colSpan="5" style={{ padding: '24px', textAlign: 'center', fontSize: '12px', opacity: 0.5 }}>No prediction history found.</td></tr>
+                                        <tr><td colSpan="6" style={{ padding: '24px', textAlign: 'center', fontSize: '12px', opacity: 0.5 }}>No prediction history found.</td></tr>
                                     ) : (
                                         // Use mock logic if real history is empty for UI demonstration
                                         (stats.history || [
@@ -315,6 +327,15 @@ export default function Performance() {
                                                         color: p.outcome === 'HIT' ? 'var(--color-success)' : p.outcome === 'FAIL' ? 'var(--color-danger)' : 'white'
                                                     }}>{p.outcome}</span>
                                                 </td>
+                                                <td style={{ padding: '12px', textAlign: 'center' }}>
+                                                    <button
+                                                        onClick={() => setJournalingTrade(p)}
+                                                        className="btn btn-ghost"
+                                                        style={{ padding: '4px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}
+                                                    >
+                                                        <PenLine size={14} color="var(--color-accent-primary)" />
+                                                    </button>
+                                                </td>
                                                 <td style={{ padding: '12px', textAlign: 'right', fontSize: '11px', opacity: 0.6 }}>{p.time || new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) + ' UTC'}</td>
                                             </tr>
                                         ))
@@ -323,6 +344,16 @@ export default function Performance() {
                             </tbody>
                         </table>
                     </div>
+
+                    <AnimatePresence>
+                        {journalingTrade && (
+                            <StrategyJournalModal
+                                trade={journalingTrade}
+                                onClose={() => setJournalingTrade(null)}
+                                onSave={handleSaveJournal}
+                            />
+                        )}
+                    </AnimatePresence>
 
                     {/* By Market */}
                     <h2 style={{ fontSize: '24px', marginBottom: '20px' }}>Analysis by Market</h2>

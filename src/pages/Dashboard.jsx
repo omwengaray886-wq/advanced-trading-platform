@@ -22,6 +22,7 @@ import LiveWallet from '../components/features/LiveWallet';
 import LegendPanel from '../components/features/LegendPanel';
 import CorrelationHeatmap from '../components/features/CorrelationHeatmap';
 import InstitutionalScanner from '../components/features/InstitutionalScanner';
+import GlobalRiskHUD from '../components/features/GlobalRiskHUD';
 import { newsService } from '../services/newsService';
 
 const getSession = () => {
@@ -220,10 +221,21 @@ export default function Dashboard() {
 
     return (
         <div>
-            <h1 className="card-title" style={{ fontSize: '24px', marginBottom: '24px' }}>Dashboard Overview</h1>
+            <div className="flex-row justify-between items-end" style={{ marginBottom: '24px' }}>
+                <div className="flex-col">
+                    <h1 style={{ fontSize: '28px', margin: 0, letterSpacing: '-1px', fontWeight: '900', color: 'white' }}>COMMAND CENTER</h1>
+                    <p style={{ fontSize: '11px', opacity: 0.4, fontWeight: 'bold', margin: 0 }}>INTELLIGENCE v5.2 // INSTITUTIONAL GRADE</p>
+                </div>
+                <div className="flex-row gap-md items-center">
+                    <div className="badge badge-success" style={{ fontSize: '9px', fontWeight: '900' }}>CORE ENGINE ACTIVE</div>
+                    <div style={{ fontSize: '11px', fontFamily: 'monospace', opacity: 0.6 }}>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</div>
+                </div>
+            </div>
 
-            {/* Sentiment Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+            <GlobalRiskHUD setups={setups} />
+
+            {/* Sentiment Cards (High-Density) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '24px' }}>
                 <div
                     className="card interactive-card"
                     onClick={() => navigate('/app/markets')}
@@ -388,13 +400,44 @@ export default function Dashboard() {
                     </div>
                     <CorrelationHeatmap />
                     {overlays.liquidityMap && overlays.liquidityMap.length > 0 && (
-                        <div className="card">
-                            <h3 className="card-title" style={{ fontSize: '13px', marginBottom: '12px' }}>Liquidity Depth (DOM)</h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                {overlays.liquidityMap.slice(0, 5).map((l, i) => (
-                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                        <span style={{ color: l.side === 'BID' ? 'var(--color-success)' : 'var(--color-danger)', fontWeight: 'bold' }}>{l.side} @ {l.price.toFixed(2)}</span>
-                                        <span style={{ color: 'var(--color-text-secondary)' }}>{l.volume.toLocaleString()} units</span>
+                        <div className="card glass-panel" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
+                            <div className="flex-row justify-between items-center" style={{ marginBottom: '16px' }}>
+                                <h3 className="card-title" style={{ fontSize: '12px', margin: 0 }}>ORDER FLOW DEPTH</h3>
+                                <div className="badge badge-outline" style={{ fontSize: '8px' }}>DOM VIEW</div>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {overlays.liquidityMap.slice(0, 10).map((l, i) => (
+                                    <div key={i} style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        fontSize: '10px',
+                                        padding: '6px 8px',
+                                        background: 'rgba(255,255,255,0.02)',
+                                        borderRadius: '4px',
+                                        position: 'relative',
+                                        overflow: 'hidden'
+                                    }}>
+                                        <div style={{
+                                            position: 'absolute',
+                                            left: 0,
+                                            top: 0,
+                                            bottom: 0,
+                                            width: `${l.intensity * 100}%`,
+                                            background: l.side === 'BID' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                            zIndex: 0
+                                        }} />
+                                        <span style={{
+                                            color: l.side === 'BID' ? '#10b981' : '#ef4444',
+                                            fontWeight: 'bold',
+                                            zIndex: 1,
+                                            fontFamily: 'monospace'
+                                        }}>
+                                            {l.side} @ {l.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </span>
+                                        <span style={{ color: 'rgba(255,255,255,0.6)', zIndex: 1, fontFamily: 'monospace' }}>
+                                            {(l.volume / 1000).toFixed(1)}k
+                                        </span>
                                     </div>
                                 ))}
                             </div>

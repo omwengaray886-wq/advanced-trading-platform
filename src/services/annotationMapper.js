@@ -247,7 +247,8 @@ export class AnnotationMapper {
                     color: anno.direction === 'LONG' ? '#10b981' : anno.direction === 'SHORT' ? '#ef4444' : '#94a3b8',
                     style: anno.style || 'SOLID', // Pass SOLID/DASHED/DOTTED
                     direction: anno.direction,
-                    isWaiting: anno.isWaiting
+                    isWaiting: anno.isWaiting,
+                    probability: anno.probability || anno.metadata?.probability || 70 // Pass conviction for visual scaling
                 });
 
                 // DEBUG: Log scenario paths

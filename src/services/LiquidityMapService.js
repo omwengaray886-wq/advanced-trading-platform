@@ -10,33 +10,44 @@ export class LiquidityMapService {
      * @param {Object} depthData - { bids: [{price, quantity}], asks: [{price, quantity}] }
      * @returns {Array} LiquidityMap objects
      */
+    /**
+     * Generate Liquidity Map from Real Order Book with high granularity
+     */
     static generateMap(depthData) {
         if (!depthData || !depthData.bids || !depthData.asks) return [];
 
         const maps = [];
 
-        // Find max volume in the visible book to calculate relative intensity
-        const maxBidVol = Math.max(...depthData.bids.map(b => b.quantity));
-        const maxAskVol = Math.max(...depthData.asks.map(a => a.quantity));
-        const globalMax = Math.max(maxBidVol, maxAskVol);
+        // Take more levels for high-density visualization (up to 50 levels per side)
+        const bids = depthData.bids.slice(0, 50);
+        const asks = depthData.asks.slice(0, 50);
 
-        // Process Bids
-        depthData.bids.forEach(b => {
+        const globalMax = Math.max(
+            ...bids.map(b => b.quantity),
+            ...asks.map(a => a.quantity)
+        );
+
+        // Process Bids (Green Heat)
+        bids.forEach(b => {
+            const intensity = b.quantity / globalMax;
             maps.push(new LiquidityMap(
                 b.price,
                 b.quantity,
                 'BID',
-                b.quantity / globalMax // Relative Intensity (0-1)
+                intensity,
+                intensity > 0.8 ? 'WALL' : intensity > 0.4 ? 'CLUSTER' : 'THIN'
             ));
         });
 
-        // Process Asks
-        depthData.asks.forEach(a => {
+        // Process Asks (Red Heat)
+        asks.forEach(a => {
+            const intensity = a.quantity / globalMax;
             maps.push(new LiquidityMap(
                 a.price,
                 a.quantity,
                 'ASK',
-                a.quantity / globalMax
+                intensity,
+                intensity > 0.8 ? 'WALL' : intensity > 0.4 ? 'CLUSTER' : 'THIN'
             ));
         });
 
@@ -44,9 +55,45 @@ export class LiquidityMapService {
     }
 
     /**
+     * Calculate Order Book Imbalance Score (-1 to 1)
+     */
+    static calculateImbalance(depthData) {
+        if (!depthData || !depthData.bids || !depthData.asks) return 0;
+
+        const totalBidVol = depthData.bids.reduce((sum, b) => sum + b.quantity, 0);
+        const totalAskVol = depthData.asks.reduce((sum, a) => sum + a.quantity, 0);
+
+        return (totalBidVol - totalAskVol) / (totalBidVol + totalAskVol);
+    }
+
+    /**
+     * Identify "Pulse" levels (fast changing liquidity)
+     */
+    static detectSpoofing(currentMap, previousMap) {
+        if (!previousMap || previousMap.length === 0) return [];
+
+        const pulses = [];
+        currentMap.forEach(level => {
+            const prev = previousMap.find(p => p.price === level.price && p.side === level.side);
+            if (prev) {
+                const change = (level.volume - prev.volume) / prev.volume;
+                // If volume changes > 300% in a single update, flag as potential flash-spoof
+                if (Math.abs(change) > 3) {
+                    pulses.push({
+                        price: level.price,
+                        side: level.side,
+                        type: change > 0 ? 'FLASH_FILL' : 'SPOOF_REMOVAL',
+                        volatility: Math.abs(change)
+                    });
+                }
+            }
+        });
+
+        return pulses;
+    }
+
+    /**
      * Identify high-volume price clusters (Liquidity Walls)
-     * @param {Object} depthData
-     * @returns {Object} { buyClusters: [], sellClusters: [] }
      */
     static findClusters(depthData) {
         if (!depthData || !depthData.bids || !depthData.asks) return { buyClusters: [], sellClusters: [] };
@@ -54,13 +101,13 @@ export class LiquidityMapService {
         const avgBid = depthData.bids.reduce((sum, b) => sum + b.quantity, 0) / depthData.bids.length;
         const avgAsk = depthData.asks.reduce((sum, a) => sum + a.quantity, 0) / depthData.asks.length;
 
-        // Threshold for a "wall" is 3x the average volume in the book
+        // Wall threshold: 4x the average volume
         const buyClusters = depthData.bids
-            .filter(b => b.quantity > avgBid * 3)
+            .filter(b => b.quantity > avgBid * 4)
             .map(b => ({ price: b.price, quantity: b.quantity, intensity: b.quantity / avgBid }));
 
         const sellClusters = depthData.asks
-            .filter(a => a.quantity > avgAsk * 3)
+            .filter(a => a.quantity > avgAsk * 4)
             .map(a => ({ price: a.price, quantity: a.quantity, intensity: a.quantity / avgAsk }));
 
         return { buyClusters, sellClusters };
