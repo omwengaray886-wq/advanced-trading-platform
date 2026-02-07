@@ -1,0 +1,94 @@
+/* Layout Styles */
+
+.app-layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 240px;
+    background-color: var(--color-bg-secondary);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: width 0.2s ease;
+}
+
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background-color: var(--color-bg-primary);
+}
+
+.topbar {
+    height: 64px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--color-bg-primary);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--spacing-lg);
+    justify-content: space-between;
+}
+
+.content-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-lg);
+}
+
+/* Utilities for layout */
+.flex-row {
+    display: flex;
+    flex-direction: row;
+}
+
+.flex-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.justify-between {
+    justify-content: space-between;
+}
+
+.gap-sm {
+    gap: var(--spacing-sm);
+}
+
+.gap-md {
+    gap: var(--spacing-md);
+}
+
+/* Sidebar Navigation */
+.nav-item {
+    width: 100%;
+    justify-content: flex-start !important;
+    /* Override btn center */
+    color: var(--color-text-secondary);
+    background-color: transparent;
+    border-left: 3px solid transparent;
+    border-radius: 0 !important;
+    /* Override btn radius if needed, or keep it */
+    padding-left: 12px;
+}
+
+.nav-item.active {
+    color: var(--color-text-primary);
+    background-color: var(--color-bg-tertiary);
+    border-left: 3px solid var(--color-accent-primary);
+}
+
+.nav-item:hover {
+    color: var(--color-text-primary);
+    background-color: var(--color-bg-tertiary);
+    /* Hover state */
+}

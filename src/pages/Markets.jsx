@@ -1,0 +1,1471 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import Chart from '../components/ui/Chart';
+import FullAnalysisReport from '../components/features/FullAnalysisReport';
+import { marketData } from '../services/marketData.js';
+import { TrendingUp, AlertTriangle, ShieldCheck, Activity, BarChart3, HelpCircle, LayoutGrid, Square, Sparkles, Layout, Target, BookOpen, PanelRightOpen, PanelLeftOpen } from 'lucide-react';
+import { generateTradeAnalysis } from '../services/ai.js';
+import { saveTradeSetups } from '../services/db.js';
+import { useToast } from '../context/ToastContext';
+import { backtestService } from '../services/backtestService.js';
+import ChartGrid from '../components/features/ChartGrid';
+import Footer from '../components/layout/Footer';
+import PortfolioRiskDashboard from '../components/features/PortfolioRiskDashboard';
+import SMTCorrelationHeatmap from '../components/features/SMTCorrelationHeatmap';
+import TradeExecution from '../components/features/TradeExecution';
+import DOMWidget from '../components/features/DOMWidget';
+import BacktestPanel from '../components/features/BacktestPanel';
+import { AnnotationMapper } from '../services/annotationMapper.js';
+import FullscreenControls from '../components/features/FullscreenControls';
+import FullscreenDOMPanel from '../components/features/FullscreenDOMPanel';
+import NewsContextPanel from '../components/features/NewsContextPanel';
+
+export default function Markets() {
+    const assetRegistry = {
+        'Crypto': ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'ADA/USDT', 'DOT/USDT', 'MATIC/USDT', 'AVAX/USDT', 'LINK/USDT', 'OP/USDT', 'ARB/USDT'],
+        'Forex': ['EUR/USD', 'GBP/USD', 'AUD/USD', 'NZD/USD', 'USD/TRY', 'USD/ZAR', 'USD/MXN', 'USD/BRL', 'USD/RUB'],
+        'Metals': ['XAU/USD']
+    };
+
+    const resolveSymbol = (displayTicker) => {
+        return marketData.mapSymbol(displayTicker);
+    };
+
+    // --- Advanced Visual Helpers ---
+    const getSessionZones = (data) => {
+        if (!data || data.length < 2) return [];
+
+        const sessions = [
+            { name: 'ASIAN', start: 0, end: 8, color: 'rgba(59, 130, 246, 0.05)', borderColor: 'rgba(59, 130, 246, 0.2)' },
+            { name: 'LONDON', start: 8, end: 16, color: 'rgba(16, 185, 129, 0.05)', borderColor: 'rgba(16, 185, 129, 0.2)' },
+            { name: 'NY', start: 13, end: 21, color: 'rgba(239, 68, 68, 0.05)', borderColor: 'rgba(239, 68, 68, 0.2)' }
+        ];
+
+        const zones = [];
+        const processedDays = new Set();
+
+        data.forEach(candle => {
+            const date = new Date(candle.time * 1000);
+            const dayKey = date.toISOString().split('T')[0];
+            const hour = date.getUTCHours();
+
+            sessions.forEach(session => {
+                const sessionKey = `${dayKey}-${session.name}`;
+                if (hour === session.start && !processedDays.has(sessionKey)) {
+                    processedDays.add(sessionKey);
+
+                    const startTime = candle.time;
+                    const endTime = startTime + (session.end - session.start) * 3600;
+
+                    const sessionData = data.filter(d => d.time >= startTime && d.time <= endTime);
+                    const high = sessionData.length > 0 ? Math.max(...sessionData.map(d => d.high)) : candle.high * 1.01;
+                    const low = sessionData.length > 0 ? Math.min(...sessionData.map(d => d.low)) : candle.low * 0.99;
+
+                    zones.push({
+                        id: `session-${sessionKey}`,
+                        x1: startTime,
+                        x2: endTime,
+                        y1: high,
+                        y2: low,
+                        color: session.color,
+                        borderColor: session.borderColor,
+                        label: session.name,
+                        isHTF: false,
+                        role: 'NEUTRAL'
+                    });
+                }
+            });
+        });
+
+        return zones;
+    };
+
+    const getLiquidityHeatmap = (data) => {
+        if (!data || data.length < 10) return [];
+
+        const strips = [];
+        const lastCandle = data[data.length - 1];
+        const currentPrice = lastCandle.close;
+
+        const levels = [
+            { price: currentPrice * 1.005, intensity: 0.9, side: 'ASK', color: 'rgba(239, 68, 68, 0.4)' },
+            { price: currentPrice * 1.012, intensity: 0.8, side: 'ASK', color: 'rgba(239, 68, 68, 0.2)' },
+            { price: currentPrice * 0.995, intensity: 0.9, side: 'BID', color: 'rgba(16, 185, 129, 0.4)' },
+            { price: currentPrice * 0.988, intensity: 0.7, side: 'BID', color: 'rgba(16, 185, 129, 0.2)' }
+        ];
+
+        levels.forEach((l, i) => {
+            strips.push({
+                id: `liq-${i}`,
+                price: l.price,
+                intensity: l.intensity,
+                side: l.side,
+                color: l.color
+            });
+        });
+
+        return strips;
+    };
+
+    const [selectedPair, setSelectedPair] = useState('BTCUSDT');
+    const [activeCategory, setActiveCategory] = useState('Crypto');
+    const [timeframe, setTimeframe] = useState('1H');
+    const [viewMode, setViewMode] = useState('SINGLE'); // SINGLE or GRID
+    const [showReport, setShowReport] = useState(true);
+    const [loading, setLoading] = useState(false);
+    const [complexityMode, setComplexityMode] = useState('ADVANCED'); // BEGINNER or ADVANCED
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isCleanView, setIsCleanView] = useState(false);
+
+    const handleScreenshot = () => {
+        setIsCleanView(true);
+        addToast('Clean view enabled for snapshot. Hiding UI for 5 seconds...', 'info');
+        setTimeout(() => {
+            setIsCleanView(false);
+        }, 5000);
+    };
+
+    // Fullscreen state
+    const [showLeftPanel, setShowLeftPanel] = useState(true);
+    const [showRightPanel, setShowRightPanel] = useState(true);
+    const [activeDrawTool, setActiveDrawTool] = useState(null);
+    const [indicators, setIndicators] = useState({
+        volumeProfile: true,
+        sessionZones: false,
+        liquidityHeatmap: false,
+        institutionalLevels: true
+    });
+
+    const { addToast } = useToast();
+    const [chartData, setChartData] = useState([]);
+    const [manualStrategy, setManualStrategy] = useState(null); // null means "Auto"
+
+    const strategyCategories = {
+        'Market Structure': [
+            'Trend Continuation',
+            'Structure Break & Retest',
+            'Change of Character (CHoCH)',
+            'Fractal Structure Alignment',
+            'Head & Shoulders'
+        ],
+        'SMC & ICT': [
+            'Order Block',
+            'Fair Value Gap (FVG)',
+            'Breaker Block',
+            'Mitigation Block',
+            'Optimal Trade Entry (OTE)',
+            'Quasimodo (Over-Under)',
+            'Supply/Demand Flip',
+            'Liquidity Sweep'
+        ],
+        'Session Based': [
+            'Asian Range Breakout',
+            'London Fakeout (Judas)'
+        ],
+        'Indicators & PA': [
+            'RSI Divergence',
+            'Price Action Confirmation',
+            'EMA Alignment (50/200)',
+            'Volume Spike Exhaustion'
+        ],
+        'Range & Harmonics': [
+            'Range Trading',
+            'Double Top / Bottom',
+            'Three-Drive Pattern',
+            'Gartley (XABCD)'
+        ]
+    };
+
+    // Fetch Data & Subscribe
+    useEffect(() => {
+        setLoading(true);
+        const symbol = resolveSymbol(selectedPair);
+        const interval = timeframe.toLowerCase();
+        let unsubscribe = () => { };
+
+        const connectWebSocket = () => {
+            try {
+                marketData.connect(symbol, interval);
+                unsubscribe = marketData.subscribe((candle) => {
+                    setChartData(prev => {
+                        const last = prev[prev.length - 1];
+                        if (last && last.time === candle.time) {
+                            const newData = [...prev];
+                            newData[prev.length - 1] = candle;
+                            return newData;
+                        }
+                        return [...prev, candle];
+                    });
+                });
+            } catch (error) {
+                console.error('WebSocket connection failed:', error);
+            }
+        };
+
+        const fetchHistory = async () => {
+            setLoading(true);
+            try {
+                const formatted = await marketData.fetchHistory(symbol, interval, 300);
+                if (!formatted || formatted.length === 0) {
+                    throw new Error(`No data found for ${symbol} on interval ${interval}`);
+                }
+                setChartData(formatted);
+                setLoading(false);
+                connectWebSocket();
+            } catch (error) {
+                console.error('Failed to fetch history:', error);
+                setChartData([]);
+                setLoading(false);
+                addToast(`Live data unavailable for ${selectedPair}`, 'error');
+            }
+        };
+
+        fetchHistory();
+        return () => {
+            unsubscribe();
+            marketData.disconnect();
+        };
+    }, [selectedPair, timeframe]);
+
+    const [analysis, setAnalysis] = useState(null);
+    const [activeSetupId, setActiveSetupId] = useState('A');
+
+    const handleGenerateAnalysis = async () => {
+        if (!chartData || chartData.length < 10) {
+            return addToast('Insufficient market data to generate analysis', 'warning');
+        }
+        setLoading(true);
+        try {
+            const newAnalysis = await generateTradeAnalysis(
+                chartData,
+                selectedPair,
+                timeframe,
+                manualStrategy,
+                complexityMode,
+                (partial) => {
+                    // Stage 1: Fast Pass Complete
+                    setAnalysis(partial);
+                    setLoading(false); // Stop the heavy spinner immediately
+                    addToast(`Fast Scan Complete. Refining Deep Intel...`, 'info');
+                }
+            );
+
+            // Stage 2: Full Deep-Dive & AI Complete
+            setAnalysis(newAnalysis);
+            setActiveSetupId('A'); // Reset to A when final analysis arrives
+
+            // Persist to Global Trade Setups DB
+            if (newAnalysis.setups && newAnalysis.setups.length > 0) {
+                saveTradeSetups(newAnalysis.setups);
+                addToast(`Published ${newAnalysis.setups.length} new signals to Trade Setups.`, 'success');
+            }
+
+            addToast(`Institutional analysis (${complexityMode}) fully enhanced!`, 'success');
+        } catch (error) {
+            addToast(`Analysis Error: ${error.message}`, 'error');
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (chartData.length > 50 && !analysis) {
+            handleGenerateAnalysis();
+        }
+    }, [chartData]);
+
+    const TF_COLORS = {
+        '4h': '#1e3a8a', // Dark Blue
+        '1h': '#3b82f6', // Light Blue
+        '15m': '#10b981', // Green
+        '5m': '#facc15', // Yellow
+        'default': '#3b82f6'
+    };
+
+    const getPrecision = (symbol) => {
+        if (!symbol) return 5;
+        if (symbol.includes('JPY')) return 3;
+        if (symbol.includes('XAU') || symbol.includes('GOLD')) return 2;
+        if (symbol.includes('XAG') || symbol.includes('SILVER')) return 3;
+        if (symbol.includes('USDT') && !symbol.includes('BTC') && !symbol.includes('ETH')) return 4;
+        return 5;
+    };
+
+    const chartVisuals = React.useMemo(() => {
+        if (!analysis) {
+            return { markers: [], lines: [], overlays: {} };
+        }
+
+        const activeSetup = analysis.setups?.find(s => s.id === activeSetupId) || (analysis.setups && analysis.setups[0]);
+        const markers = [];
+        const lines = [];
+
+        // 1. News Events Visualization (Lightweight Markers)
+        if (analysis.newsEvents) {
+            analysis.newsEvents.forEach(event => {
+                markers.push({
+                    time: event.time,
+                    position: 'aboveBar',
+                    color: event.impact === 'HIGH' ? '#ef4444' : '#f59e0b',
+                    shape: 'circle',
+                    text: `📢 ${event.event.split(' ')[0]}`,
+                    size: 1
+                });
+            });
+        }
+
+        // 2. Active Setup Price Lines
+        if (activeSetup) {
+            if (activeSetup.stopLoss) {
+                lines.push({
+                    price: activeSetup.stopLoss,
+                    color: 'rgba(239, 68, 68, 0.8)',
+                    lineWidth: 2,
+                    title: `SL`,
+                });
+            }
+            if (activeSetup.entryZone?.optimal) {
+                lines.push({
+                    price: activeSetup.entryZone.optimal,
+                    color: 'rgba(234, 179, 8, 0.9)', // Warning Gold
+                    lineWidth: 2,
+                    lineStyle: 0, // Solid
+                    title: `ENTRY`,
+                    label: `ENTRY @ ${activeSetup.entryZone.optimal.toFixed(getPrecision(selectedPair))}`
+                });
+            }
+            if (activeSetup.targets) {
+                activeSetup.targets.forEach((t, i) => {
+                    lines.push({
+                        price: t.price,
+                        color: 'rgba(16, 185, 129, 0.8)',
+                        lineWidth: 2,
+                        lineStyle: 2,
+                        title: `TP${i + 1}`,
+                    });
+                });
+            }
+        }
+
+        // 3. Institutional Overlays (SMC, Scenarios, etc)
+        const lastTime = chartData && chartData.length > 0 ? chartData[chartData.length - 1].time : Math.floor(Date.now() / 1000);
+
+        // Merge global annotations with active setup specific ones (e.g. SL/TP targets)
+        const uniqueAnnotationsMap = new Map();
+
+        // Add global annotations first
+        (analysis.annotations || []).forEach(a => uniqueAnnotationsMap.set(a.id, a));
+
+        // Add active setup annotations (will override if IDs match, though unique setup annotations like Entry/SL are usually new IDs)
+        (activeSetup?.annotations || []).forEach(a => uniqueAnnotationsMap.set(a.id, a));
+
+        const sourceAnnotations = Array.from(uniqueAnnotationsMap.values());
+
+        // 4. Inject Trap Zones (Phase 50)
+        if (analysis.trapZones && analysis.trapZones.count > 0) {
+            const allTraps = [...(analysis.trapZones.bullTraps || []), ...(analysis.trapZones.bearTraps || [])];
+            allTraps.forEach((trap, idx) => {
+                sourceAnnotations.push({
+                    id: `trap-${idx}-${trap.timestamp}`,
+                    type: 'TRAP_ZONE',
+                    trapType: trap.implication,
+                    coordinates: {
+                        top: trap.location * 1.002,
+                        bottom: trap.location * 0.998,
+                        time: trap.timestamp,
+                        endTime: lastTime + 3600 // 1h projection
+                    }
+                });
+            });
+        }
+
+        // 5. Institutional Levels (PDH, PDL, etc)
+        if (indicators.institutionalLevels && chartData.length > 24) {
+            // Find start of current day and filter for previous day
+            const now = new Date();
+            const today = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()).getTime() / 1000;
+            const yesterdayData = chartData.filter(d => d.time < today && d.time >= today - 86400);
+
+            if (yesterdayData.length > 0) {
+                const pdh = Math.max(...yesterdayData.map(d => d.high));
+                const pdl = Math.min(...yesterdayData.map(d => d.low));
+                const pdm = (pdh + pdl) / 2;
+
+                lines.push({
+                    price: pdh,
+                    color: 'rgba(255, 255, 255, 0.4)',
+                    lineWidth: 1,
+                    lineStyle: 1, // Dotted
+                    title: 'PDH',
+                    label: `PDH @ ${pdh.toFixed(getPrecision(selectedPair))}`
+                });
+                lines.push({
+                    price: pdl,
+                    color: 'rgba(255, 255, 255, 0.4)',
+                    lineWidth: 1,
+                    lineStyle: 1, // Dotted
+                    title: 'PDL',
+                    label: `PDL @ ${pdl.toFixed(getPrecision(selectedPair))}`
+                });
+                lines.push({
+                    price: pdm,
+                    color: 'rgba(255, 255, 255, 0.2)',
+                    lineWidth: 1,
+                    lineStyle: 2, // Large Dashed
+                    title: 'PDM',
+                    label: `PDM @ ${pdm.toFixed(getPrecision(selectedPair))}`
+                });
+            }
+        }
+
+        // DEBUG: Log annotation types
+        console.log('[Markets.jsx] Source Annotations:', sourceAnnotations.map(a => ({ type: a.type, id: a.id })));
+        console.log('[Markets.jsx] Active Setup Annotations:', activeSetup?.annotations?.map(a => ({ type: a.type, id: a.id })));
+
+        const overlays = {
+            ...AnnotationMapper.mapToOverlays(sourceAnnotations, { lastCandleTime: lastTime, timeframe }),
+            liquidityMap: [
+                ...(analysis.liquidityMap || []),
+                ...(indicators.liquidityHeatmap ? getLiquidityHeatmap(chartData) : [])
+            ]
+        };
+
+        // Add Session Zones if enabled
+        if (indicators.sessionZones) {
+            const sessions = getSessionZones(chartData);
+            overlays.zones = [...(overlays.zones || []), ...sessions];
+        }
+
+        // DEBUG: Log overlay results
+        console.log('[Markets.jsx] Overlays Result:', {
+            zones: overlays.zones?.length,
+            paths: overlays.paths?.length,
+            labels: overlays.labels?.length,
+            liquidity: overlays.liquidityMap?.length
+        });
+
+        return { markers, lines, overlays };
+    }, [analysis, chartData, activeSetupId, indicators]);
+
+
+    const [health, setHealth] = useState({ isConnected: false, latency: 0 });
+
+    useEffect(() => {
+        return marketData.subscribeHealth(stats => {
+            setHealth(stats);
+        });
+    }, []);
+
+    return (
+        <div style={{
+            height: '100vh',
+            background: 'radial-gradient(circle at top left, #0f172a, #000000)',
+            display: 'flex',
+            flexDirection: 'column',
+            color: 'white',
+            overflow: 'hidden'
+        }}>
+            {/* ... header ... */}
+            <header style={{
+                height: '60px',
+                background: 'rgba(15, 23, 42, 0.8)',
+                backdropFilter: 'blur(20px)',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '0 20px',
+                justifyContent: 'space-between',
+                zIndex: 100
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            background: 'var(--color-accent-primary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 0 20px rgba(37, 99, 235, 0.4)'
+                        }}>
+                            <Activity size={20} color="white" />
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '16px', fontWeight: '800', letterSpacing: '-0.5px' }}>{selectedPair}</div>
+                            <div style={{
+                                fontSize: '10px',
+                                color: health.isConnected ? '#10b981' : '#ef4444',
+                                fontWeight: 'bold',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}>
+                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: health.isConnected ? '#10b981' : '#ef4444' }} />
+                                {health.isConnected ? 'LIVE NETWORK' : 'OFFLINE'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ height: '30px', width: '1px', background: 'rgba(255,255,255,0.1)' }} />
+
+                    <div style={{ display: 'flex', gap: '20px' }}>
+                        <div>
+                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Price</div>
+                            <div style={{ fontSize: '14px', fontWeight: 'bold', fontFamily: 'monospace' }}>
+                                ${chartData[chartData.length - 1]?.close?.toLocaleString(undefined, { minimumFractionDigits: getPrecision(selectedPair) }) || '...'}
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Session</div>
+                            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#38bdf8' }}>{analysis?.marketState?.session?.active || 'LONDON'}</div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Volatility</div>
+                            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#f59e0b' }}>{analysis?.marketState?.volatility || 'NOMINAL'}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {/* View Mode Toggle */}
+                    <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '3px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                        <button
+                            onClick={() => setViewMode('SINGLE')}
+                            style={{
+                                padding: '6px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: viewMode === 'SINGLE' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                color: viewMode === 'SINGLE' ? 'white' : 'rgba(255,255,255,0.5)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center'
+                            }}
+                        >
+                            <Square size={16} />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('GRID')}
+                            style={{
+                                padding: '6px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: viewMode === 'GRID' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                color: viewMode === 'GRID' ? 'white' : 'rgba(255,255,255,0.5)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center'
+                            }}
+                        >
+                            <LayoutGrid size={16} />
+                        </button>
+                    </div>
+
+                    <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                        {['5m', '15m', '1H', '4H', 'D'].map(tf => (
+                            <button
+                                key={tf}
+                                onClick={() => setTimeframe(tf)}
+                                style={{
+                                    padding: '6px 12px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: timeframe === tf ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                    color: timeframe === tf ? 'white' : 'rgba(255,255,255,0.5)',
+                                    cursor: 'pointer',
+                                    fontSize: '11px',
+                                    fontWeight: 'bold',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                {tf}
+                            </button>
+                        ))}
+                    </div>
+
+                    <button
+                        className="btn btn-primary"
+                        onClick={handleGenerateAnalysis}
+                        disabled={loading}
+                        style={{ height: '36px', padding: '0 16px', borderRadius: '8px', gap: '8px', fontSize: '12px' }}
+                    >
+                        {loading ? <Activity size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                        AUDIT ASSET
+                    </button>
+                </div>
+            </header>
+
+            <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+
+                {/* 🧭 LEFT COLUMN: SLIM ASSET NAVIGATOR */}
+                <nav style={{
+                    width: '70px',
+                    background: 'rgba(15, 23, 42, 0.4)',
+                    borderRight: '1px solid rgba(255, 255, 255, 0.05)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '20px 0',
+                    gap: '20px',
+                    overflowY: 'auto'
+                }}>
+                    {Object.keys(assetRegistry).map(cat => (
+                        <div key={cat} style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+                            <div style={{
+                                fontSize: '9px',
+                                fontWeight: 'bold',
+                                color: 'rgba(255,255,255,0.3)',
+                                transform: 'rotate(-90deg)',
+                                height: '40px',
+                                display: 'flex',
+                                alignItems: 'center'
+                            }}>
+                                {cat.toUpperCase()}
+                            </div>
+                            {assetRegistry[cat].map(pair => (
+                                <button
+                                    key={pair}
+                                    onClick={() => setSelectedPair(pair)}
+                                    title={pair}
+                                    style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        borderRadius: '12px',
+                                        border: '1px solid',
+                                        borderColor: selectedPair === pair ? 'var(--color-accent-primary)' : 'rgba(255,255,255,0.1)',
+                                        background: selectedPair === pair ? 'rgba(37, 99, 235, 0.1)' : 'rgba(255,255,255,0.03)',
+                                        color: selectedPair === pair ? 'white' : 'rgba(255,255,255,0.6)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        fontSize: '10px',
+                                        fontWeight: 'bold',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    {pair.split('/')[0].substring(0, 3)}
+                                </button>
+                            ))}
+                        </div>
+                    ))}
+                </nav>
+
+                {/* 📊 CENTER COLUMN: ANALYTICS BRIDGE */}
+                <main style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    background: '#000',
+                    position: 'relative',
+                    overflowY: 'auto'
+                }}>
+                    {/* Integrated Chart HUD */}
+                    <div style={{
+                        flex: 1,
+                        position: 'relative',
+                        minHeight: '600px',
+                        maxHeight: viewMode === 'GRID' ? 'none' : '700px'
+                    }}>
+                        {viewMode === 'GRID' ? (
+                            <ChartGrid initialPair={selectedPair} />
+                        ) : (
+                            <Chart
+                                key={`${selectedPair}-${timeframe}`}
+                                data={chartData}
+                                markers={chartVisuals.markers}
+                                lines={chartVisuals.lines}
+                                overlays={chartVisuals.overlays}
+                            />
+                        )}
+
+                        {/* Fullscreen Button */}
+                        {viewMode === 'SINGLE' && !isFullscreen && (
+                            <button
+                                onClick={() => setIsFullscreen(true)}
+                                style={{
+                                    position: 'absolute',
+                                    top: '20px',
+                                    right: '20px',
+                                    width: '40px',
+                                    height: '40px',
+                                    borderRadius: '8px',
+                                    background: 'rgba(15, 23, 42, 0.85)',
+                                    backdropFilter: 'blur(16px)',
+                                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    color: 'white',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    zIndex: 10,
+                                    transition: 'all 0.2s'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(37, 99, 235, 0.3)'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(15, 23, 42, 0.85)'}
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                                </svg>
+                            </button>
+                        )}
+
+                        {/* PREMIUM HUD OVERLAY */}
+                        <AnimatePresence>
+                            {analysis && viewMode === 'SINGLE' && !isFullscreen && (
+                                <motion.div
+                                    initial={{ opacity: 0, scale: 0.9 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    style={{
+                                        position: 'absolute',
+                                        top: '20px',
+                                        left: '20px',
+                                        width: '280px',
+                                        background: 'rgba(15, 23, 42, 0.85)',
+                                        backdropFilter: 'blur(16px)',
+                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                        borderRadius: '16px',
+                                        padding: '16px',
+                                        zIndex: 10,
+                                        boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+                                    }}
+                                >
+                                    {/* Setup Tabs */}
+                                    {analysis.setups && analysis.setups.length > 0 && (
+                                        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '2px', marginBottom: '16px', gap: '2px' }}>
+                                            {analysis.setups.map(s => (
+                                                <button
+                                                    key={s.id}
+                                                    onClick={() => setActiveSetupId(s.id)}
+                                                    style={{
+                                                        flex: 1,
+                                                        padding: '4px',
+                                                        borderRadius: '6px',
+                                                        background: activeSetupId === s.id ?
+                                                            (s.direction === 'LONG' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)') :
+                                                            'transparent',
+                                                        color: activeSetupId === s.id ?
+                                                            (s.direction === 'LONG' ? '#10b981' : '#ef4444') :
+                                                            'rgba(255,255,255,0.4)',
+                                                        cursor: 'pointer',
+                                                        fontSize: '10px',
+                                                        fontWeight: 'bold',
+                                                        border: activeSetupId === s.id ?
+                                                            `1px solid ${s.direction === 'LONG' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}` :
+                                                            '1px solid transparent'
+                                                    }}
+                                                >
+                                                    SETUP {s.id}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
+                                            <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'rgba(255,255,255,0.7)' }}>QUANT AUDIT v4.2</span>
+                                        </div>
+                                        <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-accent-primary)' }}>
+                                            SCORE: {analysis.setups?.find(s => s.id === activeSetupId)?.quantScore || analysis.setups?.[0]?.quantScore}%
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
+                                            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>BIAS</div>
+                                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: analysis.marketState?.mtf?.globalBias === 'BULLISH' ? '#10b981' : '#ef4444' }}>
+                                                {analysis.marketState?.mtf?.globalBias || 'NEUTRAL'}
+                                            </div>
+                                        </div>
+                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
+                                            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>VOLATILITY</div>
+                                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#f59e0b' }}>{analysis.marketState?.volatility || 'NOMINAL'}</div>
+                                        </div>
+                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
+                                            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>OBLIGATION</div>
+                                            <div style={{
+                                                fontSize: '11px',
+                                                fontWeight: 'bold',
+                                                color: analysis.marketState?.obligations?.state === 'OBLIGATED' ? '#10b981' : 'rgba(255,255,255,0.4)'
+                                            }}>
+                                                {analysis.marketState?.obligations?.state || 'UNKNOWN'}
+                                            </div>
+                                        </div>
+                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
+                                            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>CONFIDENCE</div>
+                                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#3b82f6' }}>
+                                                {analysis.prediction?.confidence || 0}%
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Precise Levels Restored */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
+                                        <div style={{ background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>ENTRY</div>
+                                            <div style={{ fontSize: '11px', fontWeight: 'bold' }}>{analysis.setups?.find(s => s.id === activeSetupId)?.entryZone?.optimal?.toFixed(getPrecision(selectedPair)) || '...'}</div>
+                                        </div>
+                                        <div style={{ background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>STOP</div>
+                                            <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#ef4444' }}>{analysis.setups?.find(s => s.id === activeSetupId)?.stopLoss?.toFixed(getPrecision(selectedPair)) || '...'}</div>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {analysis.marketState?.liquiditySweep && (
+                                            <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fbbf24' }}>
+                                                <Target size={12} /> Liquidity Sweep Detected
+                                            </div>
+                                        )}
+                                        {analysis.marketState?.smtDivergence && (
+                                            <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px', color: '#a78bfa' }}>
+                                                <Activity size={12} /> SMT Divergence Active
+                                            </div>
+                                        )}
+                                        {analysis.marketState?.technicalDivergences?.length > 0 && (
+                                            <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px', color: '#facc15' }}>
+                                                <TrendingUp size={12} /> Tech Divergence ({analysis.marketState.technicalDivergences.length})
+                                            </div>
+                                        )}
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+
+                    {/* Full Analysis Report Section */}
+                    {showReport && (
+                        <div style={{ padding: '0 20px 20px 20px' }}>
+                            <FullAnalysisReport analysis={analysis} loading={loading} />
+                        </div>
+                    )}
+                </main>
+
+                {/* 🛡️ RIGHT COLUMN: COMMAND CENTER */}
+                <aside style={{
+                    width: '360px',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    backdropFilter: 'blur(30px)',
+                    borderLeft: '1px solid rgba(255, 255, 255, 0.05)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflowY: 'auto'
+                }}>
+                    {/* Execution Tab */}
+                    <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                        <PortfolioRiskDashboard />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ fontSize: '14px', fontWeight: 'bold', letterSpacing: '1px', color: 'rgba(255,255,255,0.5)' }}>COMMAND CENTER</h3>
+                            <button
+                                onClick={() => setShowReport(!showReport)}
+                                style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}
+                            >
+                                <Layout size={16} />
+                            </button>
+                        </div>
+
+                        {/* Inter-market Visual Intelligence (Phase 37) */}
+                        <SMTCorrelationHeatmap
+                            symbol={selectedPair}
+                            activeTimeframe={timeframe}
+                            divergences={analysis?.marketState?.divergences || []}
+                        />
+
+                        {/* Strategy & Complexity Restoration */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '3px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                <button
+                                    onClick={() => setComplexityMode('BEGINNER')}
+                                    style={{
+                                        flex: 1,
+                                        padding: '8px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: complexityMode === 'BEGINNER' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                        color: complexityMode === 'BEGINNER' ? 'white' : 'rgba(255,255,255,0.4)',
+                                        fontSize: '11px',
+                                        fontWeight: 'bold',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '6px'
+                                    }}
+                                >
+                                    <BookOpen size={14} /> BEGINNER
+                                </button>
+                                <button
+                                    onClick={() => setComplexityMode('ADVANCED')}
+                                    style={{
+                                        flex: 1,
+                                        padding: '8px',
+                                        borderRadius: '8px',
+                                        background: complexityMode === 'ADVANCED' ? 'rgba(37, 99, 235, 0.2)' : 'transparent',
+                                        color: complexityMode === 'ADVANCED' ? 'white' : 'rgba(255,255,255,0.4)',
+                                        fontSize: '11px',
+                                        fontWeight: 'bold',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '6px',
+                                        border: complexityMode === 'ADVANCED' ? '1px solid rgba(37, 99, 235, 0.3)' : '1px solid transparent'
+                                    }}
+                                >
+                                    <TrendingUp size={14} /> PRO
+                                </button>
+                            </div>
+
+                            <div style={{ position: 'relative' }}>
+                                <select
+                                    value={manualStrategy || ''}
+                                    onChange={(e) => setManualStrategy(e.target.value || null)}
+                                    style={{
+                                        width: '100%',
+                                        background: 'rgba(255,255,255,0.05)',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: '10px',
+                                        padding: '10px 12px',
+                                        color: 'white',
+                                        fontSize: '12px',
+                                        appearance: 'none',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <option value="">🤖 AI AUTO-STRATEGY</option>
+                                    {Object.entries(strategyCategories).map(([cat, strats]) => (
+                                        <optgroup label={cat} key={cat} style={{ background: '#0f172a' }}>
+                                            {strats.map(s => <option key={s} value={s}>{s}</option>)}
+                                        </optgroup>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <TradeExecution
+                            symbol={selectedPair}
+                            currentPrice={chartData[chartData.length - 1]?.close}
+                            riskData={analysis?.setups?.find(s => s.id === (activeSetupId || 'A'))}
+                            analysis={analysis}
+                            candles={chartData}
+                        />
+
+                        {/* Order Book / DOM Widget */}
+                        <div style={{
+                            background: 'rgba(0,0,0,0.3)',
+                            borderRadius: '16px',
+                            border: '1px solid rgba(255,255,255,0.05)',
+                            padding: '12px',
+                            minHeight: '300px'
+                        }}>
+                            <DOMWidget symbol={resolveSymbol(selectedPair)} />
+                        </div>
+
+                        {/* Backtest Panel */}
+                        <BacktestPanel symbol={resolveSymbol(selectedPair)} timeframe={timeframe} />
+                    </div>
+                </aside>
+            </div >
+
+            {/* 🌐 GLOBAL STATUS BAR */}
+            <footer style={{
+                height: '32px',
+                background: '#0a0f1d',
+                borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '0 20px',
+                justifyContent: 'space-between',
+                fontSize: '10px',
+                color: 'rgba(255,255,255,0.4)'
+            }}>
+                <div style={{ display: 'flex', gap: '24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: health.isConnected ? '#10b981' : '#ef4444' }}>
+                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: health.isConnected ? '#10b981' : '#ef4444' }} />
+                        {health.isConnected ? 'SYSTEM OPERATIONAL' : 'SYSTEM DEGRADED'}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Activity size={12} /> LATENCY: {health.latency}ms
+                    </div>
+                    <div>MTF BIAS: {analysis?.marketState?.mtf?.globalBias || 'NEUTRAL'}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '20px' }}>
+                    <span>NEWS: {analysis?.newsEvents?.length > 0 ? `${analysis.newsEvents.length} IMPACT EVENTS` : 'NO HIGH IMPACT EVENTS'}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.2)' }}>v2.4.0 PRO</span>
+                </div>
+            </footer>
+
+            {/* FULLSCREEN CHART MODAL */}
+            <AnimatePresence>
+                {isFullscreen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            background: '#000',
+                            zIndex: 9999,
+                            display: 'flex',
+                            flexDirection: 'column'
+                        }}
+                    >
+                        {/* Fullscreen Header with Advanced Controls */}
+                        {!isCleanView && (
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                {/* Top Bar with Symbol Info */}
+                                <div style={{
+                                    height: '50px',
+                                    background: 'rgba(15, 23, 42, 0.95)',
+                                    backdropFilter: 'blur(20px)',
+                                    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    padding: '0 20px',
+                                    justifyContent: 'space-between'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <Activity size={18} color="white" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    {selectedPair}
+                                                    {localStorage.getItem(`golden_params_${selectedPair.replace('/', '')}`) && (
+                                                        <span style={{
+                                                            fontSize: '8px',
+                                                            background: 'rgba(56, 189, 248, 0.2)',
+                                                            color: 'var(--color-accent-primary)',
+                                                            padding: '2px 4px',
+                                                            borderRadius: '4px',
+                                                            border: '1px solid rgba(56, 189, 248, 0.4)'
+                                                        }}>VAULT ACTIVE</span>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: '9px', color: '#10b981', fontWeight: 'bold' }}>LIVE NETWORK</div>
+                                            </div>
+                                        </div>
+                                        <div style={{ height: '24px', width: '1px', background: 'rgba(255,255,255,0.1)' }} />
+                                        <div style={{ display: 'flex', gap: '16px', fontSize: '11px' }}>
+                                            <div style={{ opacity: 0.5 }}>PRICE: <span style={{ color: 'white', fontWeight: 'bold' }}>${chartData[chartData.length - 1]?.close?.toFixed(2)}</span></div>
+                                            <div style={{ opacity: 0.5 }}>BIAS: <span style={{ color: analysis?.marketState?.mtf?.globalBias === 'BULLISH' ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>{analysis?.marketState?.mtf?.globalBias || 'NEUTRAL'}</span></div>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <button
+                                            className="btn btn-primary"
+                                            onClick={handleGenerateAnalysis}
+                                            disabled={loading}
+                                            style={{
+                                                height: '32px',
+                                                padding: '0 12px',
+                                                borderRadius: '6px',
+                                                gap: '6px',
+                                                fontSize: '11px',
+                                                background: 'var(--color-accent-primary)',
+                                                border: 'none',
+                                                color: 'white',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                cursor: 'pointer',
+                                                fontWeight: 'bold'
+                                            }}
+                                        >
+                                            {loading ? <Activity size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                                            AUDIT ASSET
+                                        </button>
+
+                                        <button
+                                            onClick={() => setShowLeftPanel(!showLeftPanel)}
+                                            style={{
+                                                padding: '6px 12px',
+                                                borderRadius: '6px',
+                                                border: '1px solid rgba(255,255,255,0.1)',
+                                                background: showLeftPanel ? 'rgba(37, 99, 235, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                color: showLeftPanel ? '#3b82f6' : 'rgba(255,255,255,0.5)',
+                                                fontSize: '11px',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px'
+                                            }}
+                                        >
+                                            <PanelLeftOpen size={14} /> SIDEBAR
+                                        </button>
+                                        <button
+                                            onClick={() => setShowRightPanel(!showRightPanel)}
+                                            style={{
+                                                padding: '6px 12px',
+                                                borderRadius: '6px',
+                                                border: '1px solid rgba(255,255,255,0.1)',
+                                                background: showRightPanel ? 'rgba(37, 99, 235, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                color: showRightPanel ? '#3b82f6' : 'rgba(255,255,255,0.5)',
+                                                fontSize: '11px',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px'
+                                            }}
+                                        >
+                                            DOM <PanelRightOpen size={14} />
+                                        </button>
+                                        <button
+                                            onClick={() => setIsFullscreen(false)}
+                                            style={{
+                                                width: '32px',
+                                                height: '32px',
+                                                borderRadius: '8px',
+                                                background: 'rgba(239, 68, 68, 0.1)',
+                                                border: '1px solid rgba(239, 68, 68, 0.2)',
+                                                color: '#ef4444',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center'
+                                            }}
+                                        >
+                                            <Square size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Controls Bar */}
+                                <FullscreenControls
+                                    timeframe={timeframe}
+                                    onTimeframeChange={setTimeframe}
+                                    indicators={indicators}
+                                    onToggleIndicator={(id) => setIndicators(prev => ({ ...prev, [id]: !prev[id] }))}
+                                    onScreenshot={handleScreenshot}
+                                    activeDrawTool={activeDrawTool}
+                                    onSelectDrawTool={setActiveDrawTool}
+                                />
+                            </div>
+                        )}
+
+                        {/* Main Content Area with Side Panels */}
+                        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+                            {/* Left Panel - News & Context */}
+                            <AnimatePresence>
+                                {showLeftPanel && !isCleanView && (
+                                    <motion.div
+                                        initial={{ width: 0, opacity: 0 }}
+                                        animate={{ width: '320px', opacity: 1 }}
+                                        exit={{ width: 0, opacity: 0 }}
+                                        style={{
+                                            background: 'rgba(15, 23, 42, 0.6)',
+                                            borderRight: '1px solid rgba(255, 255, 255, 0.05)',
+                                            overflowY: 'auto',
+                                            padding: '16px'
+                                        }}
+                                    >
+                                        <NewsContextPanel
+                                            newsEvents={analysis?.newsEvents}
+                                            correlations={analysis?.marketState?.correlation}
+                                            session={analysis?.marketState?.session}
+                                        />
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
+                            {/* Center - Chart with HUD */}
+                            <div style={{ flex: 1, position: 'relative' }}>
+                                <Chart
+                                    key={`${selectedPair}-${timeframe}-fullscreen`}
+                                    data={chartData}
+                                    markers={chartVisuals.markers}
+                                    lines={chartVisuals.lines}
+                                    overlays={chartVisuals.overlays}
+                                />
+
+                                {/* HUD Overlay in Fullscreen */}
+                                {analysis && !isCleanView && (
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0.9 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        style={{
+                                            position: 'absolute',
+                                            top: '20px',
+                                            left: '20px',
+                                            width: '320px',
+                                            background: 'rgba(15, 23, 42, 0.85)',
+                                            backdropFilter: 'blur(16px)',
+                                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                                            borderRadius: '16px',
+                                            padding: '20px',
+                                            zIndex: 10,
+                                            boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+                                        }}
+                                    >
+                                        {/* Setup Tabs */}
+                                        {analysis.setups && analysis.setups.length > 0 && (
+                                            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '2px', marginBottom: '16px', gap: '2px' }}>
+                                                {analysis.setups.map(s => (
+                                                    <button
+                                                        key={s.id}
+                                                        onClick={() => setActiveSetupId(s.id)}
+                                                        style={{
+                                                            flex: 1,
+                                                            padding: '6px',
+                                                            borderRadius: '6px',
+                                                            background: activeSetupId === s.id ?
+                                                                (s.direction === 'LONG' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)') :
+                                                                'transparent',
+                                                            color: activeSetupId === s.id ?
+                                                                (s.direction === 'LONG' ? '#10b981' : '#ef4444') :
+                                                                'rgba(255,255,255,0.4)',
+                                                            cursor: 'pointer',
+                                                            fontSize: '11px',
+                                                            fontWeight: 'bold',
+                                                            border: activeSetupId === s.id ?
+                                                                `1px solid ${s.direction === 'LONG' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}` :
+                                                                '1px solid transparent'
+                                                        }}
+                                                    >
+                                                        SETUP {s.id}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
+                                                <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'rgba(255,255,255,0.7)' }}>QUANT AUDIT v4.2</span>
+                                            </div>
+                                            <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-accent-primary)' }}>
+                                                SCORE: {analysis.setups?.find(s => s.id === activeSetupId)?.quantScore || analysis.setups?.[0]?.quantScore}%
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                                            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
+                                                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>BIAS</div>
+                                                <div style={{ fontSize: '14px', fontWeight: 'bold', color: analysis.marketState?.mtf?.globalBias === 'BULLISH' ? '#10b981' : '#ef4444' }}>
+                                                    {analysis.marketState?.mtf?.globalBias || 'NEUTRAL'}
+                                                </div>
+                                            </div>
+                                            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
+                                                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>VOLATILITY</div>
+                                                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#f59e0b' }}>{analysis.marketState?.volatility || 'NOMINAL'}</div>
+                                            </div>
+                                            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
+                                                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>OBLIGATION</div>
+                                                <div style={{
+                                                    fontSize: '12px',
+                                                    fontWeight: 'bold',
+                                                    color: analysis.marketState?.obligations?.state === 'OBLIGATED' ? '#10b981' : 'rgba(255,255,255,0.4)'
+                                                }}>
+                                                    {analysis.marketState?.obligations?.state || 'UNKNOWN'}
+                                                </div>
+                                            </div>
+                                            <div style={{ position: 'relative', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
+                                                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>CONFIDENCE</div>
+                                                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#3b82f6', cursor: 'help' }} className="confidence-trigger">
+                                                    {analysis.prediction?.confidence || 0}%
+                                                </div>
+                                                {/* Detailed Breakdown Tooltip */}
+                                                <div className="confidence-tooltip-container" style={{
+                                                    position: 'absolute',
+                                                    top: '100%',
+                                                    left: 0,
+                                                    zIndex: 100,
+                                                    display: 'none',
+                                                    paddingTop: '10px'
+                                                }}>
+                                                    <div style={{
+                                                        background: 'rgba(15, 23, 42, 0.95)',
+                                                        border: '1px solid rgba(255,255,255,0.1)',
+                                                        borderRadius: '8px',
+                                                        padding: '12px',
+                                                        width: '240px',
+                                                        boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
+                                                    }}>
+                                                        <div style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '8px', color: 'white' }}>CONFIDENCE BREAKDOWN</div>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
+                                                                <span style={{ color: 'rgba(255,255,255,0.5)' }}>Base Probability</span>
+                                                                <span style={{ color: '#10b981' }}>+45%</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
+                                                                <span style={{ color: 'rgba(255,255,255,0.5)' }}>HTF Alignment</span>
+                                                                <span style={{ color: '#10b981' }}>+15%</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
+                                                                <span style={{ color: 'rgba(255,255,255,0.5)' }}>Vol. Confirmation</span>
+                                                                <span style={{ color: '#10b981' }}>+10%</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
+                                                                <span style={{ color: 'rgba(255,255,255,0.5)' }}>Path Clearance</span>
+                                                                <span style={{ color: '#ef4444' }}>-5%</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <style>{`
+                                                    .confidence-trigger:hover + .confidence-tooltip-container {
+                                                        display: block;
+                                                    }
+                                                `}</style>
+                                            </div>
+                                        </div>
+
+                                        {/* Precise Levels & P&L Calculator */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                                    <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '2px' }}>ENTRY</div>
+                                                    <div style={{ fontSize: '13px', fontWeight: 'bold' }}>{analysis.setups?.find(s => s.id === activeSetupId)?.entryZone?.optimal?.toFixed(selectedPair.includes('JPY') || selectedPair.includes('XAU') ? 3 : 2) || '...'}</div>
+                                                </div>
+                                                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                                    <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '2px' }}>STOP LOSS</div>
+                                                    <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#ef4444' }}>{analysis.setups?.find(s => s.id === activeSetupId)?.stopLoss?.toFixed(selectedPair.includes('JPY') || selectedPair.includes('XAU') ? 3 : 2) || '...'}</div>
+                                                </div>
+                                            </div>
+
+                                            {/* Projections & RR */}
+                                            <div style={{
+                                                background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(37, 99, 235, 0.02) 100%)',
+                                                padding: '12px',
+                                                borderRadius: '8px',
+                                                border: '1px solid rgba(37, 99, 235, 0.2)'
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', fontWeight: 'bold' }}>PROJECTION METRICS</div>
+                                                    <div style={{
+                                                        fontSize: '11px',
+                                                        fontWeight: 'bold',
+                                                        color: '#3b82f6',
+                                                        background: 'rgba(59, 130, 246, 0.1)',
+                                                        padding: '2px 6px',
+                                                        borderRadius: '4px'
+                                                    }}>
+                                                        RR 1:{analysis.setups?.find(s => s.id === activeSetupId)?.targets?.[0]?.rr?.toFixed(2) || '3.50'}
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                                                    <span style={{ color: 'rgba(255,255,255,0.4)' }}>Target 1 (Base)</span>
+                                                    <span style={{ color: '#10b981', fontWeight: 'bold' }}>
+                                                        {analysis.setups?.find(s => s.id === activeSetupId)?.targets?.[0]?.price?.toFixed(selectedPair.includes('JPY') || selectedPair.includes('XAU') ? 3 : 2) || '...'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {analysis.marketState?.liquiditySweep && (
+                                                <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fbbf24' }}>
+                                                    <Target size={12} /> Liquidity Sweep Detected
+                                                </div>
+                                            )}
+                                            {analysis.marketState?.smtDivergence && (
+                                                <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px', color: '#a78bfa' }}>
+                                                    <Activity size={12} /> SMT Divergence Active
+                                                </div>
+                                            )}
+                                            {analysis.marketState?.technicalDivergences?.length > 0 && (
+                                                <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px', color: '#facc15' }}>
+                                                    <TrendingUp size={12} /> Tech Divergence ({analysis.marketState.technicalDivergences.length})
+                                                </div>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </div>
+
+                            {/* Right Panel - DOM & Orders */}
+                            <AnimatePresence>
+                                {showRightPanel && !isCleanView && (
+                                    <motion.div
+                                        initial={{ width: 0, opacity: 0 }}
+                                        animate={{ width: '320px', opacity: 1 }}
+                                        exit={{ width: 0, opacity: 0 }}
+                                        style={{
+                                            background: 'rgba(15, 23, 42, 0.6)',
+                                            borderLeft: '1px solid rgba(255, 255, 255, 0.05)',
+                                            overflowY: 'auto',
+                                            padding: '16px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '16px'
+                                        }}
+                                    >
+                                        <FullscreenDOMPanel
+                                            symbol={selectedPair}
+                                            currentPrice={chartData[chartData.length - 1]?.close || 50000}
+                                        />
+
+                                        {/* Quick Trade Panel */}
+                                        <div style={{
+                                            background: 'rgba(0,0,0,0.4)',
+                                            borderRadius: '12px',
+                                            border: '1px solid rgba(255,255,255,0.1)',
+                                            padding: '16px'
+                                        }}>
+                                            <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'rgba(255,255,255,0.7)', marginBottom: '12px' }}>
+                                                QUICK TRADE
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                                                <button style={{
+                                                    flex: 1,
+                                                    padding: '12px',
+                                                    borderRadius: '8px',
+                                                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                                                    background: 'rgba(16, 185, 129, 0.1)',
+                                                    color: '#10b981',
+                                                    cursor: 'pointer',
+                                                    fontWeight: 'bold',
+                                                    fontSize: '12px'
+                                                }}>
+                                                    BUY
+                                                </button>
+                                                <button style={{
+                                                    flex: 1,
+                                                    padding: '12px',
+                                                    borderRadius: '8px',
+                                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                                    background: 'rgba(239, 68, 68, 0.1)',
+                                                    color: '#ef4444',
+                                                    cursor: 'pointer',
+                                                    fontWeight: 'bold',
+                                                    fontSize: '12px'
+                                                }}>
+                                                    SELL
+                                                </button>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                placeholder="Amount (USDT)"
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '10px',
+                                                    borderRadius: '6px',
+                                                    border: '1px solid rgba(255,255,255,0.1)',
+                                                    background: 'rgba(255,255,255,0.05)',
+                                                    color: 'white',
+                                                    fontSize: '12px',
+                                                    marginBottom: '8px'
+                                                }}
+                                            />
+                                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)' }}>
+                                                Available: $10,000 USDT
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div >
+    );
+}

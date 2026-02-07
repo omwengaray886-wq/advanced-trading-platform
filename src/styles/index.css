@@ -1,0 +1,105 @@
+:root {
+  /* Color Palette - Institutional / Advanced */
+  /* Dark Mode (Default) */
+  --color-bg-primary: #0f1115;
+  /* Dark Navy/Charcoal */
+  --color-bg-secondary: #171b21;
+  /* Slightly lighter for cards/sidebar */
+  --color-bg-tertiary: #20252e;
+  /* Borders/Inputs */
+
+  --color-text-primary: #f0f2f5;
+  --color-text-secondary: #9ca3af;
+  --color-text-tertiary: #6b7280;
+
+  --color-accent-primary: #2563eb;
+  /* Muted corporate blue for primary actions */
+  --color-accent-hover: #1d4ed8;
+  --color-accent-light: #3b82f6;
+
+  --color-success: #10b981;
+  /* Desaturated Green for positive PnL */
+  --color-danger: #ef4444;
+  /* Desaturated Red for negative PnL */
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+
+  /* Borders & Separators */
+  --border-color: #2a303c;
+  /* Glassmorphism & Effects */
+  --glass-bg: rgba(15, 17, 21, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: blur(12px);
+
+  --glow-primary: 0 0 15px rgba(37, 99, 235, 0.3);
+  --glow-success: 0 0 15px rgba(16, 185, 129, 0.3);
+  --glow-danger: 0 0 15px rgba(239, 68, 68, 0.3);
+
+  /* Modern Border Radii */
+  --border-radius-sm: 6px;
+  --border-radius-md: 12px;
+  --border-radius-lg: 16px;
+  --border-radius-xl: 24px;
+}
+
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 5px rgba(16, 185, 129, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+  }
+
+  100% {
+    box-shadow: 0 0 5px rgba(16, 185, 129, 0.2);
+  }
+}
+
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-md);
+}
+
+.glow-on-hover:hover {
+  box-shadow: var(--glow-primary);
+  border-color: rgba(37, 99, 235, 0.5);
+}
+
+[data-theme='light'] {
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f3f4f6;
+  --color-bg-tertiary: #e5e7eb;
+
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-tertiary: #9ca3af;
+
+  --border-color: #e5e7eb;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family-sans);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+}
