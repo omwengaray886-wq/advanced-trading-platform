@@ -170,12 +170,12 @@ export class ExplanationEngine {
         if (!analysis.setups || analysis.setups.length === 0) return 'Analyzing structural walls...';
         const setup = analysis.setups[0];
 
-        let explanation = `SIGNAL ACTIVE: The price is currently reacting to an institutional level at ${setup.entryZone?.optimal?.toFixed(5)}. `;
-        explanation += `Structural invalidation is placed at ${setup.stopLoss?.toFixed(5)} (Pivot Wall + ATR buffer). `;
+        let explanation = `SIGNAL ACTIVE: The price is currently reacting to an institutional level at ${setup.entryZone?.optimal?.toFixed(5) || 'N/A'}. `;
+        explanation += `Structural invalidation is placed at ${setup.stopLoss?.toFixed(5) || 'N/A'} (Pivot Wall + ATR buffer). `;
 
         if (setup.targets && setup.targets.length > 0) {
             setup.targets.forEach((t, i) => {
-                explanation += `Target ${i + 1} (${t.label || 'Major Pool'}) at ${t.price.toFixed(5)} is the primary algorithmic attractor for this session. `;
+                explanation += `Target ${i + 1} (${t.label || 'Major Pool'}) at ${t.price?.toFixed(5) || 'N/A'} is the primary algorithmic attractor for this session. `;
             });
         }
 
@@ -237,11 +237,11 @@ export class ExplanationEngine {
         const setup = analysis.setups[0];
 
         if (mode === 'BEGINNER') {
-            return `Wait for the price to reach ${setup.entryZone?.optimal?.toFixed(5)} before getting in. This is our "sweet spot" for joining the move.`;
+            return `Wait for the price to reach ${setup.entryZone?.optimal?.toFixed(5) || 'N/A'} before getting in. This is our "sweet spot" for joining the move.`;
         }
 
         const baseLogic = `EXECUTION SIGNAL: ${setup.direction} entry is valid based on ${setup.strategy} displacement. `;
-        const actionLogic = `The optimal entry point is ${setup.entryZone?.optimal?.toFixed(5)}. `;
+        const actionLogic = `The optimal entry point is ${setup.entryZone?.optimal?.toFixed(5) || 'N/A'}. `;
         const confirmation = `This level is historically defended by institutional liquidity. An immediate limit order at the optimal entry or a "market sweep" into the zone is the high-conviction play here.`;
 
         return baseLogic + actionLogic + confirmation;
@@ -428,7 +428,7 @@ export class ExplanationEngine {
         const majorWalls = analysis.liquidityMap.filter(l => l.intensity > 0.85);
         if (majorWalls.length === 0) return "Order book depth is currently distributed. No significant institutional walls detected.";
 
-        const wallStrings = majorWalls.map(w => `**${w.side} Wall** at ${w.price.toFixed(2)}`).join(', ');
+        const wallStrings = majorWalls.map(w => `**${w.side} Wall** at ${w.price?.toFixed(2) || 'N/A'}`).join(', ');
         return `Depth analysis has identified major **Institutional Walls** at: ${wallStrings}. These levels represent significant "Liquidity Magnets" and areas of high-interest intent. Price is likely to seek or be defended at these clusters.`;
     }
 
@@ -491,7 +491,7 @@ export class ExplanationEngine {
         const setup = analysis.setups?.[0];
         if (!setup?.targets || setup.targets.length === 0) return "Targeting nearest liquidity pools.";
 
-        const targets = setup.targets.map(t => `${t.label} at ${t.price.toFixed(5)}`).join(', ');
+        const targets = setup.targets.map(t => `${t.label} at ${t.price?.toFixed(5) || 'N/A'}`).join(', ');
         return `Logical objectives for this move are the **${targets}**. These represent areas where opposing liquidity is likely concentrated, acting as "magnets" for institutional profit-taking.`;
     }
 
@@ -499,7 +499,7 @@ export class ExplanationEngine {
      * Build Professional Truth (Step 7 of Mapping)
      */
     buildProfessionalTruth(analysis, mode) {
-        const confidence = (analysis.overallConfidence * 100).toFixed(0);
+        const confidence = ((analysis.overallConfidence || 0) * 100).toFixed(0);
 
         if (mode === 'BEGINNER') {
             return `This analysis has a confidence level of **${confidence}%**. For small accounts, the key is consistency, not catching every move. Institutional signals work on all scales—treat your account like a mini hedge fund. Exercise patience: if the entry isn't hit, we simply wait for the next setup. Protecting your balance is your #1 job.`;

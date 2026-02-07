@@ -1190,12 +1190,12 @@ export class AnalysisOrchestrator {
         if (assetClass === 'FOREX') {
             // Standard Lot = 100,000 units. 1 pip movement = $10 for 1 lot.
             // Simplified pip-based estimation
-            return parseFloat((actualRisk / (stopDistance * 100000)).toFixed(2));
+            return parseFloat((actualRisk / (stopDistance * 100000)).toFixed(2)) || 0;
         } else if (assetClass === 'CRYPTO') {
-            return parseFloat((actualRisk / stopDistance).toFixed(4));
+            return parseFloat((actualRisk / stopDistance).toFixed(4)) || 0;
         }
 
-        return parseFloat((actualRisk / stopDistance).toFixed(2));
+        return parseFloat((actualRisk / stopDistance).toFixed(2)) || 0;
     }
 
     /**

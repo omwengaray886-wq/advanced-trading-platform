@@ -45,7 +45,7 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                 <div style={{ fontSize: '11px', opacity: 0.9, marginBottom: '4px' }}>SELECTED STRATEGY</div>
                 <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{selectedStrategy.name}</div>
                 <div style={{ fontSize: '11px', opacity: 0.8, marginTop: '4px' }}>
-                    {Math.round(selectedStrategy.suitability * 100)}% Market Fit
+                    {Math.round((selectedStrategy.suitability || 0) * 100)}% Market Fit
                 </div>
             </div>
 
@@ -113,7 +113,7 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                     <div style={{ background: 'var(--color-bg-tertiary)', padding: '10px', borderRadius: '6px' }}>
                         <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>STRENGTH</div>
                         <div style={{ fontSize: '13px', fontWeight: '600' }}>
-                            {Math.round(marketState.trend.strength * 100)}%
+                            {Math.round((marketState.trend.strength || 0) * 100)}%
                         </div>
                     </div>
                 </div>
@@ -350,7 +350,7 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                             <div style={{ fontSize: '11px', display: 'flex', justifyContent: 'space-between' }}>
                                 <span style={{ color: 'var(--color-text-secondary)' }}>Regime Stability</span>
                                 <span style={{ fontWeight: 'bold', color: analysis.regimeTransition.probability < 30 ? 'var(--color-danger)' : 'var(--color-success)' }}>
-                                    {(100 - analysis.regimeTransition.probability)?.toFixed(0) || '0'}% Stable
+                                    {((100 - (analysis.regimeTransition.probability || 0)))?.toFixed(0) || '0'}% Stable
                                 </span>
                             </div>
                         )}
@@ -563,7 +563,7 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                             }} />
                         </div>
                         <span style={{ fontSize: '13px', fontWeight: '600' }}>
-                            {Math.round(confidence * 100)}%
+                            {Math.round((confidence || 0) * 100)}%
                         </span>
                     </div>
                 </div>
