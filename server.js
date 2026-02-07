@@ -105,6 +105,10 @@ app.use('/api/coingecko', async (req, res) => {
         const url = `https://api.coingecko.com/api/v3/${path}`;
         const cgKey = process.env.COINGECKO_API_KEY;
 
+        if (!cgKey || cgKey.trim() === '') {
+            console.warn(`[PROXY WARNING] CoinGecko request for ${path} initiated without API Key. Public rate limits apply.`);
+        }
+
         const response = await axios.get(url, {
             params: req.query,
             headers: {

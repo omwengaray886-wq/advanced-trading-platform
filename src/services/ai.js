@@ -3,7 +3,6 @@
  * Integrating explainable AI system with Google Gemini
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AnalysisOrchestrator } from './analysisOrchestrator.js';
 import { ExplanationEngine } from './explanationEngine.js';
 import { marketData } from './marketData.js';
@@ -149,14 +148,7 @@ async function enhanceExplanationWithAI(analysis, explanation, mode = 'ADVANCED'
     }
 
     try {
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-        if (!apiKey) {
-            console.log('VITE_GEMINI_API_KEY not found. Skipping AI enhancement.');
-            return explanation;
-        }
-
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+        // No local VITE_GEMINI_API_KEY check - always use the secure server proxy.
 
         const prompt = `
 You are an **Elite Institutional Algo-Trader & Risk Architect** (ex-Citadel/Bridgewater).
