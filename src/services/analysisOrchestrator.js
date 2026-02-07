@@ -343,7 +343,7 @@ export class AnalysisOrchestrator {
 
                 // Phase 48: Institutional Liquidity Refinement
                 if (marketState.orderBook) {
-                    this.refineLevelsWithLiquidity(riskParams, marketState.orderBook, direction);
+                    this.refineLevelsWithLiquidity(riskParams, marketState, direction);
                 }
 
                 // STRICT ALIGNMENT ENFORCEMENT
@@ -1071,10 +1071,11 @@ export class AnalysisOrchestrator {
     /**
      * Refine TP/SL levels based on Order Book Liquidity Clusters
      * @param {Object} riskParams
-     * @param {Object} orderBook
+     * @param {Object} marketState
      * @param {string} direction
      */
-    refineLevelsWithLiquidity(riskParams, orderBook, direction) {
+    refineLevelsWithLiquidity(riskParams, marketState, direction) {
+        const orderBook = marketState.orderBook;
         if (!orderBook || !riskParams) return;
 
         const clusters = LiquidityMapService.findClusters(orderBook);
