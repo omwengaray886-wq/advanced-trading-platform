@@ -55,8 +55,8 @@ const TradeSetupCard = ({ setup, index = 0, onClick }) => {
                 <div>
                     <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>ENTRY ZONE</span>
                     <div style={{ fontWeight: '600', fontSize: '14px' }}>
-                        {Array.isArray(setup.entryZone)
-                            ? `${setup.entryZone[0].toFixed(5)} - ${setup.entryZone[1].toFixed(5)}`
+                        {Array.isArray(setup.entryZone) && setup.entryZone.length > 0 && typeof setup.entryZone[0] === 'number'
+                            ? `${setup.entryZone[0].toFixed(5)} - ${setup.entryZone[1]?.toFixed(5) || 'N/A'}`
                             : setup.entryZone?.optimal?.toFixed(5) || 'PENDING'}
                     </div>
                 </div>
@@ -70,7 +70,7 @@ const TradeSetupCard = ({ setup, index = 0, onClick }) => {
                     <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>TARGETS</span>
                     <div style={{ fontWeight: '600', fontSize: '14px', color: 'var(--color-success)' }}>
                         {Array.isArray(setup.targets)
-                            ? setup.targets.map(t => typeof t === 'object' ? t.price.toFixed(5) : t).join(', ')
+                            ? setup.targets.map(t => typeof t === 'object' && t.price ? t.price.toFixed(5) : t).join(', ')
                             : 'N/A'}
                     </div>
                 </div>

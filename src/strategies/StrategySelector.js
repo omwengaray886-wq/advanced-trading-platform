@@ -314,7 +314,7 @@ export class StrategySelector {
                     if (targetingNPOC) suitability *= 1.15; // Setup is trading towards an institutional magnet
                 }
 
-                const finalScore = Math.min(suitability * (0.95 + Math.random() * 0.1), 1.0);
+                const finalScore = Math.min(suitability, 1.0);
 
 
                 allEvaluations.push({

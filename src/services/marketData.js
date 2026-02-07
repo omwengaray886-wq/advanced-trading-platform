@@ -73,8 +73,8 @@ export const mapSymbol = (symbol) => {
         'GOLD': 'PAXGUSDT',
 
         // --- MACRO PROXIES ---
-        'DXY': 'EURUSDT',
-        'NAS100': 'BTCUSDT'
+        // 'DXY': 'EURUSDT', // Removed: Inverse correlation is not real data
+        // 'NAS100': 'BTCUSDT' // Removed: Correlation is not real data
     };
 
     return registry[s] || s;

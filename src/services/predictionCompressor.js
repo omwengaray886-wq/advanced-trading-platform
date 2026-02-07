@@ -136,11 +136,11 @@ export class PredictionCompressor {
 
         // Special case: No clear edge
         if (continuation < 40 && reversal < 40 && consolidation > 60) {
-            return 'NO_EDGE';
+            return 'NEUTRAL'; // Was NO_EDGE, but >60 is now valid signal
         }
 
         // Consolidation dominant
-        if (consolidation > 65) {
+        if (consolidation > 60) {
             return 'NEUTRAL';
         }
 
@@ -558,8 +558,9 @@ export class PredictionCompressor {
         const isObligated = marketState.obligations?.state === 'OBLIGATED';
 
         // If Market is "Free Roaming" (No Obligation), we require massive statistical edge to predict.
-        // If Market is "Obligated" (Has Magnet), we accept standard conviction.
-        const minThreshold = isObligated ? 40 : 65;
+        // If Market is "Obligated" (Has Magnet), we accept standard conviction (40%).
+        // Lowered from 65 to 60 to be more responsive to standard trends.
+        const minThreshold = isObligated ? 40 : 60;
 
         if (maxProb < minThreshold) {
             return false;
