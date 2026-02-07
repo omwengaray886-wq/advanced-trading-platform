@@ -3,6 +3,7 @@ import cors from 'cors';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 dotenv.config();
 
@@ -209,7 +210,7 @@ app.get('/api/binance/ticker/24hr', async (req, res) => {
 // 1.5 Proxy for Fear & Greed Index
 app.get('/api/sentiment/fng', async (req, res) => {
     const cacheKey = 'fng';
-    const cached = cache.coingecko.get(cacheKey); // Reuse coingecko cache map for simplicity or add fng
+    const cached = cache.coingecko.get(cacheKey);
 
     if (cached && (Date.now() - cached.timestamp < 3600000)) { // 1h TTL
         return res.json(cached.data);
@@ -223,6 +224,31 @@ app.get('/api/sentiment/fng', async (req, res) => {
         console.error(`[PROXY ERROR] Fear & Greed: ${error.message}`);
         if (cached) return res.json(cached.data);
         res.status(500).json({ error: 'Failed to fetch Fear & Greed', message: error.message });
+    }
+});
+
+// 1.7 Proxy for Gemini AI (Securely hides GEMINI_API_KEY from frontend)
+app.post('/api/ai/generate', async (req, res) => {
+    try {
+        const { prompt, model: modelName } = req.body;
+        const apiKey = process.env.GEMINI_API_KEY;
+
+        if (!apiKey) {
+            console.error('[AI PROXY ERROR] GEMINI_API_KEY not found in server environment');
+            return res.status(500).json({ error: 'AI Service Misconfigured' });
+        }
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: modelName || 'gemini-flash-latest' });
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+
+        res.json({ text });
+    } catch (error) {
+        console.error(`[AI PROXY ERROR]: ${error.message}`);
+        res.status(500).json({ error: 'AI Generation Failed', details: error.message });
     }
 });
 

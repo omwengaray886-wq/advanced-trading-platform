@@ -33,6 +33,7 @@ export default function MarketTicker() {
     }, []);
 
     const handleRowClick = (symbol) => {
+        if (!symbol) return;
         addToast(`Loading chart for ${symbol.replace('USDT', '')}...`, 'info', 2000);
         navigate('/app/markets');
     };
@@ -72,7 +73,7 @@ export default function MarketTicker() {
                             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)'}
                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
-                            <span style={{ fontWeight: '500' }}>{t.symbol.replace('USDT', '/USDT')}</span>
+                            <span style={{ fontWeight: '500' }}>{t.symbol ? t.symbol.replace('USDT', '/USDT') : 'N/A'}</span>
                             <div style={{ textAlign: 'right' }}>
                                 <div style={{ fontSize: '14px' }}>${parseFloat(t.lastPrice).toLocaleString()}</div>
                                 <span style={{

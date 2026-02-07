@@ -14,6 +14,7 @@ const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
  * @returns {Promise<Object>} - Sentiment analysis
  */
 export async function analyzeSentiment(symbol) {
+    if (!symbol) return getFallbackSentiment();
     const cleanSymbol = symbol.replace(/USDT|USD|\//g, '');
     const cacheKey = cleanSymbol.toUpperCase();
 
@@ -89,12 +90,6 @@ export async function analyzeSentiment(symbol) {
  * Uses NewsAPI or similar services
  */
 async function getNewsSentiment(symbol) {
-    const newsApiKey = import.meta.env.VITE_NEWS_API_KEY;
-
-    if (!newsApiKey || newsApiKey === 'demo') {
-        return { score: 0, confidence: 0.3, source: 'DEMO' };
-    }
-
     try {
         const query = encodeURIComponent(`${symbol} cryptocurrency OR ${symbol} forex`);
         const url = `/api/news/everything?q=${query}&sortBy=publishedAt&language=en&pageSize=20`;

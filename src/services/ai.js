@@ -199,28 +199,44 @@ Your objective is to generate a **High-Fidelity Execution Narrative** for ${anal
 `;
 
         // Implementation of retry with exponential backoff
-        let result;
+        let resultText;
         let retries = 0;
         const maxRetries = 5;
 
         while (retries <= maxRetries) {
             try {
-                result = await model.generateContent(prompt);
-                break; // Success
-            } catch (err) {
-                if (err.message?.includes('429') && retries < maxRetries) {
+                const response = await fetch('/api/ai/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt, model: 'gemini-flash-latest' })
+                });
+
+                if (response.status === 429 && retries < maxRetries) {
                     const delay = Math.pow(2, retries) * 2000;
                     console.warn(`Gemini API Throttled (429). Retrying in ${delay / 1000}s... (Attempt ${retries + 1}/${maxRetries})`);
                     await wait(delay);
                     retries++;
+                    continue;
+                }
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'AI Proxy Error');
+                }
+
+                const data = await response.json();
+                resultText = data.text;
+                break; // Success
+            } catch (err) {
+                if (retries < maxRetries && (err.message.includes('Throttled') || err.message.includes('429'))) {
+                    // handled above but just in case
                 } else {
-                    throw err; // Re-throw if not 429 or max retries reached
+                    throw err;
                 }
             }
         }
 
-        const response = await result.response;
-        const text = response.text();
+        const text = resultText;
 
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
