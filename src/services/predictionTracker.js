@@ -124,7 +124,7 @@ export class PredictionTracker {
             const trades = querySnapshot.docs.map(d => d.data());
 
             const completed = trades.filter(t => t.outcome !== 'PENDING' && t.outcome !== 'EXPIRED');
-            if (completed.length === 0) return { accuracy: 0, count: 0 };
+            if (completed.length === 0) return { accuracy: 0, total: 0 };
 
             const hits = completed.filter(t => t.outcome === 'HIT').length;
             const accuracy = (hits / completed.length) * 100;

@@ -81,11 +81,11 @@ export default function AlphaReport({ data, onClose }) {
                         </div>
                         <div style={{ padding: '16px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
                             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Sortino Ratio</div>
-                            <div style={{ fontSize: '20px', fontWeight: '900', color: data.stats.sortino > 1.5 ? '#10b981' : '#0f172a' }}>{data.stats.sortino?.toFixed(2)}</div>
+                            <div style={{ fontSize: '20px', fontWeight: '900', color: data.stats.sortino > 1.5 ? '#10b981' : '#0f172a' }}>{data.stats.sortino?.toFixed(2) || '0.00'}</div>
                         </div>
                         <div style={{ padding: '16px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
                             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Sharpe Ratio</div>
-                            <div style={{ fontSize: '20px', fontWeight: '900', color: data.stats.sharpe > 1 ? '#10b981' : '#f59e0b' }}>{data.stats.sharpe.toFixed(2)}</div>
+                            <div style={{ fontSize: '20px', fontWeight: '900', color: data.stats.sharpe > 1 ? '#10b981' : '#f59e0b' }}>{data.stats.sharpe?.toFixed(2) || '0.00'}</div>
                         </div>
                     </div>
                 </div>

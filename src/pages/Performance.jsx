@@ -217,7 +217,7 @@ export default function Performance() {
                                     <div className="flex-row justify-between">
                                         <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Sharpe Ratio</span>
                                         <span style={{ fontSize: '12px', fontWeight: 'bold', color: stats.sharpe > 1 ? 'var(--color-success)' : 'white' }}>
-                                            {loading ? '...' : stats.sharpe.toFixed(2)}
+                                            {loading ? '...' : stats.sharpe?.toFixed(2) || '0.00'}
                                         </span>
                                     </div>
                                     <div className="progress-bar" style={{ height: '4px' }}><div className="progress-fill" style={{ width: `${Math.min(stats.sharpe * 50, 100)}%` }}></div></div>
@@ -233,7 +233,7 @@ export default function Performance() {
                                     <div className="flex-row justify-between" style={{ marginTop: '8px' }}>
                                         <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Recovery Factor</span>
                                         <span style={{ fontSize: '12px', fontWeight: 'bold' }}>
-                                            {loading ? '...' : stats.recoveryFactor || 'N/A'}
+                                            {loading ? '...' : (stats.recoveryFactor?.toFixed ? stats.recoveryFactor.toFixed(2) : (stats.recoveryFactor || 'N/A'))}
                                         </span>
                                     </div>
                                     <div style={{ fontSize: '9px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>Net Profit / Max Drawdown</div>

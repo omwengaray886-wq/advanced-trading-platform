@@ -34,16 +34,21 @@ export class UserPerformanceService {
                 winRate: '0.0',
                 profitFactor: '0.00',
                 totalReturn: '0.00',
+                sharpe: 0,
+                maxDrawdown: 0,
+                sortino: 0,
+                recoveryFactor: 0,
                 finalBalance: 10000,
                 equityCurve: [10000],
-                edgeAttribution: { premium: 0, strong: 0, tradable: 0 }
+                edgeAttribution: { premium: 0, strong: 0, tradable: 0 },
+                byMarket: []
             };
         }
 
         // Bridge Tracker Stats to Performance View
         return {
             totalTrades: stats.total,
-            winRate: stats.accuracy.toFixed(1),
+            winRate: stats.accuracy?.toFixed(1) || '0.0',
             profitFactor: '1.85', // Derived from avgRR in tracker
             totalReturn: '4.20',
             sharpe: 2.1,

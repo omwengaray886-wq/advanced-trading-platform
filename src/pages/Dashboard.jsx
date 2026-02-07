@@ -436,7 +436,7 @@ export default function Dashboard() {
                                             {l.side} @ {l.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                         </span>
                                         <span style={{ color: 'rgba(255,255,255,0.6)', zIndex: 1, fontFamily: 'monospace' }}>
-                                            {(l.volume / 1000).toFixed(1)}k
+                                            {((l.volume || 0) / 1000).toFixed(1)}k
                                         </span>
                                     </div>
                                 ))}
