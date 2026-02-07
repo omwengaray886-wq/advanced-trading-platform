@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import TradeSetupCard from '../components/features/TradeSetupCard';
 import SetupDetailView from '../components/features/SetupDetailView';
 import { subscribeToTradeSetups } from '../services/db';
-import { tradeSetups as mockSetups } from '../utils/mockData';
 import { Filter, RefreshCw, Zap } from 'lucide-react';
 
 export default function TradeSetups() {
@@ -14,11 +13,7 @@ export default function TradeSetups() {
 
     useEffect(() => {
         const unsubscribe = subscribeToTradeSetups((data) => {
-            if (data.length > 0) {
-                setSetups(data);
-            } else {
-                setSetups(mockSetups);
-            }
+            setSetups(data);
             setLoading(false);
         });
 

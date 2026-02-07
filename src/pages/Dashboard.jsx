@@ -4,7 +4,6 @@ import TradeSetupCard from '../components/features/TradeSetupCard';
 import MarketTicker from '../components/features/MarketTicker';
 import { CardSkeleton } from '../components/ui/Skeleton';
 import { useNavigate } from 'react-router-dom';
-import { marketSentiment, tradeSetups as mockSetups } from '../utils/mockData';
 import { subscribeToTradeSetups } from '../services/db';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -47,19 +46,11 @@ export default function Dashboard() {
     const [session, setSession] = useState(getSession());
     const { addToast } = useToast();
     const [overlays, setOverlays] = useState({ zones: [], labels: [] });
-    const [riskStatus, setRiskStatus] = useState({ diversificationScore: 92, globalRiskStatus: 'OPTIMIZED' });
-
-    // Mock Correlation Data for Risk Engine
-    const mockCorrelations = {
-        'BTCUSDT': { 'ETHUSDT': 0.85, 'SOLUSDT': 0.72 },
-        'ETHUSDT': { 'BTCUSDT': 0.85, 'SOLUSDT': 0.88 },
-        'SOLUSDT': { 'BTCUSDT': 0.72, 'ETHUSDT': 0.88 }
-    };
+    const [riskStatus, setRiskStatus] = useState({ diversificationScore: 100, globalRiskStatus: 'REAL-TIME' });
 
     useEffect(() => {
-        const risk = CorrelationClusterEngine.detectClusters(mockCorrelations);
-        setRiskStatus(risk);
-    }, []);
+        // Future Phase: Integration with real CorrelationClusterEngine based on active wallet/setups
+    }, [setups]);
 
     useEffect(() => {
         // Update session every minute
@@ -80,7 +71,7 @@ export default function Dashboard() {
                 if (a.symbol !== selectedSymbol && b.symbol === selectedSymbol) return 1;
                 return b.timestamp - a.timestamp;
             });
-            setSetups(sorted.length > 0 ? sorted : mockSetups);
+            setSetups(data);
         });
 
         // 2. Fetch Initial History
@@ -289,7 +280,7 @@ export default function Dashboard() {
                         </p>
                     )}
                 </div>
-                <SentimentGauge score={78} />
+                <SentimentGauge score={setups[0]?.marketState?.sentiment?.score || 50} />
                 <LiveWallet />
             </div>
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Zap, TrendingUp, TrendingDown, Info } from 'lucide-react';
 
-export default function SentimentGauge({ score = 75 }) {
+export default function SentimentGauge({ score = 50 }) {
     const [displayScore, setDisplayScore] = useState(0);
 
     useEffect(() => {

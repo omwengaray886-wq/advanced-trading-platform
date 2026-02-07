@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, CreditCard, Bell, Shield, Database, Check, AlertTriangle, Key, Lock, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import { exchangeService } from '../services/exchangeService';
 import { useAuth } from '../context/AuthContext';
-import { tradeSetups } from '../utils/mockData';
+
 import { collection, writeBatch, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useToast } from '../context/ToastContext';
@@ -24,22 +24,22 @@ export default function Account() {
 
 
     const handleSeedDatabase = async () => {
+        addToast('Database seeding is disabled in production environment.', 'warning');
+        /* 
         if (!window.confirm('This will write test data to your Firestore database. Continue?')) return;
-
         try {
             const batch = writeBatch(db);
-
             tradeSetups.forEach(setup => {
                 const docRef = doc(collection(db, "tradeSetups"));
                 batch.set(docRef, setup);
             });
-
             await batch.commit();
             addToast('Database seeded successfully! Check the Dashboard.', 'success');
         } catch (error) {
             console.error(error);
             addToast('Error seeding database: ' + error.message, 'error');
         }
+        */
     };
 
     const tabs = [

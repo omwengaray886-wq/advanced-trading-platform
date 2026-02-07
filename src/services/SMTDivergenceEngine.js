@@ -8,15 +8,14 @@ import { DivergenceMarker } from '../models/annotations/DivergenceMarker.js';
  */
 export class SMTDivergenceEngine {
     static SIBLINGS = {
-        'EURUSD': ['GBPUSD', 'AUDUSD', 'DXY', 'USDCHF'],
-        'GBPUSD': ['EURUSD', 'AUDUSD', 'DXY'],
-        'AUDUSD': ['EURUSD', 'GBPUSD', 'DXY', 'GOLD'],
-        'XAUUSD': ['DXY', 'SILVER', 'US10Y'], // Gold
-        'BTCUSDT': ['ETHUSDT', 'SOLUSDT', 'TOTAL', 'FDAX'], // FDAX correlation for risk-on
+        'EURUSD': ['GBPUSD', 'AUDUSD', 'NZDUSD'],
+        'GBPUSD': ['EURUSD', 'AUDUSD', 'NZDUSD'],
+        'AUDUSD': ['EURUSD', 'GBPUSD', 'NZDUSD'],
+        'NZDUSD': ['EURUSD', 'GBPUSD', 'AUDUSD'],
+        'XAUUSD': ['EURUSD', 'BTCUSDT'], // Gold vs Risk/Dollar proxies
+        'BTCUSDT': ['ETHUSDT', 'SOLUSDT'],
         'ETHUSDT': ['BTCUSDT', 'SOLUSDT'],
-        'NAS100': ['US30', 'SPX500', 'US10Y'],
-        'US30': ['NAS100', 'SPX500'],
-        'SPX500': ['NAS100', 'US30', 'VIX']
+        'SOLUSDT': ['BTCUSDT', 'ETHUSDT']
     };
 
     /**
