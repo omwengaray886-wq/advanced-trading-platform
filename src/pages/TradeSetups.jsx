@@ -3,12 +3,13 @@ import TradeSetupCard from '../components/features/TradeSetupCard';
 import SetupDetailView from '../components/features/SetupDetailView';
 import { subscribeToTradeSetups } from '../services/db';
 import { tradeSetups as mockSetups } from '../utils/mockData';
-import { Filter, RefreshCw } from 'lucide-react';
+import { Filter, RefreshCw, Zap } from 'lucide-react';
 
 export default function TradeSetups() {
     const [setups, setSetups] = useState([]);
     const [selectedSetup, setSelectedSetup] = useState(null);
     const [filter, setFilter] = useState('ALL'); // ALL, ACTIVE, PENDING, INVALIDATED
+    const [isScalperMode, setIsScalperMode] = useState(false);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -24,9 +25,22 @@ export default function TradeSetups() {
         return () => unsubscribe();
     }, []);
 
-    const filteredSetups = filter === 'ALL'
-        ? setups
-        : setups.filter(s => s.status === filter);
+    const filteredSetups = setups.filter(s => {
+        // 1. Status Filter
+        if (filter !== 'ALL' && s.status !== filter) return false;
+
+        // 2. Scalper Mode Filter
+        if (isScalperMode) {
+            return ['1m', '5m', '15m'].includes(s.timeframe) || s.strategy === 'SCALPER_ENGINE';
+        }
+
+        // Default: Hide 1m/5m noise unless in Scalper Mode? No, show all.
+        return true;
+    }).sort((a, b) => {
+        // Sort urgency
+        if (isScalperMode) return b.timestamp - a.timestamp; // Newest first for scalping
+        return b.confidence - a.confidence; // Highest confidence for swing
+    });
 
     return (
         <div>
@@ -37,10 +51,20 @@ export default function TradeSetups() {
                         AI-generated trade opportunities based on market analysis
                     </p>
                 </div>
-                <button className="btn btn-outline" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <RefreshCw size={16} />
-                    Refresh
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                        className={`btn ${isScalperMode ? 'btn-primary' : 'btn-outline'}`}
+                        onClick={() => setIsScalperMode(!isScalperMode)}
+                        style={{ display: 'flex', gap: '8px', alignItems: 'center', borderColor: isScalperMode ? 'var(--color-accent)' : '' }}
+                    >
+                        <Zap size={16} fill={isScalperMode ? "currentColor" : "none"} />
+                        {isScalperMode ? "Scalper Mode ON" : "Scalper Mode"}
+                    </button>
+                    <button className="btn btn-outline" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <RefreshCw size={16} />
+                        Refresh
+                    </button>
+                </div>
             </div>
 
             {/* Filter Controls */}

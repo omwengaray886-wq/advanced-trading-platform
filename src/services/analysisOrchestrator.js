@@ -95,7 +95,7 @@ export class AnalysisOrchestrator {
      * @param {boolean} isLight - If true, skips heavy calculations (Phase 23)
      * @returns {Object} - Complete analysis result
      */
-    async analyze(candles, symbol, timeframe = '1H', manualStrategyName = null, mtfData = null, isLight = false) {
+    async analyze(candles, symbol, timeframe = '1H', manualStrategyName = null, mtfData = null, isLight = false, accountSize = 10000) {
         if (!candles || candles.length < 50) {
             throw new Error('Insufficient market data for deep institutional analysis.');
         }
@@ -182,13 +182,15 @@ export class AnalysisOrchestrator {
             const retests = RetestDetector.detectRetests(candles, [...fvgs, ...(marketState.liquidityPools || [])]);
             marketState.retests = retests;
 
-            // Step 3.6.5: Detect SMC Multi-Asset Divergence (SMT) (Phase 53)
             let divergences = [];
+            let smtResult = { divergences: [], confluenceScore: 0 };
             if (!isLight) {
-                divergences = await SMTDivergenceEngine.detectDivergence(symbol, candles, timeframe, significantSwings);
+                smtResult = await SMTDivergenceEngine.detectDivergence(symbol, candles, timeframe, significantSwings);
+                divergences = smtResult.divergences;
             }
             marketState.divergences = divergences;
-            marketState.smtDivergence = (divergences && divergences.length > 0) ? divergences[0] : null; // Mapping for StrategySelector
+            marketState.smtConfluence = smtResult.confluenceScore;
+            marketState.smtDivergence = (divergences && divergences.length > 0) ? divergences[0] : null;
 
             // Step 3.6.6: Detect Technical Divergence (RSI/MACD) - Phase 56
             const techDivergences = await DivergenceEngine.detectDivergence(symbol, candles, timeframe, marketState);
@@ -386,7 +388,7 @@ export class AnalysisOrchestrator {
                 const stopDistance = hasRiskParams ? Math.abs(riskParams.entry.optimal - riskParams.stopLoss) : 0;
 
                 const suggestedSize = hasRiskParams ? this.calculateInstitutionalSize(
-                    10000, // Default account size for estimation
+                    accountSize, // Tailored account size
                     0.01,  // 1% Base Risk
                     stopDistance,
                     quantScore,
@@ -459,6 +461,13 @@ export class AnalysisOrchestrator {
 
             // --- Institutional Zone Intelligence (15 Types) ---
             const baseAnnotations = [];
+
+            // 0. SMT Divergences (Phase 25)
+            if (marketState.divergences && marketState.divergences.length > 0) {
+                marketState.divergences.forEach(d => baseAnnotations.push(d));
+            }
+
+
             const srLevels = SRDetector.detectLevels(candles, significantSwings);
             const startTime = (candles && candles.length > 0) ? candles[0].time : Date.now() / 1000 - 86400;
             const endTime = lastCandle ? lastCandle.time + 86400 : Date.now() / 1000 + 86400;
@@ -926,7 +935,12 @@ export class AnalysisOrchestrator {
             // relying on the Orchestrator's internal map or re-fetching.
             // For now, we assume analysis.liquidityMap is populated via LiquidityMapService or empty.
             // If running on simulation, we generate based on structures.
-            analysis.liquidityMap = LiquidityMapService.generateMap({ bids: [], asks: [] }); // Placeholder for server-side analysis
+            // 6. Generate Liquidity Map (Phase 24)
+            // Note: In Phase 27, LiquidityMapService.generateMap expects raw depth data, but here we might be 
+            // relying on the Orchestrator's internal map or re-fetching.
+            // For now, we assume analysis.liquidityMap is populated via LiquidityMapService or empty.
+            // If running on simulation, we generate based on structures.
+            analysis.liquidityMap = LiquidityMapService.generateMap(marketState.orderBook || { bids: [], asks: [] }); // REAL DATA FOR SCALPER
 
             // 8. Automated Scalping Logic (Phase 28 & 40)
             if (timeframe === '5m' || timeframe === '15m' || timeframe === '1m') {

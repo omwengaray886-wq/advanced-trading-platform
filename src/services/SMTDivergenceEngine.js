@@ -46,15 +46,22 @@ export class SMTDivergenceEngine {
         let confirmedWith = 0;
         let divergedWith = 0;
 
+
         const results = await Promise.allSettled(targets.map(async (target) => {
             // Fetch target candles (matching timeframe)
             const targetCandles = await marketData.fetchHistory(target, timeframe, candles.length);
-            if (!targetCandles || targetCandles.length < 20) return null;
+            if (!targetCandles || targetCandles.length < 20) {
+                console.log(`[SMT DEBUG] No candles for ${target}`);
+                return null;
+            }
 
             const targetSwings = this.findLocalSwings(targetCandles);
+            // console.log(`[SMT DEBUG] ${target} Swings:`, targetSwings.length);
 
             const bearishSMT = lastHigh ? this.checkBearishSMT(cleanSymbol, lastHigh, target, targetSwings, targetCandles) : null;
             const bullishSMT = lastLow ? this.checkBullishSMT(cleanSymbol, lastLow, target, targetSwings, targetCandles) : null;
+
+            if (bearishSMT) console.log(`[SMT DEBUG] Bearish SMT found with ${target}`);
 
             if (bearishSMT) return { smt: bearishSMT, target };
             if (bullishSMT) return { smt: bullishSMT, target };
@@ -75,13 +82,20 @@ export class SMTDivergenceEngine {
         }
 
 
-        // Basket Analysis
+        // Basket Analysis & Confluence Scoring
+        let confluenceScore = 0;
         if (divergences.length > 0) {
-            const strength = (divergedWith / (divergedWith + confirmedWith)) * 100;
-            divergences.forEach(d => d.metadata.basketStrength = strength.toFixed(0) + '%');
+            const ratio = divergedWith / (divergedWith + confirmedWith);
+            confluenceScore = Math.round(ratio * 100);
+            divergences.forEach(d => {
+                d.metadata.basketStrength = confluenceScore + '%';
+                d.metadata.divergedWith = divergedWith;
+                d.metadata.confirmedWith = confirmedWith;
+                d.metadata.confluenceScore = confluenceScore;
+            });
         }
 
-        return divergences;
+        return { divergences, confluenceScore, stats: { divergedWith, confirmedWith } };
     }
 
     /**
@@ -242,13 +256,30 @@ export class SMTDivergenceEngine {
     }
 
     static isInversePair(a, b) {
-        // Quick check for USD/XXX vs XXX/USD pairs or DXY
-        if (b === 'DXY' || b === 'USDCHF' || b === 'USDCAD' || b === 'USDJPY') {
-            // If primary is NOT USD-based (like EURUSD), it's inverse to DXY
-            if (!a.startsWith('USD')) return true;
+        // Normalize
+        const pairA = a.replace('/', '').toUpperCase();
+        const pairB = b.replace('/', '').toUpperCase();
+
+        // 1. Compare against DXY
+        if (pairB === 'DXY') {
+            // If Base is USD (e.g. USDJPY), it moves WITH DXY -> Not Inverse
+            if (pairA.startsWith('USD') && !pairA.includes('USDT') && !pairA.includes('USDC')) return false;
+
+            // If Quote is USD (e.g. EURUSD, GBPUSD, XAUUSD), it moves AGAINST DXY -> Inverse
+            // (Assuming standard forex pairs where non-USD is base)
+            return true;
         }
-        // If primary is DXY itself, and target is EURUSD, it's inverse
-        if (a === 'DXY' && (b === 'EURUSD' || b === 'GBPUSD')) return true;
+
+        // 2. Compare against Inverse Pairs directly (e.g. EURUSD vs USDCHF)
+        if (pairA === 'EURUSD' || pairA === 'GBPUSD' || pairA === 'AUDUSD' || pairA === 'NZDUSD') {
+            if (pairB === 'USDCHF' || pairB === 'USDCAD' || pairB === 'USDJPY') return true;
+        }
+
+        // 3. Compare DXY against others
+        if (pairA === 'DXY') {
+            if (pairB.startsWith('USD') && !pairB.includes('USDT')) return false; // DXY vs USDJPY -> Correlated
+            return true; // DXY vs EURUSD -> Inverse
+        }
 
         return false;
     }

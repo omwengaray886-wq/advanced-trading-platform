@@ -99,6 +99,22 @@ export default function FullAnalysisReport({ analysis, loading }) {
                         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <Zap size={16} /> MTF: {marketState.mtf?.globalBias || 'NEUTRAL'}
                         </span>
+                        {marketState.smtConfluence > 0 && (
+                            <span style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '4px 10px',
+                                borderRadius: '20px',
+                                background: 'rgba(59, 130, 246, 0.1)',
+                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                                color: '#3b82f6',
+                                fontSize: '11px',
+                                fontWeight: 'bold'
+                            }}>
+                                <Layers size={12} /> SMT CONFLUENCE: {marketState.smtConfluence}%
+                            </span>
+                        )}
                         <span style={{
                             display: 'flex',
                             alignItems: 'center',

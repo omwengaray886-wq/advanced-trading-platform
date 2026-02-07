@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, Target, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ArrowRight, Target, AlertTriangle, CheckCircle, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../context/ToastContext';
 
@@ -27,6 +27,13 @@ const TradeSetupCard = ({ setup, index = 0, onClick }) => {
                 <div className="flex-col">
                     <div className="flex-row items-center gap-sm">
                         <h3 className="card-title">{setup.symbol}</h3>
+                        {/* Scalp Badge */}
+                        {(setup.timeframe === '1m' || setup.timeframe === '5m' || setup.strategy === 'SCALPER_ENGINE') && (
+                            <span className="badge badge-warning" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 6px' }}>
+                                <Zap size={10} fill="currentColor" />
+                                <span style={{ fontSize: '10px', fontWeight: 'bold' }}>SCALP</span>
+                            </span>
+                        )}
                         <span className={`badge ${isLong ? 'badge-success' : 'badge-danger'}`}>
                             {setup.direction}
                         </span>

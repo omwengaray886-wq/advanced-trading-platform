@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Beaker, Play, Save, Info, TrendingUp, BarChart3, Settings2 } from 'lucide-react';
+import { Beaker, Play, Save, Info, TrendingUp, BarChart3, Settings2, RefreshCw } from 'lucide-react';
 import { optimizationService } from '../services/optimizationService';
 import { useToast } from '../context/ToastContext';
 import Footer from '../components/layout/Footer';

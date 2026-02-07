@@ -30,6 +30,7 @@ export class ExplanationEngine {
         explanation.sections.invalidationConditions = this.buildZoneInvalidation(analysis, mode);
         explanation.sections.targets = this.buildZoneTargets(analysis, mode);
         explanation.sections.professionalTruth = this.buildProfessionalTruth(analysis, mode);
+        explanation.sections.riskManagement = this.buildRiskManagement(analysis, mode);
         explanation.sections.edgeAnalysis = this.buildEdgeAnalysis(analysis, mode);
         explanation.sections.selfCritique = this.buildSelfCritique(analysis, mode);
 
@@ -211,7 +212,8 @@ export class ExplanationEngine {
         const setup = analysis.setups[0];
 
         if (mode === 'BEGINNER') {
-            return `Keep your trade small (${setup.capitalTag}). We'll target the first profit level to be safe.`;
+            const sizeMsg = setup.suggestedSize > 0 ? `Your recommended size for this trade is **${setup.suggestedSize}**. ` : '';
+            return `${sizeMsg}Keep your total risk low (**${setup.capitalTag}**). We'll target the first profit level to secure your capital early.`;
         }
 
         const rr = setup.rr?.toFixed(1) || '2.0';
@@ -395,8 +397,10 @@ export class ExplanationEngine {
 
         const mainDiv = analysis.divergences[0];
         const type = mainDiv.dir === 'BULLISH' ? 'Accumulation' : 'Distribution';
+        const confluence = analysis.smtConfluence || 0;
+        const siblings = analysis.divergences.map(d => d.metadata.sibling).join(', ');
 
-        return `**Inter-market Divergence (SMT)** detected! There is a "Cracking of Correlation" between ${analysis.symbol} and ${mainDiv.metadata.sibling}. This signals institutional **${type}** at play. When symmetrical assets fail to verify each other's pivots, Smart Money is likely exerting hidden pressure.`;
+        return `**Inter-market Divergence (SMT)** detected! There is a "Cracking of Correlation" between ${analysis.symbol} and **${siblings}** (Basket Confluence: **${confluence}%**). This signals institutional **${type}** at play. When symmetrical assets fail to verify each other's pivots, Smart Money is likely exerting hidden pressure to trap retail traders.`;
     }
 
     /**
@@ -453,6 +457,11 @@ export class ExplanationEngine {
      */
     buildProfessionalTruth(analysis, mode) {
         const confidence = (analysis.overallConfidence * 100).toFixed(0);
+
+        if (mode === 'BEGINNER') {
+            return `This analysis has a confidence level of **${confidence}%**. For small accounts, the key is consistency, not catching every move. Institutional signals work on all scales—treat your account like a mini hedge fund. Exercise patience: if the entry isn't hit, we simply wait for the next setup. Protecting your balance is your #1 job.`;
+        }
+
         return `This mapping has an algorithmic confidence of **${confidence}%**. Institutional trading is a game of probabilities, not certainties. The system never "calls" a bottom or top; it identifies structural imbalances where risk can be strictly defined. Exercise professional patience: if the LTF confirmation is missing, the setup does not exist. Preserve your capital first, exploit the move second.`;
     }
 

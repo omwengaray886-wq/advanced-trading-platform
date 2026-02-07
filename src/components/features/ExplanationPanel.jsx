@@ -124,6 +124,40 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                 </div>
             )}
 
+            {/* SMT Divergence Analysis (Phase 25) */}
+            {marketState.divergences && marketState.divergences.length > 0 && (
+                <div style={{ background: 'var(--color-bg-tertiary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                    <h3 style={{ fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                        <Activity size={14} color="#E63946" />
+                        Inter-Market SMT
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                            <span style={{ color: 'var(--color-text-secondary)' }}>Signal</span>
+                            <span style={{
+                                fontWeight: 'bold',
+                                color: marketState.divergences[0].metadata.direction === 'BULLISH' ? 'var(--color-success)' : 'var(--color-danger)'
+                            }}>
+                                {marketState.divergences[0].metadata.direction} DIVERGENCE
+                            </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                            <span style={{ color: 'var(--color-text-secondary)' }}>Diverged With</span>
+                            <span style={{ fontWeight: '500' }}>{marketState.divergences[0].metadata.sibling}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                            <span style={{ color: 'var(--color-text-secondary)' }}>Basket Confluence</span>
+                            <span style={{ fontWeight: '500', color: 'var(--color-accent-primary)' }}>{marketState.smtConfluence}%</span>
+                        </div>
+                        <p style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', margin: '4px 0 0 0', lineHeight: '1.4' }}>
+                            {marketState.divergences[0].metadata.direction === 'BULLISH'
+                                ? 'Asset failed to make Lower Low while correlated asset did. Institutional accumulation detected.'
+                                : 'Asset failed to make Higher High while correlated asset did. Institutional distribution detected.'}
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Volume Profile Context [NEW] */}
             {marketState.volProfile && (
                 <div style={{ background: 'var(--color-bg-tertiary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
@@ -422,6 +456,16 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                         </h4>
                         <p style={{ fontSize: '12px', lineHeight: '1.5', margin: 0, fontStyle: 'italic' }}>
                             {explanation.sections.professionalTruth}
+                        </p>
+                    </div>
+
+                    {/* 8. Risk & Sizing [NEW] */}
+                    <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', padding: '12px' }}>
+                        <h4 style={{ fontSize: '12px', fontWeight: 'bold', color: '#ef4444', marginBottom: '8px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            ⚖️ 8. Risk & Sizing
+                        </h4>
+                        <p style={{ fontSize: '12px', lineHeight: '1.5', margin: 0, color: 'var(--color-text-secondary)' }}>
+                            {explanation.sections.riskManagement}
                         </p>
                     </div>
                 </>

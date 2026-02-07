@@ -20,7 +20,7 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
  * @param {string} manualStrategyName - Optional manual strategy override
  * @returns {Object} - Complete analysis with annotations and explanations
  */
-export async function generateTradeAnalysis(chartData, symbol, timeframe = '1H', manualStrategyName = null, mode = 'ADVANCED', onPartialResult = null) {
+export async function generateTradeAnalysis(chartData, symbol, timeframe = '1H', manualStrategyName = null, mode = 'ADVANCED', onPartialResult = null, accountSize = 10000) {
     try {
         console.log(`Starting analysis for ${symbol} (${timeframe}) with ${chartData.length} candles...`);
 
@@ -61,7 +61,7 @@ export async function generateTradeAnalysis(chartData, symbol, timeframe = '1H',
         // Provides real structural markings using only local data (~200ms)
         if (onPartialResult) {
             // isLight=true and mtfData=null
-            const instantAnalysis = await orchestrator.analyze(chartData, symbol, timeframe, manualStrategyName, null, true);
+            const instantAnalysis = await orchestrator.analyze(chartData, symbol, timeframe, manualStrategyName, null, true, accountSize);
             const instantExplanation = explanationEngine.generateExplanation(instantAnalysis, mode);
 
             onPartialResult(buildResponse(instantAnalysis, instantExplanation));
@@ -105,7 +105,7 @@ export async function generateTradeAnalysis(chartData, symbol, timeframe = '1H',
 
         // Stage 1: Fast Deterministic Pass (Phase 40 Optimization)
         // This pass skips heavy external fetches (Divergences, Sentiment, etc.)
-        const fastAnalysis = await orchestrator.analyze(chartData, symbol, timeframe, manualStrategyName, mtfData, true);
+        const fastAnalysis = await orchestrator.analyze(chartData, symbol, timeframe, manualStrategyName, mtfData, true, accountSize);
         const fastExplanation = explanationEngine.generateExplanation(fastAnalysis, mode);
 
         if (onPartialResult) {
@@ -113,7 +113,7 @@ export async function generateTradeAnalysis(chartData, symbol, timeframe = '1H',
         }
 
         // Stage 2: Full Deep-Dive Pass (Enriched)
-        const fullAnalysis = await orchestrator.analyze(chartData, symbol, timeframe, manualStrategyName, mtfData, false);
+        const fullAnalysis = await orchestrator.analyze(chartData, symbol, timeframe, manualStrategyName, mtfData, false, accountSize);
         const fullExplanation = explanationEngine.generateExplanation(fullAnalysis, mode);
 
         // We update the local variables so buildResponse uses the new ones

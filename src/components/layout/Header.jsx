@@ -52,7 +52,7 @@ export default function Header({ toggleSidebar, isSidebarOpen }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div className="hide-mobile" style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{currentUser?.displayName || 'Trader'}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Pro Account</div>
+                        <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Institutional Access</div>
                     </div>
 
                     <div style={{ width: '36px', height: '36px', background: 'var(--color-accent-primary)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>

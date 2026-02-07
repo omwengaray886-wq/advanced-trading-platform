@@ -115,6 +115,7 @@ export default function Markets() {
     const [loading, setLoading] = useState(false);
     const [complexityMode, setComplexityMode] = useState('ADVANCED'); // BEGINNER or ADVANCED
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [accountSize, setAccountSize] = useState(10000);
     const [isCleanView, setIsCleanView] = useState(false);
 
     const handleScreenshot = () => {
@@ -247,7 +248,8 @@ export default function Markets() {
                     setAnalysis(partial);
                     setLoading(false); // Stop the heavy spinner immediately
                     addToast(`Fast Scan Complete. Refining Deep Intel...`, 'info');
-                }
+                },
+                accountSize
             );
 
             // Stage 2: Full Deep-Dive & AI Complete
@@ -873,100 +875,153 @@ export default function Markets() {
                         />
 
                         {/* Strategy & Complexity Restoration */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '3px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                <button
-                                    onClick={() => setComplexityMode('BEGINNER')}
-                                    style={{
-                                        flex: 1,
-                                        padding: '8px',
-                                        borderRadius: '8px',
-                                        border: 'none',
-                                        background: complexityMode === 'BEGINNER' ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                        color: complexityMode === 'BEGINNER' ? 'white' : 'rgba(255,255,255,0.4)',
-                                        fontSize: '11px',
-                                        fontWeight: 'bold',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: '6px'
-                                    }}
-                                >
-                                    <BookOpen size={14} /> BEGINNER
-                                </button>
-                                <button
-                                    onClick={() => setComplexityMode('ADVANCED')}
-                                    style={{
-                                        flex: 1,
-                                        padding: '8px',
-                                        borderRadius: '8px',
-                                        background: complexityMode === 'ADVANCED' ? 'rgba(37, 99, 235, 0.2)' : 'transparent',
-                                        color: complexityMode === 'ADVANCED' ? 'white' : 'rgba(255,255,255,0.4)',
-                                        fontSize: '11px',
-                                        fontWeight: 'bold',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: '6px',
-                                        border: complexityMode === 'ADVANCED' ? '1px solid rgba(37, 99, 235, 0.3)' : '1px solid transparent'
-                                    }}
-                                >
-                                    <TrendingUp size={14} /> PRO
-                                </button>
-                            </div>
-
-                            <div style={{ position: 'relative' }}>
-                                <select
-                                    value={manualStrategy || ''}
-                                    onChange={(e) => setManualStrategy(e.target.value || null)}
-                                    style={{
-                                        width: '100%',
-                                        background: 'rgba(255,255,255,0.05)',
-                                        border: '1px solid rgba(255,255,255,0.1)',
-                                        borderRadius: '10px',
-                                        padding: '10px 12px',
-                                        color: 'white',
-                                        fontSize: '12px',
-                                        appearance: 'none',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    <option value="">🤖 AI AUTO-STRATEGY</option>
-                                    {Object.entries(strategyCategories).map(([cat, strats]) => (
-                                        <optgroup label={cat} key={cat} style={{ background: '#0f172a' }}>
-                                            {strats.map(s => <option key={s} value={s}>{s}</option>)}
-                                        </optgroup>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-
-                        <TradeExecution
-                            symbol={selectedPair}
-                            currentPrice={chartData[chartData.length - 1]?.close}
-                            riskData={analysis?.setups?.find(s => s.id === (activeSetupId || 'A'))}
-                            analysis={analysis}
-                            candles={chartData}
-                        />
-
-                        {/* Order Book / DOM Widget */}
-                        <div style={{
-                            background: 'rgba(0,0,0,0.3)',
-                            borderRadius: '16px',
-                            border: '1px solid rgba(255,255,255,0.05)',
-                            padding: '12px',
-                            minHeight: '300px'
-                        }}>
-                            <DOMWidget symbol={resolveSymbol(selectedPair)} />
-                        </div>
-
-                        {/* Backtest Panel */}
-                        <BacktestPanel symbol={resolveSymbol(selectedPair)} timeframe={timeframe} />
                     </div>
+
+                    {/* Auditor Config Section */}
+                    <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                            <div style={{ width: '4px', height: '14px', background: 'var(--color-accent-primary)', borderRadius: '2px' }} />
+                            <h4 style={{ fontSize: '11px', fontWeight: 'bold', color: 'rgba(255,255,255,0.7)', letterSpacing: '0.5px' }}>AUDITOR CONFIG</h4>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            {/* Account Size Parameter */}
+                            <div>
+                                <label style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                                    ACTIVE TRADING CAPITAL (USD)
+                                </label>
+                                <div style={{ position: 'relative' }}>
+                                    <input
+                                        type="number"
+                                        value={accountSize}
+                                        onChange={(e) => setAccountSize(Number(e.target.value))}
+                                        style={{
+                                            width: '100%',
+                                            background: 'rgba(255,255,255,0.03)',
+                                            border: '1px solid rgba(255,255,255,0.1)',
+                                            borderRadius: '10px',
+                                            padding: '12px',
+                                            color: 'white',
+                                            fontSize: '13px',
+                                            fontWeight: 'bold',
+                                            outline: 'none',
+                                            transition: 'all 0.2s'
+                                        }}
+                                        onFocus={e => e.target.parentElement.style.borderColor = 'var(--color-accent-primary)'}
+                                        onBlur={e => e.target.parentElement.style.borderColor = 'rgba(255,255,255,0.1)'}
+                                    />
+                                    <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', opacity: 0.3 }}>
+                                        <Target size={14} />
+                                    </div>
+                                </div>
+                                <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', marginTop: '6px' }}>
+                                    Size suggestions scale linearly with capital. Default is $10k base.
+                                </p>
+                            </div>
+
+                            {/* Detail Mode Selector */}
+                            <div>
+                                <label style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                                    ANALYSIS ARCHITECTURE
+                                </label>
+                                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '3px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <button
+                                        onClick={() => setComplexityMode('BEGINNER')}
+                                        style={{
+                                            flex: 1,
+                                            padding: '10px',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: complexityMode === 'BEGINNER' ? 'rgba(255,255,255,0.08)' : 'transparent',
+                                            color: complexityMode === 'BEGINNER' ? 'white' : 'rgba(255,255,255,0.3)',
+                                            fontSize: '11px',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '6px',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <BookOpen size={14} /> LIGHT / RETAIL
+                                    </button>
+                                    <button
+                                        onClick={() => setComplexityMode('ADVANCED')}
+                                        style={{
+                                            flex: 1,
+                                            padding: '10px',
+                                            borderRadius: '8px',
+                                            background: complexityMode === 'ADVANCED' ? 'rgba(37, 99, 235, 0.15)' : 'transparent',
+                                            color: complexityMode === 'ADVANCED' ? 'white' : 'rgba(255,255,255,0.3)',
+                                            fontSize: '11px',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '6px',
+                                            border: complexityMode === 'ADVANCED' ? '1px solid rgba(37, 99, 235, 0.2)' : '1px solid transparent',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <Activity size={14} /> HEAVY / ALGO
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ position: 'relative' }}>
+                            <select
+                                value={manualStrategy || ''}
+                                onChange={(e) => setManualStrategy(e.target.value || null)}
+                                style={{
+                                    width: '100%',
+                                    background: 'rgba(255,255,255,0.05)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '10px',
+                                    padding: '10px 12px',
+                                    color: 'white',
+                                    fontSize: '12px',
+                                    appearance: 'none',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <option value="">🤖 AI AUTO-STRATEGY</option>
+                                {Object.entries(strategyCategories).map(([cat, strats]) => (
+                                    <optgroup label={cat} key={cat} style={{ background: '#0f172a' }}>
+                                        {strats.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </optgroup>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <TradeExecution
+                        symbol={selectedPair}
+                        currentPrice={chartData[chartData.length - 1]?.close}
+                        riskData={analysis?.setups?.find(s => s.id === (activeSetupId || 'A'))}
+                        analysis={analysis}
+                        candles={chartData}
+                    />
+
+                    {/* Order Book / DOM Widget */}
+                    <div style={{
+                        background: 'rgba(0,0,0,0.3)',
+                        borderRadius: '16px',
+                        border: '1px solid rgba(255,255,255,0.05)',
+                        padding: '12px',
+                        minHeight: '300px'
+                    }}>
+                        <DOMWidget symbol={resolveSymbol(selectedPair)} />
+                    </div>
+
+                    {/* Backtest Panel */}
+                    <BacktestPanel symbol={resolveSymbol(selectedPair)} timeframe={timeframe} />
                 </aside>
-            </div >
+            </div>
 
             {/* 🌐 GLOBAL STATUS BAR */}
             <footer style={{
@@ -990,7 +1045,12 @@ export default function Markets() {
                     </div>
                     <div>MTF BIAS: {analysis?.marketState?.mtf?.globalBias || 'NEUTRAL'}</div>
                 </div>
-                <div style={{ display: 'flex', gap: '20px' }}>
+                <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                    {analysis?.marketState?.smtConfluence > 0 && (
+                        <span style={{ color: 'var(--color-accent-primary)', fontWeight: 'bold' }}>
+                            SMT CONFLUENCE: {analysis.marketState.smtConfluence}%
+                        </span>
+                    )}
                     <span>NEWS: {analysis?.newsEvents?.length > 0 ? `${analysis.newsEvents.length} IMPACT EVENTS` : 'NO HIGH IMPACT EVENTS'}</span>
                     <span style={{ color: 'rgba(255,255,255,0.2)' }}>v2.4.0 PRO</span>
                 </div>
@@ -1465,7 +1525,7 @@ export default function Markets() {
                         </div>
                     </motion.div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence >
         </div >
     );
 }
