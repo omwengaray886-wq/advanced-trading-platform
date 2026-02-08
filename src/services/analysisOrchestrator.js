@@ -656,9 +656,9 @@ export class AnalysisOrchestrator {
             });
 
             // 13. Time-Based Zones (Phase 15 Requirement)
-            if (killzone) {
+            if (marketState.session.killzone) {
                 baseAnnotations.push(new TimeBasedZone(
-                    `${killzone} Window`,
+                    `${marketState.session.killzone} Window`,
                     lastCandle.time - 7200, // 2h killzone
                     lastCandle.time,
                     { timeframe }
