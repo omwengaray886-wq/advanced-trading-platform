@@ -37,6 +37,11 @@ const TradeSetupCard = ({ setup, index = 0, onClick }) => {
                         <span className={`badge ${isLong ? 'badge-success' : 'badge-danger'}`}>
                             {setup.direction}
                         </span>
+                        {setup.smtConfluence > 0 && (
+                            <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '10px' }}>
+                                SMT {setup.smtConfluence}%
+                            </span>
+                        )}
                         <span className="badge badge-neutral" style={{ fontSize: '10px' }}>{setup.bias}</span>
                     </div>
                     <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
@@ -44,10 +49,10 @@ const TradeSetupCard = ({ setup, index = 0, onClick }) => {
                     </span>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                    <span style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--color-accent-primary)' }}>
-                        {setup.confidence}%
+                    <span style={{ fontSize: '24px', fontWeight: 'bold', color: (setup.quantScore || setup.confidence) > 75 ? 'var(--color-success)' : 'var(--color-accent-primary)' }}>
+                        {setup.quantScore || setup.confidence}%
                     </span>
-                    <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Confidence</div>
+                    <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', textTransform: 'uppercase' }}>Quant Score</div>
                 </div>
             </div>
 

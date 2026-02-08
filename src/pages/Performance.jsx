@@ -1,4 +1,5 @@
-import { TrendingUp, AlertTriangle, ShieldCheck, Activity, BarChart3, HelpCircle, FileText } from 'lucide-react';
+import { TrendingUp, AlertTriangle, ShieldCheck, Activity, BarChart3, HelpCircle, FileText, Zap } from 'lucide-react';
+import { PredictionTracker } from '../services/predictionTracker';
 import { backtestService } from '../services/backtestService';
 import { userPerformanceService } from '../services/userPerformanceService';
 import EquityCurve from '../components/features/EquityCurve';
@@ -57,6 +58,11 @@ export default function Performance() {
     }) : (userStats || {
         totalTrades: 0, winRate: 0, profitFactor: 0, sharpe: 0, maxDrawdown: 0, totalReturn: 0
     });
+
+    // Handle history data (real or mock for UI)
+    const historyData = viewMode === 'SYSTEM'
+        ? (backtest?.history || [])
+        : (userStats?.recentHistory || stats.history || []);
 
     const currentEquityCurve = viewMode === 'SYSTEM' ? backtest?.equityCurve : userStats?.equityCurve;
 
@@ -302,20 +308,17 @@ export default function Performance() {
                                 {loading ? (
                                     <tr><td colSpan="6" style={{ padding: '24px', textAlign: 'center', fontSize: '12px', opacity: 0.5 }}>Syncing with Firestore...</td></tr>
                                 ) : (
-                                    (stats.history || stats.byStrategy || []).length === 0 ? (
+                                    historyData.length === 0 ? (
                                         <tr><td colSpan="6" style={{ padding: '24px', textAlign: 'center', fontSize: '12px', opacity: 0.5 }}>No prediction history found.</td></tr>
                                     ) : (
-                                        // Use mock logic if real history is empty for UI demonstration
-                                        (stats.history || [
-                                            { id: 'BTC-1H-20260205-124', symbol: 'BTC/USDT', edgeScore: 8.2, outcome: 'HIT', timestamp: Date.now() - 3600000 },
-                                            { id: 'ETH-15m-20260205-081', symbol: 'ETH/USDT', edgeScore: 7.4, outcome: 'FAIL', timestamp: Date.now() - 7200000 },
-                                            { id: 'EUR-1H-20260205-012', symbol: 'EUR/USD', edgeScore: 6.8, outcome: 'EXPIRED', timestamp: Date.now() - 10800000 }
-                                        ]).map((p, idx) => (
+                                        historyData.map((p, idx) => (
                                             <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)', background: idx % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
                                                 <td style={{ padding: '12px', fontSize: '11px', fontFamily: 'monospace', color: 'var(--color-accent-primary)' }}>{p.id}</td>
                                                 <td style={{ padding: '12px', fontSize: '12px', fontWeight: 'bold' }}>{p.symbol}</td>
                                                 <td style={{ padding: '12px', textAlign: 'center' }}>
-                                                    <div style={{ fontSize: '11px', fontWeight: 'bold', color: (p.edgeScore || p.edge) >= 7 ? 'var(--color-success)' : 'white' }}>{p.edgeScore || p.edge}</div>
+                                                    <div style={{ fontSize: '11px', fontWeight: 'bold', color: (p.edgeScore || p.edge || p.quantScore) >= 75 ? 'var(--color-success)' : 'white' }}>
+                                                        {p.edgeScore || p.edge || p.quantScore || 'N/A'}
+                                                    </div>
                                                 </td>
                                                 <td style={{ padding: '12px', textAlign: 'center' }}>
                                                     <span style={{
