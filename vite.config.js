@@ -9,7 +9,17 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'chart': ['chart.js', 'react-chartjs-2']
+        }
+      }
+    }
+  },
+  ssr: {
+    noExternal: ['react-chartjs-2', 'chart.js']
   },
   server: {
     proxy: {
