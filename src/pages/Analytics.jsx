@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { PredictionTracker } from '../../services/predictionTracker';
+import { PredictionTracker } from '../services/predictionTracker';
 import { Line, Pie } from 'react-chartjs-2';
 import { TrendingUp, Target, Activity, Award } from 'lucide-react';
 import './Analytics.css';
