@@ -991,7 +991,8 @@ export class AnalysisOrchestrator {
             return analysis;
         } catch (error) {
             console.error('Analysis orchestration failed:', error);
-            throw new Error('Failed to complete market analysis: ' + error.message);
+            if (error.stack) console.error('Stack trace:', error.stack);
+            throw new Error('Failed to complete market analysis: ' + error.message + (error.stack ? '\nStack: ' + error.stack : ''));
         }
     }
 

@@ -27,10 +27,21 @@ const firebaseConfig = {
 
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+let app;
+let auth;
+let db;
 
-// Initialize Services
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+try {
+  app = initializeApp(firebaseConfig);
+  // Initialize Services
+  auth = getAuth(app);
+  db = getFirestore(app);
+} catch (error) {
+  console.warn("Firebase initialization failed (likely missing env vars). Using mock services.");
+  app = {};
+  auth = {};
+  db = {};
+}
 
+export { auth, db };
 export default app;
