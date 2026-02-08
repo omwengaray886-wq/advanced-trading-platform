@@ -1,7 +1,9 @@
 /**
- * Scalper Engine
- * Automated logic for High-Frequency Scalping using Order Book data.
+ * Scalper Engine (Phase 73 Upgrade)
+ * Automated logic for High-Frequency Scalping using Order Book data + Micro-Structure
  */
+import { MicroStructureEngine } from './MicroStructureEngine.js';
+
 export class ScalperEngine {
     /**
      * Analyze Order Book for Scalp Setups
@@ -34,6 +36,38 @@ export class ScalperEngine {
         if (marketState && marketState.liquiditySweep) {
             const sweepSetup = this.analyzeSweeps(marketState.liquiditySweep, currentPrice);
             if (sweepSetup) return sweepSetup;
+        }
+
+        // 3. Phase 73: Micro-Structure Analysis (Order Flow + Momentum Bursts)
+        if (marketState) {
+            // 3a. Order Flow Imbalance Scalps
+            const orderBook = marketState.orderBook || null;
+            if (orderBook) {
+                const flowImbalance = MicroStructureEngine.detectOrderFlowImbalance(orderBook);
+                const microSetup = MicroStructureEngine.generateScalpSetup(
+                    marketState.candles || [],
+                    flowImbalance,
+                    marketState
+                );
+                if (microSetup) return microSetup;
+            }
+
+            // 3b. Micro-Structure Sweep Detection
+            const microSweep = MicroStructureEngine.detectMicroSweep(
+                marketState.candles || [],
+                marketState.liquidityPools || []
+            );
+            if (microSweep) {
+                return {
+                    type: 'SCALP_MICROSWEEP',
+                    direction: microSweep.type.includes('BULLISH') ? 'LONG' : 'SHORT',
+                    entry: microSweep.entry,
+                    stopLoss: microSweep.stopLoss,
+                    target: microSweep.target,
+                    rationale: `Micro-Sweep: ${microSweep.type} with ${microSweep.wickPercent.toFixed(2)}% wick rejection`,
+                    confidence: microSweep.confidence / 100
+                };
+            }
         }
 
         return null;
