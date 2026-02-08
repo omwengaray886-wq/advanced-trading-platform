@@ -8,9 +8,8 @@ export default defineConfig({
     include: ['react-chartjs-2', 'chart.js']
   },
   build: {
-    commonjsOptions: {
-      include: [/react-chartjs-2/, /chart\.js/]
-    }
+    outDir: 'dist',
+    sourcemap: true
   },
   server: {
     proxy: {
