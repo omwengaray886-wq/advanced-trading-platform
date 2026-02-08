@@ -75,6 +75,7 @@ import { PathProjector } from './pathProjector.js';
 import { ScenarioWeighting } from './scenarioWeighting.js';
 import { FailurePatternDetector } from './failurePatternDetector.js';
 import { calculateTransitionProbability } from '../analysis/marketRegime.js';
+import { SessionAnalyzer } from '../analysis/SessionAnalyzer.js';
 import { MarketObligationEngine } from '../analysis/MarketObligationEngine.js';
 
 export class AnalysisOrchestrator {
@@ -203,23 +204,23 @@ export class AnalysisOrchestrator {
             }
 
 
-            // Step 3.7: Session Intelligence (Timing & Killzones)
+            // Step 3.7: Session Intelligence (Phase 72 Upgrade)
             const lastCandle = candles[candles.length - 1];
             if (!lastCandle) throw new Error('Latest candle data is corrupted or missing.');
-            const currentSession = AssetClassAdapter.getCurrentSession(lastCandle.time);
 
-            // Detect Killzones (2h windows from session start)
-            let killzone = null;
-            const hour = new Date(lastCandle.time * 1000).getUTCHours();
-
-            if (hour >= 8 && hour < 10) killzone = 'LONDON_OPEN';
-            else if (hour >= 13 && hour < 15) killzone = 'NY_OPEN';
-            else if (hour >= 13 && hour < 16) killzone = 'LONDON_NY_OVERLAP';
+            // Enhanced session analysis
+            const sessionInfo = SessionAnalyzer.analyzeSession(lastCandle.time);
+            const sessionVolatility = SessionAnalyzer.calculateSessionVolatility(candles, sessionInfo.session);
+            const sessionProbability = SessionAnalyzer.assessSessionProbability(sessionInfo, sessionVolatility);
 
             marketState.session = {
-                active: currentSession,
-                killzone: killzone,
-                timestamp: lastCandle.time
+                active: sessionInfo.session,
+                killzone: sessionInfo.killzone,
+                isOverlap: sessionInfo.isOverlap,
+                isPeakLiquidity: sessionInfo.isPeakLiquidity,
+                timestamp: lastCandle.time,
+                volatility: sessionVolatility,
+                probability: sessionProbability
             };
 
             // Step 4: Analyze fundamentals
@@ -298,10 +299,10 @@ export class AnalysisOrchestrator {
             marketState.activeShock = activeShock;
             marketState.hazards = ExecutionHazardDetector.detectHazards(candles, marketState, assetParams);
 
+
             // Phase 71: Velocity & Last Candle for Predictive Intelligence Upgrade
             marketState.lastCandle = lastCandle;
             marketState.velocity = this._calculateVelocity(candles, marketState.atr);
-            marketState.orderBlocks = obs; // Reference to order blocks detected earlier
 
             // Step 3.9.5: Prediction Accuracy Upgrade (Layer 1 & 2)
             // Detect Market Obligations (Liquidity Magnets / Unfinished Business)
@@ -500,6 +501,10 @@ export class AnalysisOrchestrator {
 
             // 2. Order Blocks (Phase 15 Requirement)
             const obs = SmartMoneyConcepts.detectOrderBlocks(candles);
+
+            // Phase 71: Store order blocks in marketState for predictive layer
+            marketState.orderBlocks = obs;
+
             obs.forEach(ob => {
                 baseAnnotations.push(new OrderBlock(
                     ob.high, ob.low, ob.timestamp,
