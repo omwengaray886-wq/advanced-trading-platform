@@ -31,7 +31,6 @@ export default function Home() {
                 <div style={{ display: 'flex', gap: '24px' }}>
                     <Link to="/pricing" className="btn btn-ghost">Pricing</Link>
                     <Link to="/about" className="btn btn-ghost">Methodology</Link>
-                    <Link to="/login" className="btn btn-ghost">Login</Link>
                     <Link to="/app" className="btn btn-primary">Launch App</Link>
                 </div>
             </nav>

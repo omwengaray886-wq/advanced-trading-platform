@@ -9,14 +9,14 @@ export default function Header({ toggleSidebar, isSidebarOpen }) {
     const { currentUser, logout } = useAuth();
     const navigate = useNavigate();
 
-    const handleLogout = async () => {
-        try {
-            await logout();
-            navigate('/login');
-        } catch (error) {
-            console.error("Failed to log out", error);
-        }
-    };
+    // const handleLogout = async () => {
+    //     try {
+    //         await logout();
+    //         navigate('/login');
+    //     } catch (error) {
+    //         console.error("Failed to log out", error);
+    //     }
+    // };
 
     return (
         <header className="header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '64px', borderBottom: '1px solid var(--border-color)', padding: '0 24px' }}>
@@ -51,7 +51,7 @@ export default function Header({ toggleSidebar, isSidebarOpen }) {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div className="hide-mobile" style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{currentUser?.displayName || 'Trader'}</div>
+                        <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{currentUser?.displayName || 'Quantum Trader'}</div>
                         <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Institutional Access</div>
                     </div>
 
@@ -59,9 +59,10 @@ export default function Header({ toggleSidebar, isSidebarOpen }) {
                         <User color="white" size={20} />
                     </div>
 
-                    <button onClick={handleLogout} className="btn btn-ghost" title="Logout">
+                    {/* Logout disabled for open access */}
+                    {/* <button onClick={handleLogout} className="btn btn-ghost" title="Logout">
                         <LogOut size={18} color="var(--color-danger)" />
-                    </button>
+                    </button> */}
                 </div>
             </div>
         </header>

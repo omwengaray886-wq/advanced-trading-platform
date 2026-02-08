@@ -74,7 +74,6 @@ export default function Performance() {
                 <div className="flex-row gap-md">
                     <a href="/" className="btn btn-ghost">Home</a>
                     <a href="/pricing" className="btn btn-ghost">Pricing</a>
-                    <a href="/login" className="btn btn-primary">Login</a>
                 </div>
             </header>
 

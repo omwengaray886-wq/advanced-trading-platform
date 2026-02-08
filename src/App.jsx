@@ -31,13 +31,9 @@ const Performance = lazy(() => import('./pages/Performance'));
 const SignalLab = lazy(() => import('./pages/SignalLab'));
 const MarketScanner = lazy(() => import('./pages/MarketScanner'));
 
-// Protected Route wrapper that checks Firebase Auth state
+// Protected Route wrapper - Bypassed for open access (Phase 70)
 const ProtectedRoute = () => {
-  const { currentUser } = useAuth();
-
-  if (!currentUser) {
-    return <Navigate to="/login" replace />;
-  }
+  // Always return the app layout without checking for currentUser
   return <Outlet />;
 };
 
@@ -54,8 +50,8 @@ function App() {
                   {/* Public Routes */}
                   <Route path="/" element={<Home />} />
                   <Route path="/pricing" element={<Pricing />} />
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/signup" element={<Signup />} />
+                  <Route path="/login" element={<Navigate to="/app" replace />} />
+                  <Route path="/signup" element={<Navigate to="/app" replace />} />
                   <Route path="/terms" element={<Terms />} />
                   <Route path="/privacy" element={<Privacy />} />
                   <Route path="/risk-disclosure" element={<RiskDisclosure />} />
