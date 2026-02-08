@@ -20,8 +20,8 @@ export class PredictionCompressor {
         // 1. Determine dominant bias
         const bias = this._determineBias(marketState, probabilities);
 
-        // 2. Select single target
-        const target = this._selectTarget(bias, setups, probabilities);
+        // 2. Select optimized target (Magnet Zone Targeting)
+        const target = this._selectTarget(bias, setups, probabilities, marketState);
 
         // 3. Define invalidation
         const invalidation = this._defineInvalidation(bias, setups, marketState);
@@ -189,6 +189,13 @@ export class PredictionCompressor {
 
         // Phase 52: Improved HTF/LTF Conflict Resolution
         if (htfBias !== 'NEUTRAL' && trend !== 'NEUTRAL' && htfBias !== trend) {
+            // Check for high-impact rejection (Guard against fakeouts)
+            const rejection = this._detectRecentRejection(marketState);
+            if (rejection && rejection.direction === htfBias) {
+                // Rejection from LTF counter-trend confirms HTF dominance
+                return htfBias;
+            }
+
             // If we have a recent CHoCH, trust the LTF structural shift
             if (recentCHoCH && recentCHoCH.age < 15) {
                 const chochDirection = recentCHoCH.direction === 'BULLISH' ? 'BULLISH' : 'BEARISH';
@@ -244,24 +251,88 @@ export class PredictionCompressor {
     }
 
     /**
-     * Select single primary target
+     * Magnet Zone Target Selection (Multi-POI overlapping)
      * @private
      */
-    static _selectTarget(bias, setups, probabilities) {
-        if (bias === 'NO_EDGE' || bias === 'NEUTRAL') {
+    static _selectTarget(bias, setups, probabilities, marketState) {
+        if (bias === 'NO_EDGE' || bias === 'NEUTRAL' || bias.includes('WAIT')) {
             return null;
         }
 
-        // Prioritize liquidity target if available
+        // 1. Prioritize Overlapping Magnet Zones (Institutional Confluence)
+        const pois = this._getRelevantPOIs(bias, marketState);
+        if (pois.length > 1) {
+            // Weighted center of closest 2-3 POIs
+            const cluster = pois.slice(0, 3);
+            const weightedSum = cluster.reduce((sum, p) => sum + p.price * p.weight, 0);
+            const totalWeight = cluster.reduce((sum, p) => sum + p.weight, 0);
+            return weightedSum / totalWeight;
+        }
+
+        // 2. Fallback to Liquidity target if probability is strong
         if (probabilities.liquidityRun?.probability > 60) {
             return probabilities.liquidityRun.target;
         }
 
-        // Otherwise use first high-confidence setup's target
+        // 3. Setup Target
         const relevantSetup = setups.find(s => s.direction === bias);
         if (relevantSetup && relevantSetup.targets?.length > 0) {
             return relevantSetup.targets[0].price;
         }
+
+        return pois.length > 0 ? pois[0].price : null;
+    }
+
+    /**
+     * Extract and weight Points of Interest (POIs)
+     * @private
+     */
+    static _getRelevantPOIs(bias, marketState) {
+        const pois = [];
+        const currentPrice = marketState.price;
+
+        // Liquidity Pools (Weight: 1.0)
+        (marketState.liquidityPools || []).forEach(p => {
+            const isTarget = (bias === 'BULLISH' && p.price > currentPrice) ||
+                (bias === 'BEARISH' && p.price < currentPrice);
+            if (isTarget) pois.push({ price: p.price, weight: 1.0, type: 'LIQUIDITY' });
+        });
+
+        // Order Blocks (Weight: 0.8)
+        (marketState.orderBlocks || []).forEach(ob => {
+            const obPrice = (ob.high + ob.low) / 2;
+            const isTarget = (bias === 'BULLISH' && obPrice > currentPrice) ||
+                (bias === 'BEARISH' && obPrice < currentPrice);
+            if (isTarget) pois.push({ price: obPrice, weight: 0.8, type: 'OB' });
+        });
+
+        // Gaps (Weight: 0.6)
+        (marketState.fvgs || []).forEach(f => {
+            const gapPrice = (f.top + f.bottom) / 2;
+            const isTarget = (bias === 'BULLISH' && gapPrice > currentPrice) ||
+                (bias === 'BEARISH' && gapPrice < currentPrice);
+            if (isTarget) pois.push({ price: gapPrice, weight: 0.6, type: 'GAP' });
+        });
+
+        // Sort by proximity to current price
+        return pois.sort((a, b) => Math.abs(a.price - currentPrice) - Math.abs(b.price - currentPrice));
+    }
+
+    /**
+     * Detect candle wick rejections from key levels
+     * @private
+     */
+    static _detectRecentRejection(marketState) {
+        if (!marketState.lastCandle) return null;
+        const c = marketState.lastCandle;
+        const bodySize = Math.abs(c.open - c.close);
+        const candleRange = c.high - c.low;
+        const upperWick = c.high - Math.max(c.open, c.close);
+        const lowerWick = Math.min(c.open, c.close) - c.low;
+
+        // Significant wick rejection (> 60% of candle range)
+        if (upperWick > candleRange * 0.6) return { direction: 'BEARISH', strength: upperWick / candleRange };
+        if (lowerWick > candleRange * 0.6) return { direction: 'BULLISH', strength: lowerWick / candleRange };
 
         return null;
     }
@@ -325,6 +396,11 @@ export class PredictionCompressor {
         if (!pathClearance.clear) {
             confidence -= pathClearance.penalty;
         }
+
+        // Phase 71: Velocity Awareness (ATR/Momentum scaling)
+        const velocity = marketState.velocity || 0;
+        if (velocity > 1.2) confidence += 15; // High momentum support
+        else if (velocity < 0.5) confidence -= 10; // Stagnant, lower conviction
 
         // Phase 53: Session-Based Confidence Modifiers
         const sessionModifier = this._getSessionConfidenceModifier(marketState);
@@ -517,8 +593,12 @@ export class PredictionCompressor {
 
         // Volume
         if (marketState.volumeAnalysis?.isInstitutional) {
-            components.push('institutional volume');
+            components.push('insitutional volume');
         }
+
+        // Velocity & Gaps (Phase 71)
+        if (marketState.velocity > 1.2) components.push('velocity-supported');
+        if (marketState.relevantGap) components.push('magnetic imbalance');
 
         if (components.length === 0) {
             components.push('technical alignment');

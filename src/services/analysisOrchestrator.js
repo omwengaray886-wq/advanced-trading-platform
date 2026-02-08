@@ -298,6 +298,11 @@ export class AnalysisOrchestrator {
             marketState.activeShock = activeShock;
             marketState.hazards = ExecutionHazardDetector.detectHazards(candles, marketState, assetParams);
 
+            // Phase 71: Velocity & Last Candle for Predictive Intelligence Upgrade
+            marketState.lastCandle = lastCandle;
+            marketState.velocity = this._calculateVelocity(candles, marketState.atr);
+            marketState.orderBlocks = obs; // Reference to order blocks detected earlier
+
             // Step 3.9.5: Prediction Accuracy Upgrade (Layer 1 & 2)
             // Detect Market Obligations (Liquidity Magnets / Unfinished Business)
             const obligationAnalysis = MarketObligationEngine.detectObligations(marketState, candles);
@@ -1409,5 +1414,24 @@ export class AnalysisOrchestrator {
         }
 
         return { profile, contextTF, entryTF };
+    }
+
+    /**
+     * Calculate Price Velocity (Momentum)
+     * Phase 71: Higher velocity = faster price movement toward targets
+     * @private
+     */
+    _calculateVelocity(candles, atr) {
+        if (!candles || candles.length < 10) return 0;
+
+        const recent = candles.slice(-10);
+        const priceChange = Math.abs(recent[recent.length - 1].close - recent[0].close);
+        const avgPrice = (recent[recent.length - 1].close + recent[0].close) / 2;
+        const percentChange = (priceChange / avgPrice) * 100;
+
+        // Normalize by ATR (volatility-adjusted momentum)
+        const normalizedVelocity = atr > 0 ? percentChange / (atr / avgPrice) : 0;
+
+        return normalizedVelocity; // >1.2 = High, <0.5 = Low
     }
 }
