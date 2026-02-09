@@ -1,4 +1,6 @@
 import { normalizeDirection, isInversePair } from '../utils/normalization.js';
+import { SentimentEngine } from './SentimentEngine.js';
+import { OrderBookEngine } from './OrderBookEngine.js';
 
 /**
  * Edge Scoring Engine (Phase 51)
@@ -134,21 +136,29 @@ export class EdgeScoringEngine {
 
         // 6. Cross-Asset Consensus (Macro Alignment)
         const macroAlignment = marketState.macroSentiment;
-        if (macroAlignment && macroAlignment.bias !== 'NEUTRAL' && macroAlignment.bias !== 'SELF') {
+        if (macroAlignment && macroAlignment.bias && macroAlignment.bias !== 'NEUTRAL') {
             const macroBias = normalizeDirection(macroAlignment.bias);
-            const isInverse = isInversePair(symbol, 'DXY'); // Simplified for common benchmark
+            const isInverse = isInversePair(symbol, 'DXY');
 
             let isAligned = macroBias === setupDir;
-            if (isInverse && macroBias !== 'NEUTRAL') {
-                isAligned = macroBias !== setupDir; // Inverse: BULLISH DXY = BEARISH Setup
-            }
+            if (isInverse) isAligned = (macroBias !== setupDir && macroBias !== 'NEUTRAL');
 
-            if (!isAligned && macroBias !== 'NEUTRAL') {
+            if (isAligned) {
+                totalPoints += 15;
+                positives.push(`Macro Correlation alignment (${macroAlignment.bias}${isInverse ? ' - Inverse' : ''})`);
+            } else {
                 totalPoints -= 15;
-                risks.push(`Macro Conflict: Benchmark is ${macroBias}${isInverse ? ' (Inverse)' : ''}`);
-            } else if (isAligned) {
-                totalPoints += 5;
-                positives.push('Macro Correlation alignment');
+                risks.push(`Macro Conflict: Benchmark is ${macroAlignment.bias}${isInverse ? ' (Inverse)' : ''}`);
+            }
+        }
+
+        // 7. Order Book Depth & Walls
+        const depthAnalysis = marketState.orderBookDepth || marketState.orderBook;
+        if (depthAnalysis) {
+            const depthBonus = OrderBookEngine.getDepthAlignmentBonus(setup.direction, depthAnalysis);
+            if (depthBonus > 0) {
+                totalPoints += (depthBonus * 1.5);
+                positives.push('Institutional depth pressure alignment');
             }
         }
 
@@ -164,27 +174,27 @@ export class EdgeScoringEngine {
             risks.push(`Trap Zone Detected: ${marketState.trapZones.warning || 'Pattern Failure'}`);
         }
 
-        // AMD Cycle Calibration
-        const cycle = marketState.marketCycle;
+        // 8. AMD Cycle Calibration
+        const cycle = marketState.marketCycle || marketState.amdCycle;
         if (cycle && cycle.phase !== 'UNKNOWN') {
-            const cycleDir = normalizeDirection(cycle.direction);
+            const cycleDir = normalizeDirection(cycle.direction || cycle.bias);
             if (cycle.phase === 'MANIPULATION') {
                 const isJudas = cycleDir === setupDir;
                 if (isJudas) {
                     totalPoints -= 40;
                     risks.push('CRITICAL: High probability Judas Swing (Manipulation phase)');
                 } else {
-                    totalPoints += 15;
-                    positives.push('Fading manipulation move');
+                    totalPoints += 25;
+                    positives.push('Fading manipulation move (Pro-Trend)');
                 }
-            } else if (cycle.phase === 'DISTRIBUTION') {
+            } else if (cycle.phase === 'DISTRIBUTION' || cycle.phase === 'EXPANSION') {
                 const isTrendAligned = cycleDir === setupDir;
                 if (isTrendAligned) {
                     totalPoints += 20;
-                    positives.push('Institutional Distribution alignment');
+                    positives.push(`Institutional ${cycle.phase} alignment`);
                 } else {
                     totalPoints -= 30;
-                    risks.push('Counter-institutional distribution conflict');
+                    risks.push(`Counter-institutional ${cycle.phase} conflict`);
                 }
             } else if (cycle.phase === 'ACCUMULATION') {
                 totalPoints -= 10;
@@ -192,18 +202,52 @@ export class EdgeScoringEngine {
             }
         }
 
-        // 7. Institutional Flow & Sentiment
-        const alpha = marketState.institutionalFlow;
-        const sentiment = marketState.sentiment;
-
-        if (alpha && alpha.score !== 0) {
-            totalPoints += alpha.score;
-            if (alpha.score > 0) positives.push(`Institutional Flow Alpha: ${alpha.summary}`);
-            else risks.push(`Institutional Flow Headwind: ${alpha.summary}`);
+        // 9. Institutional Liquidity Sweep (Phase 52)
+        const sweep = marketState.liquiditySweep;
+        if (sweep && sweep.isSweepDetected) {
+            const sweepDir = normalizeDirection(sweep.side === 'BUY_SIDE' ? 'LONG' : 'SHORT');
+            if (sweepDir === setupDir) {
+                totalPoints += 30;
+                positives.push(`Institutional Liquidity Sweep (${sweep.type || 'HUNT'})`);
+            }
         }
 
+        // 10. Institutional Flow Alpha (Alpha Tracker)
+        const alphaStats = marketState.alphaMetrics || marketState.alphaStats;
+        const alphaLeaks = marketState.alphaLeaks || [];
+
+        if (alphaStats) {
+            const contributingEngines = [setup.strategy?.name?.toUpperCase() || 'UNKNOWN'];
+            if (marketState.orderBookDepth || marketState.orderBook) contributingEngines.push('ORDER_BOOK', 'LIVE_DOM');
+            if (marketState.divergences?.length > 0) contributingEngines.push('SMT');
+            if (marketState.relevantGap || marketState.fvgs?.length > 0) contributingEngines.push('FVG');
+            if (marketState.macroSentiment) contributingEngines.push('SENTIMENT');
+            if (marketState.obligations?.primaryObligation) contributingEngines.push('MARKET_OBLIGATION');
+
+            let alphaBonus = 0;
+            contributingEngines.forEach(engineId => {
+                const stats = alphaStats[engineId];
+                if (stats) {
+                    if (stats.status === 'INSTITUTIONAL') alphaBonus += 15;
+                    else if (stats.status === 'HIGH_ALPHA') alphaBonus += 8;
+                    else if (stats.status === 'DEGRADING') alphaBonus -= 12;
+                }
+            });
+            const activeLeaks = alphaLeaks.filter(l => contributingEngines.includes(l.engine));
+            activeLeaks.forEach(leak => { alphaBonus -= leak.severity === 'HIGH' ? 20 : 10; });
+
+            if (alphaBonus !== 0) {
+                totalPoints += alphaBonus;
+                if (alphaBonus > 0) positives.push('Institutional Alpha Alignment');
+                else risks.push('Institutional Alpha Headwind');
+            }
+        }
+
+        // 11. Crowd Sentiment Alignment
+        const sentiment = marketState.sentiment || marketState.macroSentiment;
+
         if (sentiment && sentiment.label !== 'NEUTRAL') {
-            const sentimentDir = normalizeDirection(sentiment.bias);
+            const sentimentDir = normalizeDirection(sentiment.bias || sentiment.label);
             if (sentimentDir === setupDir && sentimentDir !== 'NEUTRAL') {
                 totalPoints += 5;
                 positives.push(`Crowd Sentiment Alignment (${sentiment.label})`);

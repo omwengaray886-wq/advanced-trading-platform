@@ -305,15 +305,15 @@ export class AnalysisOrchestrator {
             });
 
             // Step 3.2: Analyze Correlations (Macro Bias)
-            let correlation = { status: 'NEUTRAL', bias: 0 };
+            let macroCorrelation = { status: 'NEUTRAL', bias: 0 };
             if (!isLight) {
                 try {
-                    correlation = await this.correlationEngine.getCorrelationBias(symbol, assetClass);
+                    macroCorrelation = await this.correlationEngine.getCorrelationBias(symbol, assetClass);
                 } catch (corrError) {
                     console.warn(`[Analysis] Correlation Engine failed for ${symbol}:`, corrError.message);
                 }
             }
-            marketState.correlation = correlation;
+            marketState.macroCorrelation = macroCorrelation;
 
             // Phase 3: Correlation Cluster Detection (Institutional Concentrated Risk)
             if (!isLight) {
@@ -432,13 +432,17 @@ export class AnalysisOrchestrator {
                     const basketKey = BasketArbitrageEngine._findBasketForSymbol(symbol);
                     if (basketKey) {
                         const symbols = BasketArbitrageEngine.baskets[basketKey];
-                        // Fetch history (current and open24h proxy) for basket
-                        for (const s of symbols) {
-                            const hist = await marketData.fetchHistory(s, '1d', 2);
+                        // Phase 55: Parallelize basket fetching
+                        const basketData = await Promise.all(
+                            symbols.map(s => marketData.fetchHistory(s, '1d', 2).catch(() => null))
+                        );
+
+                        symbols.forEach((s, idx) => {
+                            const hist = basketData[idx];
                             if (hist && hist.length >= 2) {
                                 basketPrices.set(s, { current: hist[hist.length - 1].close, open24h: hist[0].close });
                             }
-                        }
+                        });
                         const arbitrage = BasketArbitrageEngine.calculateBasketDivergence(symbol, basketPrices);
                         marketState.basketArbitrage = arbitrage;
                     }
@@ -598,284 +602,169 @@ export class AnalysisOrchestrator {
             // If candidates are unbalanced, fill with best 'all' options
             if (candidates.length < 4) {
                 selection.all.forEach(c => {
-                    if (setups.length < 4 && !candidates.find(cand => cand.strategy.name === c.strategy.name)) {
+                    if (candidates.length < 4 && !candidates.find(cand => cand.strategy.name === c.strategy.name)) {
                         candidates.push(c);
                     }
                 });
             }
 
-            // CRITICAL: Filter candidates that fail to produce valid trade parameters
-            const validSetups = [];
-
-            for (let i = 0; i < candidates.length; i++) {
-                if (validSetups.length >= 4) break;
-
-                const c = candidates[i];
+            // Phase 55: Parallelize Candidate Evaluation
+            const { DirectionalConfidenceGate: Gate } = await import('../analysis/DirectionalConfidenceGate.js');
+            const candidateResults = await Promise.all(candidates.map(async (c) => {
                 const direction = selection.long.includes(c) ? 'LONG' : 'SHORT';
 
-                // Generates annotations (Entry, SL, TP)
-                const annotations = c.strategy.generateAnnotations(candles, marketState, direction);
-                const riskParams = this.extractRiskParameters(annotations);
+                try {
+                    // 1. Generate annotations & extract risk
+                    const annotations = c.strategy.generateAnnotations(candles, marketState, direction);
+                    const riskParams = this.extractRiskParameters(annotations);
 
-                // Phase 48: Institutional Liquidity Refinement
-                if (marketState.orderBook) {
-                    this.refineLevelsWithLiquidity(riskParams, marketState, direction);
-
-                    // Sync refinements back to annotations for visualization
-                    this.updateAnnotationsWithRefinements(annotations, riskParams, marketState);
-                }
-
-                // STRICT ALIGNMENT ENFORCEMENT
-                // Ensure Entry/SL/TP logic is geometrically valid before proceeding
-                if (riskParams.entry && riskParams.stopLoss && riskParams.targets?.length > 0) {
-                    const entryPrice = riskParams.entry.optimal;
-                    // 1. Correct Directionality
-                    if (direction === 'LONG' && riskParams.stopLoss >= entryPrice) {
-                        riskParams.stopLoss = entryPrice * 0.99; // Force 1% SL if invalid
-                    } else if (direction === 'SHORT' && riskParams.stopLoss <= entryPrice) {
-                        riskParams.stopLoss = entryPrice * 1.01; // Force 1% SL if invalid
+                    // Refinement
+                    if (marketState.orderBook) {
+                        this.refineLevelsWithLiquidity(riskParams, marketState, direction);
+                        this.updateAnnotationsWithRefinements(annotations, riskParams, marketState);
                     }
 
-                    // 2. Enforce Minimum R:R of 1.5
-                    const risk = Math.abs(entryPrice - riskParams.stopLoss);
-                    const minReward = risk * 1.5;
-
-                    if (direction === 'LONG') {
-                        if (riskParams.targets[0].price <= entryPrice + minReward) {
-                            riskParams.targets[0].price = entryPrice + minReward;
+                    // Geometry Validation
+                    if (riskParams.entry && riskParams.stopLoss && riskParams.targets?.length > 0) {
+                        const entryPrice = riskParams.entry.optimal;
+                        if (direction === 'LONG' && riskParams.stopLoss >= entryPrice) {
+                            riskParams.stopLoss = entryPrice * 0.99;
+                        } else if (direction === 'SHORT' && riskParams.stopLoss <= entryPrice) {
+                            riskParams.stopLoss = entryPrice * 1.01;
                         }
-                    } else {
-                        if (riskParams.targets[0].price >= entryPrice - minReward) {
-                            riskParams.targets[0].price = entryPrice - minReward;
+                        const risk = Math.abs(entryPrice - riskParams.stopLoss);
+                        const minReward = risk * 1.5;
+                        if (direction === 'LONG') {
+                            if (riskParams.targets[0].price <= entryPrice + minReward) {
+                                riskParams.targets[0].price = entryPrice + minReward;
+                            }
+                        } else {
+                            if (riskParams.targets[0].price >= entryPrice - minReward) {
+                                riskParams.targets[0].price = entryPrice - minReward;
+                            }
                         }
                     }
-                }
-                if (!riskParams.entry || !riskParams.stopLoss) {
-                    // Optional: You could add a console warning or default values here if needed
-                    // console.warn(`Setup ${c.strategy.name} incomplete but kept per user request.`);
-                }
 
-                // Phase 5: Bayesian Inference (Moved Up for Scoring)
-                const bayesianStats = await bayesianEngine.getPosteriorCredibility(symbol, c.strategy.name, marketState.regime);
+                    // 2. Heavy Parallel Checks (Bayesian + Gate)
+                    const [bayesianStats, validation] = await Promise.all([
+                        bayesianEngine.getPosteriorCredibility(symbol, c.strategy.name, marketState.regime),
+                        Gate.validateDirection({ ...c, direction, ...riskParams }, marketState, candles, symbol)
+                    ]);
 
-                // --- PHASE 56: DIRECTIONAL CONFIDENCE GATE ---
-                // Dynamically imported to prevent initialization circularity
-                const { DirectionalConfidenceGate: Gate } = await import('../analysis/DirectionalConfidenceGate.js');
-                const validation = await Gate.validateDirection(
+                    // Skip low confidence
+                    if (!validation.isValid && validation.confidence < 0.3) return null;
 
-                    { ...c, direction, ...riskParams },
-                    marketState,
-                    candles,
-                    symbol
-                );
+                    // 3. Scoring
+                    const edgeAnalysis = EdgeScoringEngine.calculateScore(
+                        { ...c, direction, ...riskParams },
+                        marketState,
+                        bayesianStats,
+                        symbol
+                    );
 
-                // Skip or downgrade based on confidence
-                if (!validation.isValid && validation.confidence < 0.3) {
-                    console.log(`[CONFIDENCE GATE] Rejecting ${c.strategy.name} due to low directional conviction (${validation.confidence}).`);
-                    continue;
-                }
+                    let quantScore = edgeAnalysis.score * 10;
 
-                // Phase 51: Edge Scoring Engine Integration
-                // Calculates normalized score (0-10) based on all factors including Bayesian stats and Magnets
-                const edgeAnalysis = EdgeScoringEngine.calculateScore(
-                    { ...c, direction, ...riskParams },
-                    marketState,
-                    bayesianStats,
-                    symbol
-                );
-
-                // Attach validation metrics for ExplanationEngine
-                const setupWithConfidence = {
-                    ...c,
-                    direction,
-                    ...riskParams,
-                    edgeAlpha: edgeAnalysis.score,
-                    directionalConfidence: validation.confidence,
-                    confidenceChecks: validation.failedChecks,
-                    isHighConfidence: validation.isValid,
-                    bayesianStats
-                };
-
-                let quantScore = edgeAnalysis.score * 10; // Convert 1-10 string back to 0-100 for legacy compatibility
-
-                // Phase 6: Macro Alignment Bonus
-                const macroBonus = SentimentEngine.getMacroAlignmentBonus(direction, marketState.macroSentiment);
-                quantScore = Math.max(0, Math.min(100, quantScore + macroBonus));
-
-                // Phase 7: Alpha Weighting Integration
-                if (alphaStats) {
-                    // Engines contributing to this setup (strategy name + context markers)
-                    const contributingEngines = [c.strategy.name.toUpperCase()];
-                    if (marketState.orderBookDepth) contributingEngines.push('ORDER_BOOK', 'LIVE_DOM');
-                    if (marketState.smtDivergence) contributingEngines.push('SMT');
-                    if (marketState.relevantGap) contributingEngines.push('FVG');
-                    if (marketState.macroSentiment) contributingEngines.push('SENTIMENT');
-                    if (marketState.obligations?.primaryObligation) contributingEngines.push('MARKET_OBLIGATION');
-
-                    let alphaBonus = 0;
-                    contributingEngines.forEach(engineId => {
-                        const stats = alphaStats[engineId];
-                        if (stats) {
-                            // Boost if High Alpha, penalize if Degrading
-                            if (stats.status === 'INSTITUTIONAL') alphaBonus += 15;
-                            else if (stats.status === 'HIGH_ALPHA') alphaBonus += 8;
-                            else if (stats.status === 'DEGRADING') alphaBonus -= 12;
-                        }
-                    });
-
-                    // Check for Alpha Leaks (Engine Hazards)
-                    const activeLeaks = alphaLeaks.filter(l => contributingEngines.includes(l.engine));
-                    activeLeaks.forEach(leak => {
-                        alphaBonus -= leak.severity === 'HIGH' ? 20 : 10;
-                    });
-
-                    quantScore = Math.max(0, Math.min(100, quantScore + alphaBonus));
-                }
-
-                // Phase 7: Order Book Alignment Bonus
-                if (marketState.orderBookDepth) {
-                    const depthBonus = OrderBookEngine.getDepthAlignmentBonus(direction, marketState.orderBookDepth);
-                    quantScore = Math.max(0, Math.min(100, quantScore + depthBonus));
-                }
-
-                // Phase 6: Volatility-Adjusted Targets
-                if (marketState.volatility && riskParams.targets?.length > 0) {
-                    const baseDistance = riskParams.targets[0].price - riskParams.entry.optimal;
-                    const adjustedDistance = VolatilityEngine.adjustTargetForVolatility(baseDistance, marketState.volatility);
-
-                    if (direction === 'LONG') {
-                        riskParams.targets[0].price = riskParams.entry.optimal + adjustedDistance;
-                    } else {
-                        riskParams.targets[0].price = riskParams.entry.optimal - adjustedDistance;
+                    // Volatility-Adjusted Targets
+                    if (marketState.volatility && riskParams.targets?.length > 0) {
+                        const baseDistance = riskParams.targets[0].price - riskParams.entry.optimal;
+                        const adjustedDistance = VolatilityEngine.adjustTargetForVolatility(baseDistance, marketState.volatility);
+                        if (direction === 'LONG') riskParams.targets[0].price = riskParams.entry.optimal + adjustedDistance;
+                        else riskParams.targets[0].price = riskParams.entry.optimal - adjustedDistance;
                     }
-                }
 
-                // Calculate Capital Friendliness
-                const capitalScore = this.calculateCapitalFriendliness(riskParams, assetParams);
-                const capitalTag = capitalScore > 0.8 ? 'Small Account Friendly' :
-                    capitalScore > 0.5 ? 'Moderate Capital Required' : 'High Margin / Advanced';
+                    // --- RISK & SIZING LOGIC ---
+                    const capitalScore = this.calculateCapitalFriendliness(marketState, assetParams);
+                    const capitalTag = capitalScore > 0.8 ? 'Institutional / Low Margin' :
+                        capitalScore > 0.5 ? 'Moderate Capital Required' : 'High Margin / Advanced';
 
-                // --- Institutional Risk Logic ---
-                const hasRiskParams = riskParams && riskParams.entry && riskParams.stopLoss;
-                const stopDistance = hasRiskParams ? Math.abs(riskParams.entry.optimal - riskParams.stopLoss) : 0;
+                    const hasRiskParams = riskParams && riskParams.entry && riskParams.stopLoss;
+                    const stopDistance = hasRiskParams ? Math.abs(riskParams.entry.optimal - riskParams.stopLoss) : 0;
 
-                // Phase 8: Dynamic Kelly Sizing
-                const winRate = performanceWeights[c.strategy.name]?.winRate || 0.45; // Default 45%
-                const riskReward = (riskParams.targets?.length > 0) ? (Math.abs(riskParams.targets[0].price - riskParams.entry.optimal) / stopDistance) : 2.0;
-                const kellyRisk = ExecutionEngine.calculateKellySize(winRate, riskReward, quantScore / 100);
+                    const winRate = (performanceWeights[c.strategy.name] || {}).winRate || 0.45;
+                    const riskReward = (riskParams.targets?.length > 0) ? (Math.abs(riskParams.targets[0].price - riskParams.entry.optimal) / stopDistance) : 2.0;
+                    const kellyRisk = ExecutionEngine.calculateKellySize(winRate, riskReward, quantScore / 100);
 
-                // Phase 40: Portfolio Risk Multiplier (Drawdown Protection)
-                const riskMultiplier = portfolioRiskService.getRiskMultiplier();
-                const adjustedKellyRisk = kellyRisk * riskMultiplier;
+                    const riskMultiplier = portfolioRiskService.getRiskMultiplier();
+                    const adjustedKellyRisk = kellyRisk * riskMultiplier;
 
-                const strategyWeight = performanceWeights[c.strategy.name] || 1.0;
-                const suggestedSize = hasRiskParams ? this.calculateInstitutionalSize(
-                    accountSize,
-                    adjustedKellyRisk, // Use drawdown-adjusted Kelly risk
-                    stopDistance,
-                    quantScore,
-                    assetClass,
-                    strategyWeight
-                ) : 0;
+                    const strategyWeight = (performanceWeights[c.strategy.name] || {}).weight || 1.0;
+                    const suggestedSize = hasRiskParams ? this.calculateInstitutionalSize(
+                        accountSize,
+                        adjustedKellyRisk,
+                        stopDistance,
+                        quantScore,
+                        assetClass,
+                        strategyWeight
+                    ) : 0;
 
-                // Determine Execution Complexity
-                const executionComplexity = this.calculateExecutionComplexity(marketState, assetParams);
+                    // Execution Complexity
+                    const executionComplexity = this.calculateExecutionComplexity(marketState, assetParams);
 
-                // Phase 8: SOR & VWAP Execution Optimization
-                let executionAdvice = null;
-                if (marketState.orderBookDepth) {
-                    const sor = ExecutionEngine.simulateSORMapping(suggestedSize || 1.0, marketState.orderBookDepth, direction);
-                    if (sor) {
-                        executionAdvice = {
-                            type: sor.recommendation,
-                            slippage: sor.slippage,
-                            vwap: ExecutionEngine.calculateVWAP(candles),
-                            urgency: ExecutionEngine.getExecutionUrgency(marketState.orderBookDepth.imbalance, direction),
-                            tranches: sor.tranches
-                        };
+                    // Precision Execution
+                    const executionPrecision = AssetClassAdapter.calculateExecutionPrecision(assetClass, timeframe, marketState.atr, lastCandle.time);
+                    const precisionBuffer = executionPrecision.dynamicBuffer || 0;
+                    const augmentedEntry = riskParams.entry ? {
+                        ...riskParams.entry,
+                        optimal: direction === 'LONG' ? riskParams.entry.optimal + precisionBuffer : riskParams.entry.optimal - precisionBuffer,
+                        hasBuffer: true
+                    } : null;
+
+                    // Consensus & News
+                    const macroCorr = marketState.macroCorrelation;
+                    let consensusAdjustment = 0;
+                    if (macroCorr && macroCorr.bias !== 'NEUTRAL' && macroCorr.bias !== 'SELF' && macroCorr.bias !== direction) {
+                        consensusAdjustment = 0.2;
                     }
-                }
+                    const newsPenalty = fundamentals.suitabilityPenalty || 0;
+                    const finalSuitability = Math.max(0.1, c.suitability - newsPenalty - consensusAdjustment);
+                    const finalQuantScore = Math.max(0, quantScore - (newsPenalty * 100) - (consensusAdjustment * 100));
 
-                // --- Precision Execution Logic (Phase 12) ---
-                const executionPrecision = AssetClassAdapter.calculateExecutionPrecision(assetClass, timeframe, marketState.atr, lastCandle.time);
+                    // Fractal guards
+                    const fractalHandshake = verifyFractalHandshake(marketState, direction);
 
-                // Detect Execution Hazards
-                const executionHazards = ExecutionHazardDetector.detectHazards(candles, marketState, assetParams);
-
-                const precisionBuffer = executionPrecision.dynamicBuffer || 0;
-                const augmentedEntry = riskParams.entry ? {
-                    ...riskParams.entry,
-                    optimal: direction === 'LONG' ?
-                        riskParams.entry.optimal + precisionBuffer :
-                        riskParams.entry.optimal - precisionBuffer,
-                    hasBuffer: true
-                } : null;
-
-                // Calculate final suitability with News and Consensus penalties (Phase 66)
-                const correlation = marketState.correlation;
-                let consensusAdjustment = 0;
-                if (correlation && correlation.bias !== 'NEUTRAL' && correlation.bias !== 'SELF' && correlation.bias !== direction) {
-                    consensusAdjustment = 0.2; // 20% penalty for correlation conflict
-                }
-
-                const newsPenalty = fundamentals.suitabilityPenalty || 0;
-                const finalSuitability = Math.max(0.1, c.suitability - newsPenalty - consensusAdjustment);
-                const finalQuantScore = Math.max(0, quantScore - (newsPenalty * 100) - (consensusAdjustment * 100));
-
-                // --- Phase 5: Fractal Guards ---
-                // Bayesian stats already calculated above
-                const fractalHandshake = verifyFractalHandshake(marketState, direction);
-
-                // Deep Intelligence Filter (Accuracy Gate)
-                const isAccuracyGuarded = bayesianStats.isSuppressed || !fractalHandshake;
-
-                if (!isAccuracyGuarded) {
-                    validSetups.push({
-                        id: String.fromCharCode(65 + validSetups.length), // A, B, C, D dynamically
-                        name: `Setup ${String.fromCharCode(65 + validSetups.length)}: ${c.strategy.name}`,
+                    return {
+                        ...c,
                         direction,
-                        timeframe: timeframe,
-                        entryZone: augmentedEntry, // Use buffered entry
+                        entryZone: augmentedEntry,
                         stopLoss: riskParams.stopLoss,
                         targets: riskParams.targets,
                         rr: riskParams.targets[0]?.riskReward || 0,
-                        strategy: c.strategy.name,
+                        edgeAlpha: edgeAnalysis.score,
+                        directionalConfidence: validation.confidence,
+                        confidenceChecks: validation.failedChecks,
+                        isHighConfidence: validation.isValid,
+                        bayesianStats,
                         quantScore: finalQuantScore,
                         suitability: finalSuitability,
-                        bayesianStats,
-
-                        // Phase 6: Monte Carlo Simulation (Outcome Distribution)
-                        // Only run for full analysis to preserve 200ms 'Instant' response time
-                        monteCarlo: !isLight ? monteCarloService.runSimulation({
-                            winRate: (winRate * 100).toFixed(0),
-                            profitFactor: riskReward,
-                            totalTrades: 100
-                        }, 500, 30, accountSize) : null,
                         fractalHandshake,
-                        orderFlowInfo: orderFlow.bias === direction ? 'ALIGNED' : 'COUNTER',
                         capitalScore,
                         capitalTag,
                         suggestedSize,
                         executionComplexity,
                         executionPrecision,
-                        executionAdvice, // Phase 8 execution intelligence
-                        executionHazards: executionHazards.map(h => ({
-                            ...h,
-                            isNewsRelated: h.type === 'NEWS_SHOCK_RISK'
-                        })),
-                        rationale: `${direction} opportunity detected via ${c.strategy.name}. Trend: ${marketState.mtf.globalBias}. Institutional Volume: ${marketState.volumeAnalysis.isInstitutional ? 'DETECTED' : 'LOW'}. ${activeShock ? 'Warning: High volatility news pending.' : ''}`,
-                        detailedRationale: `This ${direction} setup is triggered by ${c.strategy.name} confluence on the ${timeframe} timeframe. Technical basis includes: 1) Significant ${marketState.volumeAnalysis.isInstitutional ? 'Institutional' : 'Retail'} participation. 2) Structure alignment with ${marketState.mtf.globalBias} bias. 3) Proximity to ${marketState.relevantGap ? 'Fair Value Gap' : 'Liquidity Pool'}.${marketState.mtfBiasAligned ? ' 4) FULL MTF BIAS ALIGNMENT (4H/1D).' : ''} ${newsPenalty > 0 ? 'Note: Suitability reduced due to upcoming news shock.' : ''}`,
-                        institutionalTheme: c.strategy.getInstitutionalTheme ? c.strategy.getInstitutionalTheme() : 'General SMC',
-                        smtDivergence: marketState.smtDivergence,
-                        liquidityPools: marketState.liquidityPools?.slice(0, 5),
                         annotations,
-                        notes: c.strategy.getNotes ? c.strategy.getNotes(marketState) : []
-                    });
+                        rationale: `${direction} opportunity detected via ${c.strategy.name}. Trend: ${marketState.mtf.globalBias}. Institutional Volume: ${marketState.volumeAnalysis.isInstitutional ? 'DETECTED' : 'LOW'}.`,
+                        monteCarlo: !isLight ? monteCarloService.runSimulation({
+                            winRate: (winRate * 100).toFixed(0),
+                            profitFactor: riskReward,
+                            totalTrades: 100
+                        }, 500, 30, accountSize) : null
+                    };
+                } catch (e) {
+                    console.error(`Candidate evaluation failed for ${c.strategy.name}:`, e.message);
+                    return null;
                 }
-            }
+            }));
 
-            // Assign filtered setups to the main setups array
-            validSetups.forEach(s => setups.push(s));
+            setups = candidateResults
+                .filter(r => r !== null)
+                .sort((a, b) => b.quantScore - a.quantScore)
+                .slice(0, 4)
+                .map((s, idx) => ({
+                    ...s,
+                    id: String.fromCharCode(65 + idx),
+                    name: `Setup ${String.fromCharCode(65 + idx)}: ${s.strategy.name}`
+                }));
 
             // Phase 40: Optimize for Trader Profile
             this.optimizeForProfile(setups, marketState.profile);
@@ -919,7 +808,7 @@ export class AnalysisOrchestrator {
 
             // 1. Supply & Demand Zones
             // Using a simplified detection or reusing fvgs as a proxy for supply/demand
-            fvgs.forEach((f, idx) => {
+            fvgs.forEach((f) => {
                 baseAnnotations.push(new SupplyDemandZone(
                     f.top, f.bottom, candles[f.index].time,
                     f.type.includes('BULLISH') ? 'DEMAND' : 'SUPPLY',
@@ -1606,188 +1495,6 @@ export class AnalysisOrchestrator {
         setups.sort((a, b) => b.suitability - a.suitability);
     }
 
-    /**
-     * Calculate capital friendliness score for small accounts
-     * @param {Object} riskParams - Entry, SL, Targets
-     * @param {Object} assetParams - Asset properties (swing size etc)
-     * @returns {number} - Score (0-1)
-     */
-    /**
-     * Phase 48: Refine Entry/Exit levels using Order Book Liquidity
-     * "Front-runs" institutional walls and accounts for dynamic spread/slippage.
-     */
-    refineLevelsWithLiquidity(riskParams, marketState, direction) {
-        if (!riskParams.entry || !marketState.orderBook) return;
-
-        const { bids, asks } = marketState.orderBook;
-        const currentPrice = marketState.currentPrice;
-        const assetClass = marketState.assetClass || 'FOREX';
-
-        // 1. Get Precision Metrics (Dynamic Spread/Slippage)
-        const precisionParams = AssetClassAdapter.calculateExecutionPrecision(
-            assetClass,
-            marketState.timeframe,
-            marketState.volatility?.atr || 0
-        );
-
-        // buffer = spread impact + volatility buffer
-        const buffer = precisionParams.dynamicBuffer || (currentPrice * 0.0002);
-
-        // 2. Analyze Liquidity Walls (Whale Detection)
-        // Look for walls within 0.5% of the optimal entry
-        const searchRange = currentPrice * 0.005;
-        let bestWall = null;
-
-        if (direction === 'LONG') {
-            // For LONG: Look for BID walls (Support) BELOW current price to front-run
-
-            const nearbyBids = bids.filter(b => Math.abs(b.price - riskParams.entry.optimal) < searchRange);
-            const sortedBids = nearbyBids.sort((a, b) => b.quantity - a.quantity);
-            if (sortedBids.length > 0) bestWall = sortedBids[0]; // Largest wall
-
-            if (bestWall && bestWall.quantity > (marketState.avgVolume || 100) * 2) {
-                // FRONT-RUN STRATEGY: Place buy limit 1 tick ABOVE the Bid Wall
-                const frontRunPrice = bestWall.price + buffer;
-                riskParams.entry.optimal = frontRunPrice;
-                riskParams.entry.note = `Front-running Liquidity Wall at ${bestWall.price}`;
-            } else {
-                // Standard spread buffer
-                riskParams.entry.optimal += buffer;
-            }
-
-        } else {
-            // For SHORT: Look for ASK walls (Resistance) ABOVE current price
-            const nearbyAsks = asks.filter(a => Math.abs(a.price - riskParams.entry.optimal) < searchRange);
-            const sortedAsks = nearbyAsks.sort((a, b) => b.quantity - a.quantity);
-            if (sortedAsks.length > 0) bestWall = sortedAsks[0];
-
-            if (bestWall && bestWall.quantity > (marketState.avgVolume || 100) * 2) {
-                // FRONT-RUN STRATEGY: Place sell limit 1 tick BELOW the Ask Wall
-                const frontRunPrice = bestWall.price - buffer;
-                riskParams.entry.optimal = frontRunPrice;
-                riskParams.entry.note = `Front-running Liquidity Wall at ${bestWall.price}`;
-            } else {
-                // Standard spread buffer
-                riskParams.entry.optimal -= buffer;
-            }
-        }
-
-        // 3. Refine Take Profit Targets (Exit Front-Running)
-        if (riskParams.targets && riskParams.targets.length > 0) {
-            riskParams.targets.forEach(target => {
-                let bestExitWall = null;
-                const exitSearchRange = target.price * 0.005; // Look within 0.5% of target
-
-                if (direction === 'LONG') {
-                    // Exiting a LONG = SELLING.
-                    // We need to sell into Bids? No, we place a Sell Limit.
-                    // A Sell Limit sits on the ASK side.
-                    // We want to sell BEFORE a massive Resistance Wall (Ask Wall).
-                    // So look for ASK walls near the target.
-
-                    const nearbyAsks = asks.filter(a => Math.abs(a.price - target.price) < exitSearchRange);
-                    const sortedAsks = nearbyAsks.sort((a, b) => b.quantity - a.quantity);
-                    if (sortedAsks.length > 0) bestExitWall = sortedAsks[0];
-
-                    if (bestExitWall && bestExitWall.quantity > (marketState.avgVolume || 100) * 2) {
-                        // Place Sell Limit 1 tick BELOW the Ask Wall (Front-run resistance)
-                        // If target is 100, and wall is 99.90, we sell at 99.85?
-                        // If target is 100, and wall is 100.10, we sell at 100.05.
-                        // We want to capture the move UP TO the wall.
-
-                        // Logic: If there is a huge wall AT or NEAR our target, we undercut it.
-                        // If wall is at 100, we sell at 99.95.
-                        const refinedPrice = bestExitWall.price - buffer;
-
-                        // Only move target DOWN (don't extend risk if wall is further away)
-                        if (refinedPrice < target.price) {
-                            target.price = refinedPrice;
-                            target.note = `Front-running Resistance Wall at ${bestExitWall.price}`;
-                        }
-                    }
-
-                } else {
-                    // Exiting a SHORT = BUYING (Covering).
-                    // We place a Buy Limit.
-                    // We want to buy BEFORE a massive Support Wall (Bid Wall).
-                    // So look for BIDS near the target.
-
-                    const nearbyBids = bids.filter(b => Math.abs(b.price - target.price) < exitSearchRange);
-                    const sortedBids = nearbyBids.sort((a, b) => b.quantity - a.quantity);
-                    if (sortedBids.length > 0) bestExitWall = sortedBids[0];
-
-                    if (bestExitWall && bestExitWall.quantity > (marketState.avgVolume || 100) * 2) {
-                        // Place Buy Limit 1 tick ABOVE the Bid Wall (Front-run support)
-                        // If wall is at 100, we buy at 100.05.
-                        const refinedPrice = bestExitWall.price + buffer;
-
-                        // Only move target UP (don't extend risk/drawdown)
-                        if (refinedPrice > target.price) {
-                            target.price = refinedPrice;
-                            target.note = `Front-running Support Wall at ${bestExitWall.price}`;
-                        }
-                    }
-                }
-            });
-        }
-    }
-
-    /**
-     * Sync refined risk parameters back to annotations for visualization
-     * Also injects "Liquidity Wall" markers if front-running occurred.
-     */
-    updateAnnotationsWithRefinements(annotations, riskParams, marketState) {
-        // 1. Update Entry Zone
-        const entryAnnotation = annotations.find(a => a.type === 'ENTRY_ZONE');
-        if (entryAnnotation && riskParams.entry) {
-            // Update the zone to center around the refined optimal price
-            const currentOptimal = entryAnnotation.coordinates.price;
-            const diff = riskParams.entry.optimal - currentOptimal;
-
-            if (Math.abs(diff) > 0.000001) {
-                entryAnnotation.coordinates.price = riskParams.entry.optimal;
-                // Move zone boundaries too
-                if (entryAnnotation.coordinates.top) entryAnnotation.coordinates.top += diff;
-                if (entryAnnotation.coordinates.bottom) entryAnnotation.coordinates.bottom += diff;
-
-                // Add note about front-running
-                if (riskParams.entry.note && riskParams.entry.note.includes('Front-running')) {
-                    entryAnnotation.note = riskParams.entry.note;
-
-                    // Extract Wall Price from note "Front-running Liquidity Wall at X"
-                    const match = riskParams.entry.note.match(/at\s([\d.]+)/);
-                    if (match) {
-                        const wallPrice = parseFloat(match[1]);
-                        // Add a visual marker for the wall - Using correct LiquidityZone(price, type, meta) signature
-                        annotations.push(new LiquidityZone(
-                            wallPrice,
-                            'ORDER_BOOK_WALL',
-                            {
-                                label: '🐳 WHALE WALL',
-                                width: wallPrice * 0.001, // 0.1% width visual
-                                liquidity: 'HIGH',
-                                type: 'ORDER_BOOK_WALL' // Override for mapper
-                            }
-                        ));
-                    }
-                }
-            }
-        }
-
-        // 2. Update Targets
-        riskParams.targets.forEach((refinedTarget, index) => {
-            // Find corresponding target annotation
-            // Assuming order is preserved or matching by proximity
-            const targets = annotations.filter(a => a.type === 'TARGET_PROJECTION' && a.projectionType.startsWith('TARGET_'));
-            if (targets[index]) {
-                const t = targets[index];
-                if (Math.abs(t.coordinates.price - refinedTarget.price) > 0.000001) {
-                    t.coordinates.price = refinedTarget.price;
-                    if (refinedTarget.note) t.note = refinedTarget.note;
-                }
-            }
-        });
-    }
 
     /**
      * Calculate capital friendliness score for small accounts
@@ -2010,43 +1717,6 @@ export class AnalysisOrchestrator {
         return complexity;
     }
 
-    /**
-     * Calculate global Quant Confluence Score (0-100)
-     */
-    calculateQuantScore(marketState, setup) {
-        let score = 0;
-
-        // 1. Technical Suitability (20 points)
-        score += (setup.suitability * 20);
-
-        // 2. MTF Alignment (20 points)
-        if (marketState.mtf?.globalBias === setup.direction) score += 20;
-
-        // 3. Correlation Consensus (10 points) (Phase 66)
-        if (marketState.correlation?.bias === setup.direction) score += 10;
-
-        // 4. Timing & Killzone (10 points) (Phase 66)
-        if (marketState.session?.killzone) score += 10;
-
-        // 5. Liquidity Targeting (15 points)
-        const institutionalLiq = marketState.liquidityPools?.some(p =>
-            p.type === 'INSTITUTIONAL_POOL' &&
-            ((setup.direction === 'LONG' && p.side === 'SELL_SIDE') ||
-                (setup.direction === 'SHORT' && p.side === 'BUY_SIDE'))
-        );
-        if (institutionalLiq) score += 15;
-
-        // 6. Market Obligations (10 points) (Phase 66)
-        if (marketState.obligations?.primaryObligation?.urgency > 75) score += 10;
-
-        // 7. Structure & CHoCH (15 points)
-        const hasCHoCH = (marketState.structuralEvents || []).some(e =>
-            e.markerType === 'CHOCH' && e.direction === setup.direction
-        );
-        if (hasCHoCH) score += 15;
-
-        return Math.round(Math.min(score, 100));
-    }
 
     /**
      * Get timeframe specific color (Phase 6 Requirement)

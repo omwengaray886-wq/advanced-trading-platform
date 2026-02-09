@@ -68,19 +68,9 @@ export class DirectionalConfidenceGate {
      */
     static async checkMultiTFTrend(direction, symbol, currentCandles) {
         try {
-            // Fetch multiple timeframes
+            // Fetch multiple timeframes concurrently
             const timeframes = ['15m', '1h', '4h', '1d'];
-            const mtfData = {};
-
-            // Fetch data for each timeframe
-            for (const tf of timeframes) {
-                try {
-                    mtfData[tf] = await marketData.fetchHistory(symbol, tf, 50);
-                } catch (e) {
-                    console.warn(`Failed to fetch ${tf} data:`, e.message);
-                    mtfData[tf] = null;
-                }
-            }
+            const mtfData = await marketData.fetchMultiTimeframe(symbol, timeframes, 50);
 
             // Analyze trend for each timeframe
             const trends = timeframes.map(tf => {

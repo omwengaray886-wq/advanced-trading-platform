@@ -58,8 +58,8 @@ export const mapSymbol = (symbol) => {
         'GBPUSDT': 'GBPUSDT',
         'AUDUSD': 'AUDUSDT',
         'AUDUSDT': 'AUDUSDT',
-        'NZDUSD': 'NZDUSDT',
-        'NZDUSDT': 'NZDUSDT',
+        'NZDUSD': 'AUDUSDT', // NZDUSDT often has low liquidity or API issues, proxy with AUD
+        'NZDUSDT': 'AUDUSDT',
         'USDTRY': 'USDTTRY',
         'USDZAR': 'USDTZAR',
         'USDMXN': 'USDTMXN',
@@ -96,6 +96,7 @@ export class MarketDataService {
         this.minReconnectDelay = 1000;
         this.maxReconnectDelay = 30000;
         this.isClosing = false;
+        this.pendingClose = false;
     }
 
     /**
@@ -113,7 +114,7 @@ export class MarketDataService {
             const mappedSymbol = mapSymbol(symbol);
             const binanceInterval = INTERVAL_MAP[interval] || interval;
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            const timeoutId = setTimeout(() => controller.abort(), 12000); // Increased to 12s for proxy hops
             const res = await fetch(`${BINANCE_REST_BASE}/klines?symbol=${mappedSymbol}&interval=${binanceInterval}&limit=${limit}`, {
                 signal: controller.signal
             });
@@ -129,13 +130,6 @@ export class MarketDataService {
             }));
         } catch (error) {
             console.error(`CRITICAL: API Connection Failed for ${symbol}`, error);
-            // Try to read response body if available (for 500 errors from proxy)
-            if (error.response) {
-                try {
-                    const errBody = await error.response.json(); // if it was a fetch response object, but here we caught an Error. 
-                    console.error('Error Body:', errBody);
-                } catch (e) { }
-            }
             throw new Error(`Market data unavailable for ${symbol} [${interval}]. Code: ${error.message}`);
         }
     }
@@ -173,7 +167,7 @@ export class MarketDataService {
         try {
             const mappedSymbol = mapSymbol(symbol);
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
             const res = await fetch(`${BINANCE_REST_BASE}/depth?symbol=${mappedSymbol}&limit=${limit}`, {
                 signal: controller.signal
             });
@@ -192,6 +186,8 @@ export class MarketDataService {
     }
 
     connect(symbol = 'btcusdt', interval = '1h') {
+        if (this.pendingClose) return;
+
         // Prevent overlapping connections for the same stream
         const mappedSymbol = mapSymbol(symbol).toLowerCase();
         const mappedInterval = INTERVAL_MAP[interval] || '1h';
@@ -214,16 +210,19 @@ export class MarketDataService {
             this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = () => {
-                if (this.isClosing) return;
+                if (this.isClosing || this.pendingClose) {
+                    this.ws.close();
+                    return;
+                }
                 console.log(`Connected to Binance stream: ${streamName}`);
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
-                this.stopPolling(); // Stop polling if WS connects
+                this.stopPolling();
                 this.notifyHealth();
             };
 
             this.ws.onmessage = (event) => {
-                if (this.isClosing) return;
+                if (this.isClosing || this.pendingClose) return;
                 const message = JSON.parse(event.data);
                 this.lastHeartbeat = Date.now();
 
@@ -246,8 +245,7 @@ export class MarketDataService {
             };
 
             this.ws.onerror = (error) => {
-                if (this.isClosing) return;
-                // console.error('WebSocket Error:', error); // Reduce spam
+                if (this.isClosing || this.pendingClose) return;
                 this.isConnected = false;
                 this.notifyHealth();
             };
@@ -255,170 +253,214 @@ export class MarketDataService {
             this.ws.onclose = () => {
                 this.isConnected = false;
                 this.notifyHealth();
-
+                this.pendingClose = false;
                 if (!this.isClosing) {
-                    // Exponential backoff with jitter
-                    const baseDelay = Math.min(this.maxReconnectDelay, this.minReconnectDelay * Math.pow(2, this.reconnectAttempts));
-                    const jitter = Math.random() * 1000; // Add random jitter to prevent thundering herd
-                    const delay = baseDelay + jitter;
-
-                    if (this.reconnectAttempts >= 5) {
-                        console.warn(`[WS] WebSocket unstable after 5 attempts. Switching to POLLING mode for ${this.activeSymbol}`);
-                        this.startPolling(); // Fallback to polling
-                        return; // Stop WS retries
-                    }
-
-                    console.log(`[WS] Disconnected from ${streamName}. Reconnecting in ${Math.round(delay / 1000)}s... (Attempt ${this.reconnectAttempts + 1}/5)`);
-
-                    setTimeout(() => {
-                        if (!this.isClosing && (!this.ws || this.ws.readyState === WebSocket.CLOSED)) {
-                            this.reconnectAttempts++;
-                            this.connect(this.activeSymbol, this.activeInterval);
-                        }
-                    }, delay);
+                    this.scheduleReconnect();
                 }
             };
         } catch (e) {
-            console.error("Failed to initiate WebSocket connection", e);
-            this.startPolling();
+            console.error('WebSocket connection failed:', e);
         }
-    }
-
-    startPolling() {
-        if (this.pollingInterval) return;
-        console.log('Starting polling fallback...');
-
-        // Poll every 1 minute
-        this.pollingInterval = setInterval(async () => {
-            if (this.isClosing) return;
-            try {
-                // Fetch just the last few candles effectively
-                const data = await this.fetchHistory(this.activeSymbol, this.activeInterval, 5);
-                if (data && data.length > 0) {
-                    const lastCandle = data[data.length - 1];
-                    this.notify(lastCandle);
-                    this.isConnected = true; // Pretend we are connected for UI
-                    this.latency = 200; // Fake latency
-                    this.notifyHealth();
-                }
-            } catch (e) {
-                console.warn('Polling failed:', e.message);
-            }
-        }, 60000);
-    }
-
-    stopPolling() {
-        if (this.pollingInterval) {
-            clearInterval(this.pollingInterval);
-            this.pollingInterval = null;
-        }
-    }
-
-    /**
-     * Subscribe to Live Depth Stream with pooled connections
-     */
-    subscribeToDepth(symbol, callback) {
-        const mappedSymbol = mapSymbol(symbol).toLowerCase();
-
-        // If already connected to this symbol, just return a fake "unsubscribe"
-        if (this.depthWS.has(mappedSymbol)) {
-            const existing = this.depthWS.get(mappedSymbol);
-            if (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING) {
-                console.log(`Using existing Depth stream for ${mappedSymbol}`);
-                return () => { };
-            }
-        }
-
-        // Clean up any failed or closed connection for this symbol
-        if (this.depthWS.has(mappedSymbol)) {
-            this.depthWS.get(mappedSymbol).close();
-            this.depthWS.delete(mappedSymbol);
-        }
-
-        try {
-            const streamUrl = `${BINANCE_WS_BASE}/${mappedSymbol}@depth20@100ms`;
-            const ws = new WebSocket(streamUrl);
-            this.depthWS.set(mappedSymbol, ws);
-
-            ws.onopen = () => console.log(`Connected to Depth Stream: ${mappedSymbol}`);
-
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.bids && data.asks) {
-                    const formatted = {
-                        bids: data.bids.map(b => ({ price: parseFloat(b[0]), quantity: parseFloat(b[1]) })),
-                        asks: data.asks.map(a => ({ price: parseFloat(a[0]), quantity: parseFloat(a[1]) })),
-                        lastUpdateId: data.lastUpdateId
-                    };
-                    callback(formatted);
-                }
-            };
-
-            ws.onerror = (err) => console.error(`Depth WS Error (${mappedSymbol}):`, err);
-
-            return () => {
-                if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-                    ws.onclose = null; // Prevent recursion if any
-                    ws.close();
-                }
-                this.depthWS.delete(mappedSymbol);
-            };
-        } catch (e) {
-            console.error("Depth WS failed", e);
-            return () => { };
-        }
-    }
-
-    subscribe(callback) {
-        this.subscribers.add(callback);
-        return () => this.subscribers.delete(callback);
-    }
-
-    subscribeHealth(callback) {
-        this.healthSubscribers.add(callback);
-        callback({ isConnected: this.isConnected, latency: this.latency });
-        return () => this.healthSubscribers.delete(callback);
-    }
-
-    notify(data) {
-        this.subscribers.forEach(callback => callback(data));
-    }
-
-    notifyHealth() {
-        const stats = { isConnected: this.isConnected, latency: this.latency };
-        this.healthSubscribers.forEach(callback => callback(stats));
     }
 
     disconnect() {
         this.isClosing = true;
+        this.pendingClose = true;
+        this.stopReconnect();
+
         if (this.ws) {
-            this.ws.onclose = null;
-            this.ws.onerror = null;
+            // Remove all custom listeners to prevent "Ping after close"
+            this.ws.onopen = null;
             this.ws.onmessage = null;
+            this.ws.onerror = null;
+
             if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
                 this.ws.close();
             }
             this.ws = null;
         }
 
-        // Also clear depth streams on global disconnect
-        this.depthWS.forEach((ws, symbol) => {
-            try {
-                ws.onclose = null;
-                ws.onerror = null;
-                ws.onmessage = null;
-                if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-                    ws.close();
-                }
-            } catch (e) {
-                console.warn(`Error closing depth WS for ${symbol}:`, e.message);
-            }
+        // Cleanup depth connections
+        this.depthWS.forEach(ws => {
+            ws.onmessage = null;
+            ws.close();
         });
         this.depthWS.clear();
 
         this.isConnected = false;
         this.notifyHealth();
     }
+                this.isConnected = false;
+this.notifyHealth();
+            };
+
+this.ws.onclose = () => {
+    this.isConnected = false;
+    this.notifyHealth();
+
+    if (!this.isClosing) {
+        // Exponential backoff with jitter
+        const baseDelay = Math.min(this.maxReconnectDelay, this.minReconnectDelay * Math.pow(2, this.reconnectAttempts));
+        const jitter = Math.random() * 1000; // Add random jitter to prevent thundering herd
+        const delay = baseDelay + jitter;
+
+        if (this.reconnectAttempts >= 5) {
+            console.warn(`[WS] WebSocket unstable after 5 attempts. Switching to POLLING mode for ${this.activeSymbol}`);
+            this.startPolling(); // Fallback to polling
+            return; // Stop WS retries
+        }
+
+        console.log(`[WS] Disconnected from ${streamName}. Reconnecting in ${Math.round(delay / 1000)}s... (Attempt ${this.reconnectAttempts + 1}/5)`);
+
+        setTimeout(() => {
+            if (!this.isClosing && (!this.ws || this.ws.readyState === WebSocket.CLOSED)) {
+                this.reconnectAttempts++;
+                this.connect(this.activeSymbol, this.activeInterval);
+            }
+        }, delay);
+    }
+};
+        } catch (e) {
+    console.error("Failed to initiate WebSocket connection", e);
+    this.startPolling();
+}
+    }
+
+startPolling() {
+    if (this.pollingInterval) return;
+    console.log('Starting polling fallback...');
+
+    // Poll every 1 minute
+    this.pollingInterval = setInterval(async () => {
+        if (this.isClosing) return;
+        try {
+            // Fetch just the last few candles effectively
+            const data = await this.fetchHistory(this.activeSymbol, this.activeInterval, 5);
+            if (data && data.length > 0) {
+                const lastCandle = data[data.length - 1];
+                this.notify(lastCandle);
+                this.isConnected = true; // Pretend we are connected for UI
+                this.latency = 200; // Fake latency
+                this.notifyHealth();
+            }
+        } catch (e) {
+            console.warn('Polling failed:', e.message);
+        }
+    }, 60000);
+}
+
+stopPolling() {
+    if (this.pollingInterval) {
+        clearInterval(this.pollingInterval);
+        this.pollingInterval = null;
+    }
+}
+
+/**
+ * Subscribe to Live Depth Stream with pooled connections
+ */
+subscribeToDepth(symbol, callback) {
+    const mappedSymbol = mapSymbol(symbol).toLowerCase();
+
+    // If already connected to this symbol, just return a fake "unsubscribe"
+    if (this.depthWS.has(mappedSymbol)) {
+        const existing = this.depthWS.get(mappedSymbol);
+        if (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING) {
+            console.log(`Using existing Depth stream for ${mappedSymbol}`);
+            return () => { };
+        }
+    }
+
+    // Clean up any failed or closed connection for this symbol
+    if (this.depthWS.has(mappedSymbol)) {
+        this.depthWS.get(mappedSymbol).close();
+        this.depthWS.delete(mappedSymbol);
+    }
+
+    try {
+        const streamUrl = `${BINANCE_WS_BASE}/${mappedSymbol}@depth20@100ms`;
+        const ws = new WebSocket(streamUrl);
+        this.depthWS.set(mappedSymbol, ws);
+
+        ws.onopen = () => console.log(`Connected to Depth Stream: ${mappedSymbol}`);
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.bids && data.asks) {
+                const formatted = {
+                    bids: data.bids.map(b => ({ price: parseFloat(b[0]), quantity: parseFloat(b[1]) })),
+                    asks: data.asks.map(a => ({ price: parseFloat(a[0]), quantity: parseFloat(a[1]) })),
+                    lastUpdateId: data.lastUpdateId
+                };
+                callback(formatted);
+            }
+        };
+
+        ws.onerror = (err) => console.error(`Depth WS Error (${mappedSymbol}):`, err);
+
+        return () => {
+            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                ws.onclose = null; // Prevent recursion if any
+                ws.close();
+            }
+            this.depthWS.delete(mappedSymbol);
+        };
+    } catch (e) {
+        console.error("Depth WS failed", e);
+        return () => { };
+    }
+}
+
+subscribe(callback) {
+    this.subscribers.add(callback);
+    return () => this.subscribers.delete(callback);
+}
+
+subscribeHealth(callback) {
+    this.healthSubscribers.add(callback);
+    callback({ isConnected: this.isConnected, latency: this.latency });
+    return () => this.healthSubscribers.delete(callback);
+}
+
+notify(data) {
+    this.subscribers.forEach(callback => callback(data));
+}
+
+notifyHealth() {
+    const stats = { isConnected: this.isConnected, latency: this.latency };
+    this.healthSubscribers.forEach(callback => callback(stats));
+}
+
+disconnect() {
+    this.isClosing = true;
+    if (this.ws) {
+        this.ws.onclose = null;
+        this.ws.onerror = null;
+        this.ws.onmessage = null;
+        if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+            this.ws.close();
+        }
+        this.ws = null;
+    }
+
+    // Also clear depth streams on global disconnect
+    this.depthWS.forEach((ws, symbol) => {
+        try {
+            ws.onclose = null;
+            ws.onerror = null;
+            ws.onmessage = null;
+            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                ws.close();
+            }
+        } catch (e) {
+            console.warn(`Error closing depth WS for ${symbol}:`, e.message);
+        }
+    });
+    this.depthWS.clear();
+
+    this.isConnected = false;
+    this.notifyHealth();
+}
 }
 
 export const marketData = new MarketDataService();

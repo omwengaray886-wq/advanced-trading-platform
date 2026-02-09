@@ -74,9 +74,9 @@ export default function ConfidenceTooltip({ prediction, marketState }) {
     }
 
     // Correlation
-    if (marketState.correlation?.bias && marketState.correlation.bias !== 'NEUTRAL') {
-        const corrConflict = (prediction.bias === 'BULLISH' && marketState.correlation.bias === 'BEARISH') ||
-            (prediction.bias === 'BEARISH' && marketState.correlation.bias === 'BULLISH');
+    if (marketState.macroCorrelation?.bias && marketState.macroCorrelation.bias !== 'NEUTRAL') {
+        const corrConflict = (prediction.bias === 'BULLISH' && marketState.macroCorrelation.bias === 'BEARISH') ||
+            (prediction.bias === 'BEARISH' && marketState.macroCorrelation.bias === 'BULLISH');
         if (corrConflict) {
             factors.push({
                 label: 'Macro Correlation',
