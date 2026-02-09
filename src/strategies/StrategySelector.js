@@ -82,7 +82,7 @@ export class StrategySelector {
                 }
 
                 // E. Macro Correlation Bias
-                const correlation = marketState.correlation;
+                const correlation = marketState.macroSentiment;
                 if (correlation && correlation.bias !== 'NEUTRAL') {
                     const correlationBias = this.constructor._normalizeDirection(correlation.bias);
                     if (correlationBias === normalizedDir) {

@@ -133,19 +133,19 @@ export class EdgeScoringEngine {
         }
 
         // 6. Cross-Asset Consensus (Macro Alignment)
-        const correlation = marketState.macroSentiment;
-        if (correlation && correlation.bias !== 'NEUTRAL' && correlation.bias !== 'SELF') {
-            const correlationBias = normalizeDirection(correlation.bias);
+        const macroAlignment = marketState.macroSentiment;
+        if (macroAlignment && macroAlignment.bias !== 'NEUTRAL' && macroAlignment.bias !== 'SELF') {
+            const macroBias = normalizeDirection(macroAlignment.bias);
             const isInverse = isInversePair(symbol, 'DXY'); // Simplified for common benchmark
 
-            let isAligned = correlationBias === setupDir;
-            if (isInverse && correlationBias !== 'NEUTRAL') {
-                isAligned = correlationBias !== setupDir; // Inverse: BULLISH DXY = BEARISH Setup
+            let isAligned = macroBias === setupDir;
+            if (isInverse && macroBias !== 'NEUTRAL') {
+                isAligned = macroBias !== setupDir; // Inverse: BULLISH DXY = BEARISH Setup
             }
 
-            if (!isAligned && correlationBias !== 'NEUTRAL') {
+            if (!isAligned && macroBias !== 'NEUTRAL') {
                 totalPoints -= 15;
-                risks.push(`Macro Conflict: Benchmark is ${correlationBias}${isInverse ? ' (Inverse)' : ''}`);
+                risks.push(`Macro Conflict: Benchmark is ${macroBias}${isInverse ? ' (Inverse)' : ''}`);
             } else if (isAligned) {
                 totalPoints += 5;
                 positives.push('Macro Correlation alignment');

@@ -472,7 +472,7 @@ export class PredictionCompressor {
      * @private
      */
     static _validateCorrelation(bias, marketState) {
-        const correlation = marketState.correlation;
+        const correlation = marketState.macroSentiment;
 
         if (!correlation || correlation.bias === 'NEUTRAL') {
             return { penalty: 0 };
