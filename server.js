@@ -73,8 +73,28 @@ class RequestQueue {
 const coinGeckoQueue = new RequestQueue(10); // 10 requests per minute for free tier
 
 // Enable CORS for frontend
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    'http://localhost:3001'
+];
+
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+    origin: (origin, callback) => {
+        // Allow same-origin requests (no origin header)
+        if (!origin) return callback(null, true);
+
+        // Allow localhost in dev
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+
+        // Allow all vercel.app subdomains and other production origins
+        if (origin.endsWith('.vercel.app') || process.env.NODE_ENV === 'production') {
+            return callback(null, true);
+        }
+
+        callback(new Error('Not allowed by CORS'));
+    },
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-API-KEY', 'X-API-SECRET']
 }));
@@ -88,6 +108,23 @@ const signRequest = (params, secret) => {
         .join('&');
     return crypto.createHmac('sha256', secret).update(query).digest('hex');
 };
+
+// 0. System Health & Connectivity Check
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'UP',
+        timestamp: new Date().toISOString(),
+        uptime: Math.floor((Date.now() - startTime) / 1000),
+        env: process.env.NODE_ENV || 'development',
+        vercel: !!process.env.VERCEL,
+        region: process.env.VERCEL_REGION || 'local',
+        config: {
+            hasGeminiKey: !!process.env.GEMINI_API_KEY,
+            hasNewsKey: !!process.env.NEWS_API_KEY,
+            hasCoinGeckoKey: !!process.env.COINGECKO_API_KEY
+        }
+    });
+});
 
 // 1. Proxy Endpoint for Binance Klines (Public)
 app.get('/api/binance/klines', async (req, res) => {
