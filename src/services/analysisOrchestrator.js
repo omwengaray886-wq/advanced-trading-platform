@@ -102,7 +102,7 @@ import { EdgeScoringEngine } from './edgeScoringEngine.js';
 import { CorrelationClusterEngine } from './CorrelationClusterEngine.js';
 import { PortfolioStressService, portfolioStressService } from './PortfolioStressService.js';
 import { monteCarloService } from './monteCarloService.js';
-import { PortfolioRiskService, portfolioRiskService } from './PortfolioRiskService.js';
+import { PortfolioRiskService, portfolioRiskService } from './portfolioRiskService.js';
 // DirectionalConfidenceGate is now dynamically imported in analyze() to break circular dependencies
 
 
