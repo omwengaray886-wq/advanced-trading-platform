@@ -34,7 +34,7 @@ export class PredictionCompressor {
 
         // 6. Generate Edge Score (Phase 51)
         const relevantSetup = setups.find(s => s.direction === bias) || setups[0];
-        const edge = EdgeScoringEngine.calculateScore(relevantSetup, marketState, probabilities);
+        const edge = EdgeScoringEngine.calculateScore(relevantSetup, marketState, probabilities, analysis.symbol);
 
         // 7. Multi-Horizon Intent
         const horizons = this._buildHorizons(bias, marketState, probabilities);
@@ -68,6 +68,11 @@ export class PredictionCompressor {
                 positives: edge.breakdown.positives,
                 risks: edge.breakdown.risks
             },
+
+            // Learning Metadata (Phase 52)
+            strategy: relevantSetup?.strategy || 'GENERIC',
+            regime: marketState.regime,
+            obligationState: marketState.obligations?.state || 'FREE_ROAMING',
 
             // Market State Snapshot for Audit
             snapshot: {
@@ -614,20 +619,37 @@ export class PredictionCompressor {
      * @returns {boolean} True if prediction should be shown
      */
     static shouldShowPrediction(marketState, probabilities) {
-        // Suppress if high-impact news pending
+        // 1. Suppress if high-impact news pending
         if (marketState.activeShock?.severity === 'HIGH') {
             return false;
         }
 
-        // Suppress if HTF/LTF conflict
+        // 2. Suppress if HTF/LTF conflict
         const htfBias = marketState.mtf?.globalBias || 'NEUTRAL';
         const ltfBias = marketState.trend?.direction || 'NEUTRAL';
 
         if (htfBias !== 'NEUTRAL' && ltfBias !== 'NEUTRAL' && htfBias !== ltfBias) {
-            return false;
+            // Only allow if we have a VERY strong reversal confirmation (Prob > 75%)
+            if (probabilities.reversal < 75) {
+                return false;
+            }
         }
 
-        // Suppress if all probabilities are weak
+        // 3. Strategic Conflict Check: Market Magnet (Phase 59)
+        // If there is a massive magnet (Urgency > 85) in the opposite direction, DO NOT PREDICT.
+        const primaryOb = marketState.obligations?.primaryObligation;
+        if (primaryOb && primaryOb.urgency > 85) {
+            const magnetDir = primaryOb.price > marketState.currentPrice ? 'BULLISH' : 'BEARISH';
+            const { continuation, reversal } = probabilities;
+            const predDir = continuation > reversal ? ltfBias : (ltfBias === 'BULLISH' ? 'BEARISH' : 'BULLISH');
+
+            if (magnetDir !== predDir) {
+                // console.log(`[ACCURACY] Suppressing prediction due to Magnet Conflict: Magnet ${magnetDir} vs Pred ${predDir}`);
+                return false;
+            }
+        }
+
+        // 4. Suppress if all probabilities are weak
         const maxProb = Math.max(
             probabilities.continuation || 0,
             probabilities.reversal || 0,
@@ -637,10 +659,9 @@ export class PredictionCompressor {
         // Phase 52 Upgrade: Obligation Gating
         const isObligated = marketState.obligations?.state === 'OBLIGATED';
 
-        // If Market is "Free Roaming" (No Obligation), we require massive statistical edge to predict.
-        // If Market is "Obligated" (Has Magnet), we accept standard conviction (40%).
-        // Lowered from 65 to 60 to be more responsive to standard trends.
-        const minThreshold = isObligated ? 40 : 60;
+        // ACCURACY UPGRADE: Increased thresholds for "Free Roaming" (No Magnet/Obligation)
+        // If we are just trend following without a clear "Need" to move, require 70% confidence.
+        const minThreshold = isObligated ? 45 : 70;
 
         if (maxProb < minThreshold) {
             return false;

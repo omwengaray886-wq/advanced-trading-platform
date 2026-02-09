@@ -10,6 +10,8 @@ export default function PortfolioRiskDashboard() {
     const riskMultiplier = portfolioRiskService.getRiskMultiplier();
     const isDefensive = riskMultiplier < 1.0;
     const netBias = portfolioRiskService.calculateNetDirectionalBias();
+    const concentrations = portfolioRiskService.calculateCurrencyConcentration();
+    const suggestions = portfolioRiskService.getHedgeSuggestions();
 
     return (
         <div style={{
@@ -50,6 +52,50 @@ export default function PortfolioRiskDashboard() {
                     </div>
                 </div>
             </div>
+
+            {/* Currency Concentration Trackers (Phase 4) */}
+            {Object.keys(concentrations).length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '4px' }}>
+                    {Object.entries(concentrations).map(([cur, stats]) => (
+                        <div key={cur} style={{
+                            fontSize: '9px',
+                            background: 'rgba(255,255,255,0.05)',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            display: 'flex',
+                            gap: '8px'
+                        }}>
+                            <span style={{ color: 'rgba(255,255,255,0.4)' }}>{cur}</span>
+                            <span style={{ fontWeight: 'bold' }}>
+                                <span style={{ color: 'var(--color-success)' }}>{stats.long}L</span> /
+                                <span style={{ color: 'var(--color-danger)' }}> {stats.short}S</span>
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Hedge Suggestions (Phase 4) */}
+            {suggestions.map((s, i) => (
+                <div key={i} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '12px',
+                    background: s.severity === 'CRITICAL' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                    borderRadius: '8px',
+                    border: `1px solid ${s.severity === 'CRITICAL' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`
+                }}>
+                    <PieChart size={16} color={s.severity === 'CRITICAL' ? '#ef4444' : '#f59e0b'} />
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '10px', fontWeight: 'bold', color: s.severity === 'CRITICAL' ? '#ef4444' : '#f59e0b', marginBottom: '2px' }}>
+                            {s.severity} CONCENTRATION: {s.currency}
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.4' }}>{s.recommendation}</div>
+                    </div>
+                </div>
+            ))}
 
             {isDefensive && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '6px' }}>

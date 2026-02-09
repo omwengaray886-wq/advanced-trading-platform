@@ -22,6 +22,8 @@ import FullscreenDOMPanel from '../components/features/FullscreenDOMPanel';
 import NewsContextPanel from '../components/features/NewsContextPanel';
 import MacroCalendar from '../components/features/MacroCalendar';
 import GlobalRiskHUD from '../components/features/GlobalRiskHUD';
+import { proactiveMonitor } from '../services/ProactiveMonitor';
+import { alertOrchestrator } from '../services/AlertOrchestrator';
 
 export default function Markets() {
     const assetRegistry = {
@@ -115,6 +117,7 @@ export default function Markets() {
     const [timeframe, setTimeframe] = useState('1H');
     const [viewMode, setViewMode] = useState('SINGLE'); // SINGLE or GRID
     const [showReport, setShowReport] = useState(true);
+    const { addToast } = useToast();
     const [loading, setLoading] = useState(false);
     const [complexityMode, setComplexityMode] = useState('ADVANCED'); // BEGINNER or ADVANCED
     const [isFullscreen, setIsFullscreen] = useState(false);
@@ -132,6 +135,42 @@ export default function Markets() {
     // Fullscreen state
     const [showLeftPanel, setShowLeftPanel] = useState(true);
     const [showRightPanel, setShowRightPanel] = useState(true);
+    const [isMonitoring, setIsMonitoring] = useState(proactiveMonitor.isRunning);
+
+    // Monitoring listener for cross-asset alerts (Phase 4)
+    useEffect(() => {
+        const unsubscribe = alertOrchestrator.onUpdate((alerts) => {
+            if (alerts.length > 0) {
+                const latest = alerts[0];
+                // Only toast if it's NOT the current symbol and it's fresh (within last 5s)
+                if (latest.symbol !== selectedPair && (Date.now() - latest.timestamp < 5000)) {
+                    addToast({
+                        type: latest.severity === 'HIGH' ? 'warning' : 'info',
+                        title: `INSTITUTIONAL SIGNAL: ${latest.symbol}`,
+                        message: latest.message,
+                        duration: 8000
+                    });
+                }
+            }
+        });
+        return unsubscribe;
+    }, [selectedPair, addToast]);
+
+    const handleToggleMonitoring = () => {
+        if (isMonitoring) {
+            proactiveMonitor.stop();
+        } else {
+            proactiveMonitor.start();
+        }
+        setIsMonitoring(!isMonitoring);
+        addToast({
+            type: 'info',
+            title: isMonitoring ? 'Monitoring Paused' : 'Fleet Scanning Active',
+            message: isMonitoring ? 'Background institutional scan stopped.' : 'Now scanning watchlist for footprints...',
+            duration: 3000
+        });
+    };
+
     const [activeDrawTool, setActiveDrawTool] = useState(null);
     const [indicators, setIndicators] = useState({
         volumeProfile: true,
@@ -140,7 +179,6 @@ export default function Markets() {
         institutionalLevels: true
     });
 
-    const { addToast } = useToast();
     const [chartData, setChartData] = useState([]);
     const [manualStrategy, setManualStrategy] = useState(null); // null means "Auto"
     const location = useLocation();
@@ -244,8 +282,8 @@ export default function Markets() {
     const [activeSetupId, setActiveSetupId] = useState('A');
 
     const handleGenerateAnalysis = async () => {
-        if (!chartData || chartData.length < 10) {
-            return addToast('Insufficient market data to generate analysis', 'warning');
+        if (!chartData || chartData.length < 50) {
+            return addToast('Insufficient market data for deep analysis (min 50 candles required). Please wait for the chart to populate.', 'warning');
         }
         setLoading(true);
         try {
@@ -387,6 +425,56 @@ export default function Markets() {
                         bottom: trap.location * 0.998,
                         time: trap.timestamp,
                         endTime: lastTime + 3600 // 1h projection
+                    }
+                });
+            });
+        }
+
+        // 4.5 Inject Phase 6: Dark Pools & Volatility Corridors
+        if (analysis.marketState?.darkPools) {
+            analysis.marketState.darkPools.forEach((pool, idx) => {
+                sourceAnnotations.push({
+                    id: `darkpool-${idx}-${pool.price}`,
+                    type: 'DARK_POOL',
+                    coordinates: {
+                        top: pool.price * 1.0005,
+                        bottom: pool.price * 0.9995,
+                        time: lastTime - (3600 * 5), // Show recent history
+                        endTime: lastTime + (3600 * 2) // Project forward
+                    }
+                });
+            });
+        }
+
+        if (analysis.marketState?.volatility?.corridor) {
+            const { upper, lower } = analysis.marketState.volatility.corridor;
+            const currentPrice = chartData[chartData.length - 1]?.close;
+            if (currentPrice) {
+                sourceAnnotations.push({
+                    id: 'volatility-corridor',
+                    type: 'VOLATILITY_CORRIDOR',
+                    coordinates: {
+                        top: currentPrice + upper,
+                        bottom: currentPrice - lower,
+                        time: lastTime,
+                        endTime: lastTime + (3600 * 4) // Project forward 4h
+                    }
+                });
+            }
+        }
+
+        // 4.6 Inject Phase 7: Order Book Walls
+        if (analysis.marketState?.orderBookDepth?.walls) {
+            analysis.marketState.orderBookDepth.walls.forEach((wall, idx) => {
+                sourceAnnotations.push({
+                    id: `orderbook-wall-${idx}-${wall.price}`,
+                    type: 'ORDER_BOOK_WALL',
+                    side: wall.side,
+                    coordinates: {
+                        top: wall.price * (1 + 0.0002), // Very thin line
+                        bottom: wall.price * (1 - 0.0002),
+                        time: lastTime,
+                        endTime: lastTime + (3600 * 1) // Project 1h forward
                     }
                 });
             });
@@ -535,7 +623,39 @@ export default function Markets() {
                         </div>
                         <div>
                             <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Volatility</div>
-                            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#f59e0b' }}>{analysis?.marketState?.volatility || 'NOMINAL'}</div>
+                            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#f59e0b' }}>
+                                {(typeof analysis?.marketState?.volatility === 'string' ? analysis?.marketState?.volatility : analysis?.marketState?.volatility?.volatilityState?.level) || 'NOMINAL'}
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Macro Sentiment</div>
+                            <div style={{
+                                fontSize: '14px',
+                                fontWeight: 'bold',
+                                color: analysis?.marketState?.macroSentiment?.bias === 'BULLISH' ? '#10b981' : analysis?.marketState?.macroSentiment?.bias === 'BEARISH' ? '#ef4444' : '#94a3b8'
+                            }}>
+                                {analysis?.marketState?.macroSentiment?.bias || 'NEUTRAL'}
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Basket Bias</div>
+                            <div style={{
+                                fontSize: '14px',
+                                fontWeight: 'bold',
+                                color: analysis?.marketState?.basketArbitrage?.signal === 'LEADER' ? '#10b981' : analysis?.marketState?.basketArbitrage?.signal === 'LAGGARD' ? '#f59e0b' : '#94a3b8'
+                            }}>
+                                {analysis?.marketState?.basketArbitrage?.signal || 'STABLE'}
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Order Book</div>
+                            <div style={{
+                                fontSize: '14px',
+                                fontWeight: 'bold',
+                                color: analysis?.marketState?.orderBookDepth?.pressure === 'BULLISH' ? '#10b981' : analysis?.marketState?.orderBookDepth?.pressure === 'BEARISH' ? '#ef4444' : '#94a3b8'
+                            }}>
+                                {analysis?.marketState?.orderBookDepth?.pressure || 'NEUTRAL'}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -782,6 +902,24 @@ export default function Markets() {
                                         </div>
                                         <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-accent-primary)' }}>
                                             SCORE: {analysis.setups?.find(s => s.id === activeSetupId)?.quantScore || analysis.setups?.[0]?.quantScore}%
+                                            {analysis.setups?.find(s => s.id === activeSetupId)?.strategy && (
+                                                <span style={{ fontSize: '9px', opacity: 0.6, marginLeft: '6px' }}>
+                                                    ({analysis.performanceWeights?.[analysis.setups.find(s => s.id === activeSetupId).strategy]?.toFixed(1) || '1.0'}x)
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Institutional Cycle Integrated */}
+                                    <div style={{ background: 'rgba(37, 99, 235, 0.1)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.2)', marginBottom: '16px' }}>
+                                        <div style={{ fontSize: '9px', color: 'rgba(59, 130, 246, 0.8)', fontWeight: 'bold', marginBottom: '4px' }}>INSTITUTIONAL CYCLE (AMD)</div>
+                                        <div style={{
+                                            fontSize: '14px',
+                                            fontWeight: 'bold',
+                                            color: analysis.marketState?.amdCycle?.phase === 'MANIPULATION' ? '#ef4444' :
+                                                analysis.marketState?.amdCycle?.phase === 'ACCUMULATION' ? '#f59e0b' : '#10b981'
+                                        }}>
+                                            {analysis.marketState?.amdCycle?.phase || 'PENDING'}
                                         </div>
                                     </div>
 
@@ -794,7 +932,7 @@ export default function Markets() {
                                         </div>
                                         <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
                                             <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>VOLATILITY</div>
-                                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#f59e0b' }}>{analysis.marketState?.volatility || 'NOMINAL'}</div>
+                                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#f59e0b' }}>{(typeof analysis.marketState?.volatility === 'string' ? analysis.marketState?.volatility : analysis.marketState?.volatility?.volatilityState?.level) || 'NOMINAL'}</div>
                                         </div>
                                         <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
                                             <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>OBLIGATION</div>
@@ -1191,6 +1329,26 @@ export default function Markets() {
                                             DOM <PanelRightOpen size={14} />
                                         </button>
                                         <button
+                                            onClick={handleToggleMonitoring}
+                                            style={{
+                                                padding: '6px 12px',
+                                                borderRadius: '6px',
+                                                border: '1px solid rgba(255,255,255,0.1)',
+                                                background: isMonitoring ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                color: isMonitoring ? '#10b981' : 'rgba(255,255,255,0.5)',
+                                                fontSize: '11px',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px'
+                                            }}
+                                            title="Background Fleet Scan"
+                                        >
+                                            <Activity size={14} className={isMonitoring ? 'animate-pulse' : ''} />
+                                            SCAN: {isMonitoring ? 'ON' : 'OFF'}
+                                        </button>
+                                        <button
                                             onClick={() => setIsFullscreen(false)}
                                             style={{
                                                 width: '32px',
@@ -1317,6 +1475,27 @@ export default function Markets() {
                                             </div>
                                             <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-accent-primary)' }}>
                                                 SCORE: {analysis.setups?.find(s => s.id === activeSetupId)?.quantScore || analysis.setups?.[0]?.quantScore}%
+                                                {analysis.setups?.find(s => s.id === activeSetupId)?.strategy && (
+                                                    <span style={{ fontSize: '9px', opacity: 0.6, marginLeft: '6px' }}>
+                                                        ({analysis.performanceWeights?.[analysis.setups.find(s => s.id === activeSetupId).strategy]?.toFixed(1) || '1.0'}x)
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Institutional Cycle Integrated (FS) */}
+                                        <div style={{ background: 'rgba(37, 99, 235, 0.1)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(37, 99, 235, 0.2)', marginBottom: '16px' }}>
+                                            <div style={{ fontSize: '10px', color: 'rgba(59, 130, 246, 0.8)', fontWeight: 'bold', marginBottom: '4px' }}>INSTITUTIONAL CYCLE (AMD)</div>
+                                            <div style={{
+                                                fontSize: '16px',
+                                                fontWeight: 'bold',
+                                                color: analysis.marketState?.amdCycle?.phase === 'MANIPULATION' ? '#ef4444' :
+                                                    analysis.marketState?.amdCycle?.phase === 'ACCUMULATION' ? '#f59e0b' : '#10b981'
+                                            }}>
+                                                {analysis.marketState?.amdCycle?.phase || 'PENDING'}
+                                            </div>
+                                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>
+                                                {analysis.marketState?.amdCycle?.note || 'Detecting institutional fingerprints...'}
                                             </div>
                                         </div>
 
@@ -1329,7 +1508,7 @@ export default function Markets() {
                                             </div>
                                             <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
                                                 <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>VOLATILITY</div>
-                                                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#f59e0b' }}>{analysis.marketState?.volatility || 'NOMINAL'}</div>
+                                                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#f59e0b' }}>{(typeof analysis.marketState?.volatility === 'string' ? analysis.marketState?.volatility : analysis.marketState?.volatility?.volatilityState?.level) || 'NOMINAL'}</div>
                                             </div>
                                             <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
                                                 <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>OBLIGATION</div>

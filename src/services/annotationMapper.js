@@ -90,6 +90,21 @@ export class AnnotationMapper {
                     config.borderColor = isBullTrap ? '#ef4444' : '#f59e0b';
                     config.icon = '🪤';
                     break;
+                case 'DARK_POOL':
+                    config.background = 'rgba(139, 92, 246, 0.25)'; // Deep Purple
+                    config.borderColor = '#8b5cf6';
+                    config.icon = '👓'; // Stealth icon
+                    break;
+                case 'VOLATILITY_CORRIDOR':
+                    config.background = 'rgba(94, 234, 212, 0.15)'; // Teal
+                    config.borderColor = '#5eead4';
+                    config.icon = '📊';
+                    break;
+                case 'ORDER_BOOK_WALL':
+                    config.background = 'rgba(249, 115, 22, 0.25)'; // Orange
+                    config.borderColor = '#f97316';
+                    config.icon = '🧱';
+                    break;
             }
             return config;
         };
@@ -102,7 +117,8 @@ export class AnnotationMapper {
             if ([
                 'ENTRY_ZONE', 'SUPPLY_DEMAND_ZONE', 'CONSOLIDATION_ZONE',
                 'ORDER_BLOCK', 'FAIR_VALUE_GAP', 'LIQUIDITY_ZONE',
-                'STRUCTURE_ZONE', 'CONFLUENCE_ZONE', 'PREMIUM_DISCOUNT_ZONE', 'CHOCH_ZONE', 'FVG', 'TRAP_ZONE'
+                'STRUCTURE_ZONE', 'CONFLUENCE_ZONE', 'PREMIUM_DISCOUNT_ZONE', 'CHOCH_ZONE', 'FVG', 'TRAP_ZONE',
+                'DARK_POOL', 'VOLATILITY_CORRIDOR', 'ORDER_BOOK_WALL'
             ].includes(anno.type)) {
 
                 const startTime = coords.startTime || coords.time || (lastCandleTime - (interval * 10));
@@ -202,6 +218,31 @@ export class AnnotationMapper {
                     color: color,
                     width: 1,
                     dashed: true
+                });
+            }
+
+            // 5. Magnet Lines (Phase 52)
+            else if (anno.type === 'MAGNET_LINE') {
+                // Visual Line
+                overlays.lines.push({
+                    id: anno.id || `magnet-${anno.price}`,
+                    start: { time: lastCandleTime - (interval * 50), price: anno.price },
+                    end: { time: futureTime, price: anno.price },
+                    color: anno.color,
+                    width: anno.urgency > 70 ? 2 : 1,
+                    dashed: true,
+                    opacity: 0.7
+                });
+
+                // Label at the end
+                overlays.labels.push({
+                    id: `lbl-${anno.id || anno.price}`,
+                    x: futureTime - (interval * 2),
+                    y: anno.price,
+                    text: anno.label,
+                    color: anno.color,
+                    direction: 'right',
+                    style: { left: futureTime, top: anno.price } // Fallback for some renderers
                 });
             }
 

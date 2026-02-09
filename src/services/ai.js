@@ -49,7 +49,8 @@ export async function generateTradeAnalysis(chartData, symbol, timeframe = '1H',
                 trapZones: analysisObj.trapZones,
                 dominantScenario: analysisObj.dominantScenario,
                 dominantBias: analysisObj.dominantBias,
-                liquidityMap: analysisObj.liquidityMap || []
+                liquidityMap: analysisObj.liquidityMap || [],
+                performanceWeights: analysisObj.performanceWeights
             };
 
         };
@@ -167,6 +168,12 @@ Your objective is to generate a **High-Fidelity Execution Narrative** for ${anal
 - **Imbalance**: ${analysis.marketState.relevantGap ? `FVG Quality: ${analysis.marketState.relevantGap.quality.score.toFixed(2)} (${analysis.marketState.relevantGap.cause})` : 'Stable equilibrium.'}
 - **Scenario Probabilities**: UP: ${(analysis.marketState.scenarios?.all?.find(s => s.direction === 'up')?.probability * 100).toFixed(0)}%, DOWN: ${(analysis.marketState.scenarios?.all?.find(s => s.direction === 'down')?.probability * 100).toFixed(0)}%.
 - **News Hazard**: ${analysis.marketState.news_risk || 'LOW'}. Technical Validity: ${analysis.marketState.technical_validity || 'NORMAL'}.
+- **Institutional Alpha (Phase 6 & 7)**: 
+    - Macro Sentiment (COT): ${analysis.marketState.macroSentiment?.bias} (${analysis.marketState.macroSentiment?.reason})
+    - Dark Pools: ${analysis.marketState.darkPools?.length > 0 ? `Detected ${analysis.marketState.darkPools.length} significant absorption walls.` : 'None detected.'}
+    - Volatility Regime: ${analysis.marketState.volatility?.regime} (ATR Corridor: ${analysis.marketState.volatility?.corridor?.upper?.toFixed(4)} and ${analysis.marketState.volatility?.corridor?.lower?.toFixed(4)})
+    - Order Book Depth: ${analysis.marketState.orderBookDepth?.pressure} (${analysis.marketState.orderBookDepth?.summary})
+    - Basket Divergence: ${analysis.marketState.basketArbitrage ? `${analysis.marketState.basketArbitrage.signal} (Divergence: ${analysis.marketState.basketArbitrage.divergence.toFixed(2)}% vs ${analysis.marketState.basketArbitrage.basket})` : 'Stable correlation.'}
 - **Drawing Confluence**: ${analysis.marketState.relevantGap ? 'FVG Alignment detected.' : ''} ${analysis.annotations.find(a => a.type === 'FIBONACCI') ? 'Institutional Fibonacci OTE anchored.' : ''} ${analysis.annotations.find(a => a.type === 'TRENDLINE' && a.metadata.isLiquidityTrap) ? 'Retail Trendline Trap identified.' : ''}
 
 ### MANDATORY NARRATIVE REQUIREMENTS (WHY, NOT WHAT):

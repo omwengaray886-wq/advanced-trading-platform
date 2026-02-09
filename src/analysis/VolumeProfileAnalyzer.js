@@ -35,10 +35,15 @@ export class VolumeProfileAnalyzer {
             });
         }
 
-        // Allocate candle volume to buckets
-        candles.forEach(candle => {
+        // Allocate candle volume to buckets with exponential time decay
+        const totalCandles = candles.length;
+        candles.forEach((candle, index) => {
             const isUp = candle.close >= candle.open;
-            const candleVolume = candle.volume || 0;
+
+            // Time decay: More recent candles (higher index) have more weight
+            // Weight ranges from 0.5 (oldest) to 1.0 (newest)
+            const timeWeight = 0.5 + (0.5 * (index / totalCandles));
+            const candleVolume = (candle.volume || 0) * timeWeight;
 
             // Distribute volume across buckets hit by this candle
             const startIndex = Math.max(0, Math.floor((candle.low - minPrice) / step));

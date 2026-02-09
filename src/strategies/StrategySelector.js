@@ -18,7 +18,7 @@ export class StrategySelector {
      * @param {Object} fundamentals - Optional fundamental data
      * @returns {Object} - Grouped setups (long, short, alternatives)
      */
-    selectStrategy(marketState, assetClass = 'FOREX', fundamentals = null) {
+    selectStrategy(marketState, assetClass = 'FOREX', fundamentals = null, perfWeights = {}) {
         const strategies = this.registry.getAllStrategies();
         const trend = marketState.trend.direction; // BULLISH, BEARISH, NEUTRAL
 
@@ -313,6 +313,10 @@ export class StrategySelector {
 
                     if (targetingNPOC) suitability *= 1.15; // Setup is trading towards an institutional magnet
                 }
+
+                // T. Strategy Performance (Phase 2 Upgrade)
+                const strategyWeight = (perfWeights && perfWeights[name]) ? perfWeights[name] : 1.0;
+                suitability *= strategyWeight;
 
                 const finalScore = Math.min(suitability, 1.0);
 

@@ -141,7 +141,17 @@ export class MarketObligationEngine {
      * (Layer 6: Auto-Removal condition)
      */
     static checkSessionExhaustion(marketState) {
-        // Placeholder for future Phase 52 integration
+        // 1. Time Check: End of Session (e.g., > 16:00 NY)
+        // This requires a localized time or session info in marketState
+        if (marketState.session && marketState.session.name === 'POST_MARKET') return true;
+
+        // 2. ADR Exhaustion (Phase 55)
+        // If market has moved > 1.5x ADR, it's likely exhausted for the day
+        if (marketState.adr && marketState.dailyRange) {
+            const expansion = marketState.dailyRange / marketState.adr;
+            if (expansion > 1.5) return true;
+        }
+
         return false;
     }
 }

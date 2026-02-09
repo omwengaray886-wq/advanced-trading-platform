@@ -1,11 +1,12 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, BarChart2, Zap, BookOpen, Calculator, User, Settings, Beaker, Search } from 'lucide-react';
+import { LayoutDashboard, BarChart2, Zap, BookOpen, Calculator, User, Settings, Beaker, Search, Bell, X } from 'lucide-react';
 
 const navItems = [
     { icon: LayoutDashboard, label: 'Overview', path: '/app' },
     { icon: BarChart2, label: 'Markets', path: '/app/markets' },
     { icon: Zap, label: 'Trade Setups', path: '/app/setups' },
+    { icon: Bell, label: 'Alerts', path: '/app/alerts' },
     { icon: Search, label: 'Scanner', path: '/app/scanner' },
     { icon: Beaker, label: 'Signal Lab', path: '/app/lab' },
     { icon: BookOpen, label: 'Education', path: '/app/education' },
@@ -13,14 +14,19 @@ const navItems = [
     { icon: User, label: 'Account', path: '/app/account' },
 ];
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen, closeSidebar }) => {
     return (
-        <aside className="sidebar">
-            <div style={{ padding: '24px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '24px', height: '24px', background: 'var(--color-accent-primary)', borderRadius: '4px' }}></div>
-                <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', letterSpacing: '-0.02em', color: 'var(--color-text-primary)' }}>
-                    TRADE<span style={{ color: 'var(--color-text-secondary)' }}>ALGO</span>
-                </h2>
+        <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+            <div style={{ padding: '24px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ width: '24px', height: '24px', background: 'var(--color-accent-primary)', borderRadius: '4px' }}></div>
+                    <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', letterSpacing: '-0.02em', color: 'var(--color-text-primary)' }}>
+                        TRADE<span style={{ color: 'var(--color-text-secondary)' }}>ALGO</span>
+                    </h2>
+                </div>
+                <button className="btn btn-ghost hide-desktop" onClick={closeSidebar}>
+                    <X size={20} />
+                </button>
             </div>
 
             <nav style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>

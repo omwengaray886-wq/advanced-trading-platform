@@ -18,13 +18,18 @@ class RiskManagementService {
      * @param {number} entryPrice - Entry level
      * @param {number} stopPrice - Stop loss level
      * @param {string} symbol - Trading pair
+     * @param {number} strategyWeight - Optional multiplier from performance tracking (0.6 to 1.4)
      */
-    calculatePositionSize(equity, entryPrice, stopPrice, symbol) {
+    calculatePositionSize(equity, entryPrice, stopPrice, symbol, strategyWeight = 1.0) {
         if (!entryPrice || !stopPrice || entryPrice === stopPrice) return 0;
 
-        // Apply Dynamic Risk Multiplier (Phase 40)
-        const dynamicMultiplier = portfolioRiskService.getRiskMultiplier();
-        const adjustedRisk = this.riskPerTrade * dynamicMultiplier;
+        // 1. Portfolio Multiplier (Phase 40)
+        const portfolioMultiplier = portfolioRiskService.getRiskMultiplier();
+
+        // 2. Strategy Weight (Phase 2 Accuracy)
+        // Scale risk based on historical win rate of this strategy
+        const finalRiskMultiplier = portfolioMultiplier * strategyWeight;
+        const adjustedRisk = this.riskPerTrade * finalRiskMultiplier;
 
         const riskAmount = equity * adjustedRisk;
         const stopDistance = Math.abs(entryPrice - stopPrice);

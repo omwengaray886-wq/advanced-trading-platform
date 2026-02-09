@@ -7,7 +7,8 @@ import { ChartAnnotation } from '../ChartAnnotation.js';
 export class TargetProjection extends ChartAnnotation {
     constructor(price, projectionType, metadata = {}) {
         super('TARGET_PROJECTION', {
-            price: price
+            price: price,
+            time: metadata.time || Date.now() / 1000  // CRITICAL: Time needed for rendering
         }, metadata);
 
         this.projectionType = projectionType; // STOP_LOSS, TARGET_1, TARGET_2, TARGET_3

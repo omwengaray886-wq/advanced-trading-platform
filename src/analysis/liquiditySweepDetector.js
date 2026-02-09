@@ -16,7 +16,9 @@ export class LiquiditySweepDetector {
 
         const currentCandle = candles[candles.length - 1];
         const prevCandle = candles[candles.length - 2];
-        const tolerance = 0.0005; // 0.05% proximity tolerance
+        // Volume Climax calculation: Current volume should be significantly higher than average
+        const avgVolume = candles.slice(-20, -1).reduce((sum, c) => sum + (c.volume || 0), 0) / 19;
+        const volumeSurge = currentCandle.volume > (avgVolume * 1.5);
 
         for (const pool of liquidityPools) {
             const price = pool.price;
@@ -33,9 +35,10 @@ export class LiquiditySweepDetector {
                         sweptPrice: price,
                         poolType: pool.type,
                         strength: pool.strength,
+                        isConfirmedByVolume: volumeSurge,
                         relativeDepth: ((price - currentCandle.low) / price) * 100,
                         label: `Sweep of ${pool.label}`,
-                        rationale: `Price manipulated below ${price.toFixed(5)} before closing back inside. High-conviction institutional accumulation.`
+                        rationale: `Price manipulated below ${price.toFixed(5)} before closing back inside. ${volumeSurge ? 'Confirmed by institutional volume surge.' : 'Moderate volume participation.'}`
                     };
                 }
             }
@@ -52,9 +55,10 @@ export class LiquiditySweepDetector {
                         sweptPrice: price,
                         poolType: pool.type,
                         strength: pool.strength,
+                        isConfirmedByVolume: volumeSurge,
                         relativeDepth: ((currentCandle.high - price) / price) * 100,
                         label: `Sweep of ${pool.label}`,
-                        rationale: `Price manipulated above ${price.toFixed(5)} before closing back inside. High-conviction institutional distribution.`
+                        rationale: `Price manipulated above ${price.toFixed(5)} before closing back inside. ${volumeSurge ? 'Confirmed by institutional volume surge.' : 'Moderate volume participation.'}`
                     };
                 }
             }

@@ -139,6 +139,21 @@ export class PredictionTracker {
                 }
             });
 
+            // Phase 52: Strategy-Specific Performance (Granular Learning)
+            const strategyPerformance = {};
+            const uniqueStrategies = [...new Set(completed.map(t => t.strategy))];
+
+            uniqueStrategies.forEach(strat => {
+                if (!strat) return;
+                const stratTrades = completed.filter(t => t.strategy === strat);
+                const stratHits = stratTrades.filter(t => t.outcome === 'HIT').length;
+                strategyPerformance[strat.toLowerCase()] = {
+                    accuracy: Math.round((stratHits / stratTrades.length) * 100),
+                    total: stratTrades.length,
+                    score: stratHits // simple score for sorting
+                };
+            });
+
             return {
                 accuracy: Math.round(accuracy),
                 total: completed.length,
@@ -146,6 +161,7 @@ export class PredictionTracker {
                 fails: completed.length - hits,
                 last10: trades.slice(0, 10).map(t => t.outcome),
                 edgeAttribution: attribution,
+                strategyPerformance, // NEW: Granular stats for Bayesian Engine
                 recentHistory: trades.slice(0, 20) // For the "Audit Receipt" table
             };
         } catch (e) {

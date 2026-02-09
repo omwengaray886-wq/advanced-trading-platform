@@ -9,22 +9,15 @@ class NewsShockEngine {
     /**
      * Get the active news shock status for a symbol
      * @param {string} symbol - e.g., 'BTC/USDT'
-     * @returns {Object|null} - Active shock info or null
+     * @returns {Promise<Object|null>} - Active shock info or null
      */
-    getActiveShock(symbol) {
+    async getActiveShock(symbol) {
         const currency = this.getRelevantCurrency(symbol);
-        const upcoming = newsService.getUpcomingShocks(24);
+        const upcoming = await newsService.getUpcomingShocks(24);
 
-        // Convert mock events to EconomicEvent models for logic access
-        const events = upcoming.map(e => new EconomicEvent({
-            type: e.event,
-            asset: e.currency,
-            timestamp: e.time * 1000,
-            impact: e.impact,
-            status: 'PENDING'
-        }));
+        if (!Array.isArray(upcoming)) return null;
 
-        const relevant = events.filter(e => e.asset === currency || e.asset === 'USD');
+        const relevant = upcoming.filter(e => e.asset === currency || e.asset === 'USD');
 
         for (const event of relevant) {
             const phase = event.getPhase();
@@ -51,8 +44,8 @@ class NewsShockEngine {
     /**
      * Calculate news-based suitability penalty
      */
-    calculateSuitabilityPenalty(symbol, setupDirection) {
-        const shock = this.getActiveShock(symbol);
+    async calculateSuitabilityPenalty(symbol, setupDirection) {
+        const shock = await this.getActiveShock(symbol);
         if (!shock) return 0;
 
         // If high impact news is immmintent, penalize heavily

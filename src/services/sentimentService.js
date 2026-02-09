@@ -228,6 +228,7 @@ async function getFearGreedIndex(symbol) {
             }
         } catch (error) {
             console.warn('Fear & Greed index fetch failed:', error);
+            return { score: 0, confidence: 0.3, source: 'FNG_FETCH_ERROR' };
         }
     }
 

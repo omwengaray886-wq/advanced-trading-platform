@@ -158,7 +158,9 @@ export default function MarketScanner() {
                                                 <td style={styles.td}>
                                                     <div className="flex-col">
                                                         <span style={{ fontSize: '15px', fontWeight: '900', color: 'white' }}>{res.symbol}</span>
-                                                        <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', fontWeight: 'bold' }}>{res.volatility} VOL</span>
+                                                        <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', fontWeight: 'bold' }}>
+                                                            {(typeof res.volatility === 'string' ? res.volatility : res.volatility?.volatilityState?.level) || 'NOMINAL'} VOL
+                                                        </span>
                                                     </div>
                                                 </td>
                                                 <td style={styles.td}>

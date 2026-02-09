@@ -8,18 +8,18 @@ import { detectMarketStructure, detectBOS, detectCHOCH, getCurrentTrend, checkFr
 import { detectMarketRegime } from '../analysis/marketRegime.js';
 import { detectLiquidityPools } from '../analysis/liquidityHunter.js';
 import { StrategySelector } from '../strategies/StrategySelector.js';
-import { AssetClassAdapter } from './assetClassAdapter.js';
-import { FundamentalAnalyzer } from './fundamentalAnalyzer.js';
-import { CorrelationEngine } from './correlationEngine.js';
+import { AMDEngine } from './AMDEngine.js';
+import { StrategyPerformanceTracker } from './StrategyPerformanceTracker.js';
+import { PatternLearningEngine } from './PatternLearningEngine.js';
+import { ScenarioEngine } from './scenarioEngine.js';
 import { RelativeStrengthEngine } from './relativeStrengthEngine.js';
 import { ExecutionHazardDetector } from '../analysis/ExecutionHazardDetector.js';
 import { LiquiditySweepDetector } from '../analysis/liquiditySweepDetector.js';
 import { ImbalanceDetector } from '../analysis/imbalanceDetector.js';
-import { OrderFlowAnalyzer } from '../analysis/orderFlowAnalyzer.js';
+import { OrderFlowAnalyzer } from './OrderFlowAnalyzer.js';
 import { ConsolidationDetector } from '../analysis/consolidationDetection.js';
 import { RetestDetector } from '../analysis/retestDetection.js';
 import { newsService } from './newsService.js';
-import { ScenarioEngine } from './scenarioEngine.js';
 import { Fibonacci } from '../models/annotations/Fibonacci.js';
 import { Trendline } from '../models/annotations/Trendline.js';
 import { SupplyDemandZone } from '../models/annotations/SupplyDemandZone.js';
@@ -62,6 +62,7 @@ import { getOnChainMetrics } from './onChainService.js';
 import { analyzeOptionsFlow } from './optionsFlowService.js';
 import { getSeasonalityEdge } from './seasonalityService.js';
 import { marketData } from './marketData.js';
+import { institutionalFlow } from './institutionalFlow.js';
 
 // Phase 50/51: Upgraded Predictive & Tracking Layer
 import { PredictionTracker } from './predictionTracker.js';
@@ -77,6 +78,21 @@ import { FailurePatternDetector } from './failurePatternDetector.js';
 import { calculateTransitionProbability } from '../analysis/marketRegime.js';
 import { SessionAnalyzer } from '../analysis/SessionAnalyzer.js';
 import { MarketObligationEngine } from '../analysis/MarketObligationEngine.js';
+import { bayesianEngine } from './BayesianInferenceEngine.js';
+
+// Phase 6: Autonomous Alpha Integration
+import { SentimentEngine } from './SentimentEngine.js';
+import { DarkPoolEngine } from './DarkPoolEngine.js';
+import { VolatilityEngine } from './VolatilityEngine.js';
+import { OrderBookEngine } from './OrderBookEngine.js';
+import { BasketArbitrageEngine } from './BasketArbitrageEngine.js';
+import { ExecutionEngine } from './ExecutionEngine.js';
+import { AlphaTracker } from './AlphaTracker.js';
+import { FundamentalAnalyzer } from './fundamentalAnalyzer.js';
+import { CorrelationEngine } from './correlationEngine.js';
+import { AssetClassAdapter } from './assetClassAdapter.js';
+import { EdgeScoringEngine } from './edgeScoringEngine.js';
+import { DirectionalConfidenceGate } from '../analysis/DirectionalConfidenceGate.js';
 
 export class AnalysisOrchestrator {
     constructor() {
@@ -84,6 +100,7 @@ export class AnalysisOrchestrator {
         this.fundamentalAnalyzer = new FundamentalAnalyzer();
         this.correlationEngine = new CorrelationEngine();
         this.relativeStrengthEngine = new RelativeStrengthEngine();
+        this.learningEngine = new PatternLearningEngine();
     }
 
     /**
@@ -197,6 +214,17 @@ export class AnalysisOrchestrator {
             const techDivergences = await DivergenceEngine.detectDivergence(symbol, candles, timeframe, marketState);
             marketState.technicalDivergences = techDivergences;
 
+            // --- PHASE 5: DEEP INSTITUTIONAL INTELLIGENCE ---
+            // Step 3.6.7: Deep Order Flow Analysis (Estimated Delta & Absorption)
+            const orderFlow = OrderFlowAnalyzer.analyze(candles);
+            marketState.orderFlow = orderFlow;
+
+            // Inject Order Flow validation into Liquidity Sweep (if sweep exists)
+            if (marketState.liquiditySweep && orderFlow.absorption?.detected) {
+                marketState.liquiditySweep.isConfirmedByAbsorption = true;
+                marketState.liquiditySweep.absorptionNote = orderFlow.absorption.note;
+            }
+
             // Push to global annotations for visualization
             if (techDivergences && techDivergences.length > 0) {
                 // Add to baseAnnotations so they appear on chart
@@ -223,8 +251,17 @@ export class AnalysisOrchestrator {
                 probability: sessionProbability
             };
 
-            // Step 4: Analyze fundamentals
-            const fundamentals = this.fundamentalAnalyzer.analyzeFundamentals(symbol, assetClass);
+            // Step 3.9.7: REAL-TIME NEWS & CALENDAR FETCH (Phase 55)
+            const [realNews, calendarEvents] = await Promise.all([
+                newsService.fetchRealNews(symbol),
+                newsService.getUpcomingShocks(24) // Returns high-impact economic events
+            ]);
+
+            // Step 4: Analyze fundamentals (using real data)
+            const fundamentals = this.fundamentalAnalyzer.analyzeFundamentals(symbol, assetClass, {
+                news: realNews,
+                events: calendarEvents
+            });
 
             // Step 3.2: Analyze Correlations (Macro Bias)
             let correlation = { status: 'NEUTRAL', bias: 0 };
@@ -257,6 +294,81 @@ export class AnalysisOrchestrator {
                 marketState.lvns = volumeProfile?.lvns || [];
             }
 
+            // Step 3.6.8: Phase 6 - Autonomous Alpha Intelligence
+            // Sentiment Analysis (COT Simulation)
+            const macroSentiment = SentimentEngine.analyzeSentiment(symbol, candles, assetClass);
+            marketState.macroSentiment = macroSentiment;
+
+            // Dark Pool Detection
+            const darkPools = DarkPoolEngine.detectDarkPools(candles, marketState.liquidityPools, marketState.currentPrice);
+            marketState.darkPools = darkPools;
+
+            // Enhance liquidity pools with Dark Pool intelligence
+            if (darkPools.length > 0) {
+                marketState.liquidityPools = DarkPoolEngine.enhanceLiquidityWithDarkPools(
+                    marketState.liquidityPools || [],
+                    darkPools
+                );
+            }
+
+            // Volatility Surface Analysis
+            const volatilityAnalysis = VolatilityEngine.calculateVolatilityCorridor(candles, timeframe, marketState.currentPrice);
+            marketState.volatility = volatilityAnalysis;
+
+            // Detect Vega Shocks (rapid volatility spikes)
+            const vegaShock = VolatilityEngine.detectVegaShock(candles);
+            marketState.vegaShock = vegaShock;
+
+            // Phase 7: Order Book Intelligence (Execution Precision)
+            if (!isLight) {
+                try {
+                    const depth = await marketData.fetchOrderBook(symbol);
+                    if (depth) {
+                        const depthAnalysis = OrderBookEngine.analyze(depth, marketState.currentPrice);
+                        marketState.orderBookDepth = depthAnalysis;
+
+                        // Inject depth walls into liquidity pools for visualization
+                        if (depthAnalysis.walls?.length > 0) {
+                            marketState.liquidityPools = [
+                                ...(marketState.liquidityPools || []),
+                                ...depthAnalysis.walls.map(w => ({
+                                    price: w.price,
+                                    type: w.side === 'BUY' ? 'BUY_SIDE' : 'SELL_SIDE',
+                                    strength: 'INSTITUTIONAL',
+                                    label: `Order Book Wall (${w.strength.toFixed(1)}x)`,
+                                    isOrderBookWall: true
+                                }))
+                            ];
+                        }
+                    }
+                } catch (depthError) {
+                    console.warn(`Depth analysis failed for ${symbol}:`, depthError.message);
+                }
+
+                // Phase 7: Basket Arbitrage Intelligence
+                try {
+                    // In a real environment, we'd fetch prices for the active basket
+                    // For now, we simulate the required price map for the engine
+                    const basketPrices = new Map();
+                    const basketKey = BasketArbitrageEngine._findBasketForSymbol(symbol);
+                    if (basketKey) {
+                        const symbols = BasketArbitrageEngine.baskets[basketKey];
+                        // Fetch history (current and open24h proxy) for basket
+                        for (const s of symbols) {
+                            const hist = await marketData.fetchHistory(s, '1d', 2);
+                            if (hist && hist.length >= 2) {
+                                basketPrices.set(s, { current: hist[hist.length - 1].close, open24h: hist[0].close });
+                            }
+                        }
+                        const arbitrage = BasketArbitrageEngine.calculateBasketDivergence(symbol, basketPrices);
+                        marketState.basketArbitrage = arbitrage;
+                    }
+                } catch (arbError) {
+                    console.warn(`Basket Arbitrage analysis failed for ${symbol}:`, arbError.message);
+                }
+            }
+
+
             // Step 3.5: Multi-Timeframe Relative Strength (Phase 20)
             let relativeStrength = { status: 'NEUTRAL', score: 50 };
             if (!isLight) {
@@ -272,20 +384,22 @@ export class AnalysisOrchestrator {
             }
             marketState.relativeStrength = relativeStrength;
 
-            // Step 3.8: Phase 35 - Predictive Intelligence Layer
-            let sentiment, onChain, optionsFlow, seasonality, orderBook;
+            // Step 3.8: Phase 35/55 - Predictive Intelligence Layer
+            let sentiment, onChain, optionsFlow, seasonality, orderBook, alphaFlow;
             if (!isLight) {
-                [sentiment, onChain, optionsFlow, seasonality, orderBook] = await Promise.all([
+                [sentiment, onChain, optionsFlow, seasonality, orderBook, alphaFlow] = await Promise.all([
                     analyzeSentiment(symbol).catch(() => null),
                     assetClass === 'CRYPTO' ? getOnChainMetrics(symbol).catch(() => null) : Promise.resolve(null),
-                    assetClass === 'EQUITY' ? analyzeOptionsFlow(symbol).catch(() => null) : Promise.resolve(null),
+                    (assetClass === 'EQUITY' || assetClass === 'FOREX') ? analyzeOptionsFlow(symbol).catch(() => null) : Promise.resolve(null),
                     getSeasonalityEdge(symbol, new Date()),
-                    marketData.fetchOrderBook(symbol, 40).catch(() => null)
+                    marketData.fetchOrderBook(symbol, 40).catch(() => null),
+                    institutionalFlow.getAlphaScore(symbol).catch(() => null)
                 ]);
             } else {
                 // Return fast defaults for light mode
                 sentiment = { score: 50, label: 'NEUTRAL' };
                 seasonality = { score: 50, edge: 'NONE' };
+                alphaFlow = { score: 0, components: [] };
             }
 
             marketState.sentiment = sentiment;
@@ -293,9 +407,10 @@ export class AnalysisOrchestrator {
             marketState.optionsFlow = optionsFlow;
             marketState.seasonality = seasonality;
             marketState.orderBook = orderBook;
+            marketState.institutionalFlow = alphaFlow;
 
             // Step 3.9: Institutional Hazard Detection (Phase 38 & 39)
-            const activeShock = newsShockEngine.getActiveShock(symbol);
+            const activeShock = await newsShockEngine.getActiveShock(symbol);
             marketState.activeShock = activeShock;
             marketState.hazards = ExecutionHazardDetector.detectHazards(candles, marketState, assetParams);
 
@@ -309,16 +424,22 @@ export class AnalysisOrchestrator {
             const obligationAnalysis = MarketObligationEngine.detectObligations(marketState, candles);
             marketState.obligations = obligationAnalysis;
 
+            // Step 4.2: Institutional Cycle Intelligence (Phase 3 AMD)
+            const amdCycle = AMDEngine.detectCycle(candles, marketState.session);
+            marketState.amdCycle = amdCycle;
+
             // Adjust fundamental alignment based on news shock (Phase 39)
             if (activeShock && activeShock.severity === 'HIGH') {
                 fundamentals.suitabilityPenalty = 0.4; // 40% reduction for AI setups
             }
 
             // Step 5: Select setup candidates (Multi-directional)
+            const performanceWeights = await StrategyPerformanceTracker.getAllStrategyWeights(marketState.regime);
             const selection = this.strategySelector.selectStrategy(
                 marketState,
                 assetClass,
-                fundamentals
+                fundamentals,
+                performanceWeights
             );
 
             // Step 6: Generate Setup A, B, C, D
@@ -382,8 +503,67 @@ export class AnalysisOrchestrator {
                     // console.warn(`Setup ${c.strategy.name} incomplete but kept per user request.`);
                 }
 
-                // Calculate Global Quant Confluence Score
-                const quantScore = this.calculateQuantScore(marketState, { ...c, direction });
+                // Phase 5: Bayesian Inference (Moved Up for Scoring)
+                const bayesianStats = await bayesianEngine.getPosteriorCredibility(symbol, c.strategy.name, marketState.regime);
+
+                // --- PHASE 56: DIRECTIONAL CONFIDENCE GATE ---
+                const validation = await DirectionalConfidenceGate.validateDirection(
+                    { ...c, direction, ...riskParams },
+                    marketState,
+                    candles,
+                    symbol
+                );
+
+                // Skip or downgrade based on confidence
+                if (!validation.isValid && validation.confidence < 0.3) {
+                    console.log(`[CONFIDENCE GATE] Rejecting ${c.strategy.name} due to low directional conviction (${validation.confidence}).`);
+                    continue;
+                }
+
+                // Phase 51: Edge Scoring Engine Integration
+                // Calculates normalized score (0-10) based on all factors including Bayesian stats and Magnets
+                const edgeAnalysis = EdgeScoringEngine.calculateScore(
+                    { ...c, direction, ...riskParams },
+                    marketState,
+                    bayesianStats,
+                    symbol
+                );
+
+                // Attach validation metrics for ExplanationEngine
+                const setupWithConfidence = {
+                    ...c,
+                    direction,
+                    ...riskParams,
+                    edgeAlpha: edgeAnalysis.score,
+                    directionalConfidence: validation.confidence,
+                    confidenceChecks: validation.failedChecks,
+                    isHighConfidence: validation.isValid,
+                    bayesianStats
+                };
+
+                let quantScore = edgeAnalysis.score * 10; // Convert 1-10 string back to 0-100 for legacy compatibility
+
+                // Phase 6: Macro Alignment Bonus
+                const macroBonus = SentimentEngine.getMacroAlignmentBonus(direction, marketState.macroSentiment);
+                quantScore = Math.max(0, Math.min(100, quantScore + macroBonus));
+
+                // Phase 7: Order Book Alignment Bonus
+                if (marketState.orderBookDepth) {
+                    const depthBonus = OrderBookEngine.getDepthAlignmentBonus(direction, marketState.orderBookDepth);
+                    quantScore = Math.max(0, Math.min(100, quantScore + depthBonus));
+                }
+
+                // Phase 6: Volatility-Adjusted Targets
+                if (marketState.volatility && riskParams.targets?.length > 0) {
+                    const baseDistance = riskParams.targets[0].price - riskParams.entry.optimal;
+                    const adjustedDistance = VolatilityEngine.adjustTargetForVolatility(baseDistance, marketState.volatility);
+
+                    if (direction === 'LONG') {
+                        riskParams.targets[0].price = riskParams.entry.optimal + adjustedDistance;
+                    } else {
+                        riskParams.targets[0].price = riskParams.entry.optimal - adjustedDistance;
+                    }
+                }
 
                 // Calculate Capital Friendliness
                 const capitalScore = this.calculateCapitalFriendliness(riskParams, assetParams);
@@ -394,16 +574,38 @@ export class AnalysisOrchestrator {
                 const hasRiskParams = riskParams && riskParams.entry && riskParams.stopLoss;
                 const stopDistance = hasRiskParams ? Math.abs(riskParams.entry.optimal - riskParams.stopLoss) : 0;
 
+                // Phase 8: Dynamic Kelly Sizing
+                const winRate = performanceWeights[c.strategy.name]?.winRate || 0.45; // Default 45%
+                const riskReward = (riskParams.targets?.length > 0) ? (Math.abs(riskParams.targets[0].price - riskParams.entry.optimal) / stopDistance) : 2.0;
+                const kellyRisk = ExecutionEngine.calculateKellySize(winRate, riskReward, quantScore / 100);
+
+                const strategyWeight = performanceWeights[c.strategy.name] || 1.0;
                 const suggestedSize = hasRiskParams ? this.calculateInstitutionalSize(
-                    accountSize, // Tailored account size
-                    0.01,  // 1% Base Risk
+                    accountSize,
+                    kellyRisk, // Use dynamic Kelly risk instead of fixed 1%
                     stopDistance,
                     quantScore,
-                    assetClass
+                    assetClass,
+                    strategyWeight
                 ) : 0;
 
                 // Determine Execution Complexity
                 const executionComplexity = this.calculateExecutionComplexity(marketState, assetParams);
+
+                // Phase 8: SOR & VWAP Execution Optimization
+                let executionAdvice = null;
+                if (marketState.orderBookDepth) {
+                    const sor = ExecutionEngine.simulateSORMapping(suggestedSize || 1.0, marketState.orderBookDepth, direction);
+                    if (sor) {
+                        executionAdvice = {
+                            type: sor.recommendation,
+                            slippage: sor.slippage,
+                            vwap: ExecutionEngine.calculateVWAP(candles),
+                            urgency: ExecutionEngine.getExecutionUrgency(marketState.orderBookDepth.imbalance, direction),
+                            tranches: sor.tranches
+                        };
+                    }
+                }
 
                 // --- Precision Execution Logic (Phase 12) ---
                 const executionPrecision = AssetClassAdapter.calculateExecutionPrecision(assetClass, timeframe, marketState.atr);
@@ -431,35 +633,48 @@ export class AnalysisOrchestrator {
                 const finalSuitability = Math.max(0.1, c.suitability - newsPenalty - consensusAdjustment);
                 const finalQuantScore = Math.max(0, quantScore - (newsPenalty * 100) - (consensusAdjustment * 100));
 
-                validSetups.push({
-                    id: String.fromCharCode(65 + validSetups.length), // A, B, C, D dynamically
-                    name: `Setup ${String.fromCharCode(65 + validSetups.length)}: ${c.strategy.name}`,
-                    direction,
-                    timeframe: timeframe,
-                    entryZone: augmentedEntry, // Use buffered entry
-                    stopLoss: riskParams.stopLoss,
-                    targets: riskParams.targets,
-                    rr: riskParams.targets[0]?.riskReward || 0,
-                    strategy: c.strategy.name,
-                    suitability: finalSuitability,
-                    quantScore: finalQuantScore,
-                    capitalScore,
-                    capitalTag,
-                    suggestedSize,
-                    executionComplexity,
-                    executionPrecision, // Use refined precision
-                    executionHazards: executionHazards.map(h => ({
-                        ...h,
-                        isNewsRelated: h.type === 'NEWS_SHOCK_RISK'
-                    })),
-                    rationale: `${direction} opportunity detected via ${c.strategy.name}. Trend: ${marketState.mtf.globalBias}. Institutional Volume: ${marketState.volumeAnalysis.isInstitutional ? 'DETECTED' : 'LOW'}. ${activeShock ? 'Warning: High volatility news pending.' : ''}`,
-                    detailedRationale: `This ${direction} setup is triggered by ${c.strategy.name} confluence on the ${timeframe} timeframe. Technical basis includes: 1) Significant ${marketState.volumeAnalysis.isInstitutional ? 'Institutional' : 'Retail'} participation. 2) Structure alignment with ${marketState.mtf.globalBias} bias. 3) Proximity to ${marketState.relevantGap ? 'Fair Value Gap' : 'Liquidity Pool'}.${marketState.mtfBiasAligned ? ' 4) FULL MTF BIAS ALIGNMENT (4H/1D).' : ''} ${newsPenalty > 0 ? 'Note: Suitability reduced due to upcoming news shock.' : ''}`,
-                    institutionalTheme: c.strategy.getInstitutionalTheme(),
-                    smtDivergence: marketState.smtDivergence,
-                    liquidityPools: marketState.liquidityPools?.slice(0, 5),
-                    scenarios: marketState.scenarios,
-                    annotations
-                });
+                // --- Phase 5: Fractal Guards ---
+                // Bayesian stats already calculated above
+                const fractalHandshake = verifyFractalHandshake(marketState, direction);
+
+                // Deep Intelligence Filter (Accuracy Gate)
+                const isAccuracyGuarded = bayesianStats.isSuppressed || !fractalHandshake;
+
+                if (!isAccuracyGuarded) {
+                    validSetups.push({
+                        id: String.fromCharCode(65 + validSetups.length), // A, B, C, D dynamically
+                        name: `Setup ${String.fromCharCode(65 + validSetups.length)}: ${c.strategy.name}`,
+                        direction,
+                        timeframe: timeframe,
+                        entryZone: augmentedEntry, // Use buffered entry
+                        stopLoss: riskParams.stopLoss,
+                        targets: riskParams.targets,
+                        rr: riskParams.targets[0]?.riskReward || 0,
+                        strategy: c.strategy.name,
+                        quantScore: finalQuantScore,
+                        suitability: finalSuitability,
+                        bayesianStats,
+                        fractalHandshake,
+                        orderFlowInfo: orderFlow.bias === direction ? 'ALIGNED' : 'COUNTER',
+                        capitalScore,
+                        capitalTag,
+                        suggestedSize,
+                        executionComplexity,
+                        executionPrecision,
+                        executionAdvice, // Phase 8 execution intelligence
+                        executionHazards: executionHazards.map(h => ({
+                            ...h,
+                            isNewsRelated: h.type === 'NEWS_SHOCK_RISK'
+                        })),
+                        rationale: `${direction} opportunity detected via ${c.strategy.name}. Trend: ${marketState.mtf.globalBias}. Institutional Volume: ${marketState.volumeAnalysis.isInstitutional ? 'DETECTED' : 'LOW'}. ${activeShock ? 'Warning: High volatility news pending.' : ''}`,
+                        detailedRationale: `This ${direction} setup is triggered by ${c.strategy.name} confluence on the ${timeframe} timeframe. Technical basis includes: 1) Significant ${marketState.volumeAnalysis.isInstitutional ? 'Institutional' : 'Retail'} participation. 2) Structure alignment with ${marketState.mtf.globalBias} bias. 3) Proximity to ${marketState.relevantGap ? 'Fair Value Gap' : 'Liquidity Pool'}.${marketState.mtfBiasAligned ? ' 4) FULL MTF BIAS ALIGNMENT (4H/1D).' : ''} ${newsPenalty > 0 ? 'Note: Suitability reduced due to upcoming news shock.' : ''}`,
+                        institutionalTheme: c.strategy.getInstitutionalTheme ? c.strategy.getInstitutionalTheme() : 'General SMC',
+                        smtDivergence: marketState.smtDivergence,
+                        liquidityPools: marketState.liquidityPools?.slice(0, 5),
+                        annotations,
+                        notes: c.strategy.getNotes ? c.strategy.getNotes(marketState) : []
+                    });
+                }
             }
 
             // Assign filtered setups to the main setups array
@@ -469,7 +684,11 @@ export class AnalysisOrchestrator {
             this.optimizeForProfile(setups, marketState.profile);
 
             // Step 6.1: Generate Scenarios (Phase 5)
-            const scenarios = ScenarioEngine.generateScenarios(marketState, setups, fundamentals);
+            const performanceStats = {};
+            for (const setup of setups) {
+                performanceStats[setup.strategy.name] = await StrategyPerformanceTracker.getStrategyPerformance(setup.strategy.name, marketState.regime);
+            }
+            const scenarios = ScenarioEngine.generateScenarios(marketState, setups, fundamentals, performanceStats);
             marketState.scenarios = scenarios;
 
             // --- Phase 4: News Intelligence Layer ---
@@ -585,7 +804,7 @@ export class AnalysisOrchestrator {
             }
 
             // 11. Session-Based Zones (Phase 15 Requirement)
-            if (marketState.session.active) {
+            if (marketState.session && marketState.session.active) {
                 // Approximate session bounds for visualization
                 const sessionHigh = Math.max(...candles.slice(-8).map(c => c.high));
                 const sessionLow = Math.min(...candles.slice(-8).map(c => c.low));
@@ -655,8 +874,25 @@ export class AnalysisOrchestrator {
                 ));
             });
 
+            // 12.5: Market Obligation Magnets (Phase 52)
+            if (marketState.obligations?.obligations) {
+                marketState.obligations.obligations.forEach(mag => {
+                    // Create a horizontal line annotation for the magnet
+                    baseAnnotations.push({
+                        type: 'MAGNET_LINE',
+                        price: mag.price,
+                        urgency: mag.urgency,
+                        magnetType: mag.type,
+                        label: `🧲 ${mag.type.replace('_', ' ')} (${mag.urgency})`,
+                        color: mag.type.includes('BULLISH') || mag.type.includes('BUY') ? '#00ff00' : '#ff0000',
+                        style: 'DASHED',
+                        visible: true
+                    });
+                });
+            }
+
             // 13. Time-Based Zones (Phase 15 Requirement)
-            if (marketState.session.killzone) {
+            if (marketState.session && marketState.session.killzone) {
                 baseAnnotations.push(new TimeBasedZone(
                     `${marketState.session.killzone} Window`,
                     lastCandle.time - 7200, // 2h killzone
@@ -712,6 +948,22 @@ export class AnalysisOrchestrator {
             // FILTER: Institutional Quality Control (Phase 24 Upgrade)
             // Remove any setups with low technical confluence BEFORE AI analysis
             setups = setups.filter(s => {
+                // Phase 53: Structure Validation Gate
+                // Reject trade if a CHoCH against direction happened within last 5 bars
+                // This prevents "catching a falling knife" right after structure breaks
+                const recentCandles = candles.slice(-5);
+                const opposingChoch = marketState.structuralEvents.find(c => {
+                    if (!c.metadata) return false;
+                    // Normalize directions
+                    const chochDir = c.metadata.direction === 'BULLISH' ? 'LONG' : 'SHORT';
+                    return chochDir !== s.direction && recentCandles.some(rc => rc.time === c.time);
+                });
+
+                if (opposingChoch) {
+                    // console.log(`Dropped ${s.name} due to recent opposing CHoCH at ${new Date(opposingChoch.time * 1000).toISOString()}`);
+                    return false;
+                }
+
                 const minScore = 30; // Relaxed threshold for broader visibility
                 if (s.quantScore < minScore) {
                     // console.log(`Dropped ${s.name} due to low conviction (${s.quantScore})`);
@@ -719,6 +971,31 @@ export class AnalysisOrchestrator {
                 }
                 return true;
             });
+
+            // Phase 56: Directional Confidence Gate
+            // Multi-factor validation for directional accuracy
+            const { DirectionalConfidenceGate } = await import('../analysis/DirectionalConfidenceGate.js');
+
+            setups = await Promise.all(setups.map(async (s) => {
+                const validation = await DirectionalConfidenceGate.validateDirection(s, marketState, candles, symbol);
+
+                return {
+                    ...s,
+                    directionalConfidence: validation.confidence,
+                    confidenceChecks: validation.failedChecks,
+                    isHighConfidence: validation.isValid,
+                    confidenceDetails: validation.checkDetails
+                };
+            }));
+
+            // Filter out low-confidence setups (< 40% confidence)
+            const preFilterCount = setups.length;
+            setups = setups.filter(s => s.directionalConfidence >= 0.4);
+
+            if (setups.length < preFilterCount) {
+                console.log(`[CONFIDENCE GATE] Filtered ${preFilterCount - setups.length} low-confidence setups`);
+            }
+
             if (heatmapData) {
                 const heatmap = new OrderFlowHeatmap(heatmapData);
                 baseAnnotations.push(heatmap);
@@ -820,26 +1097,30 @@ export class AnalysisOrchestrator {
                 overallConfidence: this.calculateOverallConfidence(marketState, setups[0]?.suitability || 0),
                 fundamentalAlignment: aligned,
 
+                // Performance metadata
+                performanceWeights,
+
                 // Economic News Overlays (Phase 4)
                 newsEvents: newsService.getEvents(symbol, candles[0].time, lastCandle.time + 86400)
             };
 
-            // 5. Inject News Shocks (Phase 22)
-            const upcomingShocks = newsService.getUpcomingShocks(24);
-            upcomingShocks.forEach(shock => {
-                const shockAnno = new NewsShock(
-                    shock.event,
-                    shock.time,
-                    shock.impact,
-                    shock.currency,
-                    { forecast: shock.forecast, previous: shock.previous }
-                );
+            // 5. Inject News Shocks (Phase 22) - Reusing pre-fetched calendarEvents (Phase 55)
+            if (calendarEvents && Array.isArray(calendarEvents)) {
+                calendarEvents.forEach(shock => {
+                    const shockAnno = new NewsShock(
+                        shock.type,
+                        shock.timestamp,
+                        shock.impact,
+                        shock.asset,
+                        { forecast: shock.forecast, previous: shock.previous }
+                    );
 
-                // Attach to primary setup for visibility in ExplanationPanel
-                if (setups[0]) {
-                    setups[0].annotations = [...(setups[0].annotations || []), shockAnno];
-                }
-            });
+                    // Attach to primary setup for visibility in ExplanationPanel
+                    if (setups[0]) {
+                        setups[0].annotations = [...(setups[0].annotations || []), shockAnno];
+                    }
+                });
+            }
 
             // Step 10: COMPREHENSIVE PREDICTIVE FORECASTING ENGINE (Phase 50)
 
@@ -854,7 +1135,8 @@ export class AnalysisOrchestrator {
             }
 
             // 10.1: Calculate probabilities (Phase 50 Upgrade)
-            const probabilities = ProbabilisticEngine.generatePredictions(symbol, marketState);
+            // 10.1: Calculate probabilities (Phase 50 Upgrade)
+            const probabilities = await ProbabilisticEngine.generatePredictions(symbol, marketState);
 
             // 10.2: Apply confidence decay if setup is old
             const setupAge = Date.now() - analysis.timestamp;
@@ -1189,14 +1471,14 @@ export class AnalysisOrchestrator {
     /**
      * Calculate institutional position size based on balance and quant score
      */
-    calculateInstitutionalSize(balance, baseRiskPercent, stopDistance, quantScore, assetClass) {
+    calculateInstitutionalSize(balance, baseRiskPercent, stopDistance, quantScore, assetClass, strategyWeight = 1.0) {
         if (!stopDistance || stopDistance === 0) return 0;
 
         // Scale risk based on Quant Score (Confidence)
         // 90% score = 100% of base risk
         // 60% score = 50% of base risk (Caution)
         const confidenceMultiplier = Math.max(0, (quantScore - 50) / 40);
-        const actualRisk = balance * baseRiskPercent * confidenceMultiplier;
+        const actualRisk = balance * baseRiskPercent * confidenceMultiplier * strategyWeight;
 
         if (assetClass === 'FOREX') {
             // Standard Lot = 100,000 units. 1 pip movement = $10 for 1 lot.
@@ -1440,4 +1722,29 @@ export class AnalysisOrchestrator {
 
         return normalizedVelocity; // >1.2 = High, <0.5 = Low
     }
+
+}
+
+/**
+ * Verify Fractal Handshake (Phase 5)
+ * Ensures strict alignment between timeframe and market structure
+ */
+function verifyFractalHandshake(marketState, direction) {
+    if (!marketState.trend) return false;
+    const trend = marketState.trend.direction;
+
+    // 1. Base alignment
+    if (direction === 'LONG' && trend === 'BULLISH') return true;
+    if (direction === 'SHORT' && trend === 'BEARISH') return true;
+
+    // 2. Counter-trend allowance (if supported by HTF or Cycle)
+    const globalBias = marketState.mtf?.globalBias;
+    if (globalBias && globalBias === direction) return true;
+
+    // 3. Cycle Exception (Catching tops/bottoms in exhaustion)
+    const cycle = marketState.cycle;
+    if (cycle === 'BEAR' && direction === 'SHORT' && trend === 'NEUTRAL') return true;
+    if (cycle === 'BULL' && direction === 'LONG' && trend === 'NEUTRAL') return true;
+
+    return false;
 }

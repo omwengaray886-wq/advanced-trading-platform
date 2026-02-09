@@ -58,13 +58,14 @@ export class Explanation {
     buildRegimeExplanation(marketState) {
         const regime = marketState.regime;
         const volatility = marketState.volatility;
+        const volLevel = (typeof volatility === 'string' ? volatility : volatility?.volatilityState?.level) || 'MODERATE';
 
         if (this.mode === 'BEGINNER') {
             return `The market is currently ${regime === 'TRENDING' ? 'moving smoothly' : 'bouncing around'}. ` +
-                `It is ${volatility === 'HIGH' ? 'very jumpy right now' : 'relatively calm'}.`;
+                `It is ${(volLevel === 'HIGH' || volLevel === 'EXTREME') ? 'very jumpy right now' : 'relatively calm'}.`;
         }
 
-        return `Price is in a ${regime.toLowerCase()} regime with ${volatility.toLowerCase()} volatility. ` +
+        return `Price is in a ${regime.toLowerCase()} regime with ${volLevel.toLowerCase()} volatility. ` +
             `This condition suggests ${this.getRegimeImplication(regime)}.`;
     }
 

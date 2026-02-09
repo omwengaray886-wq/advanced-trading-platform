@@ -31,6 +31,7 @@ const Performance = lazy(() => import('./pages/Performance'));
 const SignalLab = lazy(() => import('./pages/SignalLab'));
 const MarketScanner = lazy(() => import('./pages/MarketScanner'));
 const Analytics = lazy(() => import('./pages/Analytics'));
+const Alerts = lazy(() => import('./pages/Alerts'));
 
 // Protected Route wrapper - Bypassed for open access (Phase 70)
 const ProtectedRoute = () => {
@@ -75,6 +76,7 @@ function App() {
                       <Route path="lab" element={<SignalLab />} />
                       <Route path="scanner" element={<MarketScanner />} />
                       <Route path="analytics" element={<Analytics />} />
+                      <Route path="alerts" element={<Alerts />} />
                       <Route path="*" element={<Navigate to="/app" replace />} />
                     </Route>
                   </Route>

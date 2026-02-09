@@ -6,9 +6,16 @@ import { ChartAnnotation } from '../ChartAnnotation.js';
  */
 export class LiquidityZone extends ChartAnnotation {
     constructor(priceLevel, zoneType, metadata = {}) {
+        const width = metadata.width || 0.0010; // default spread
+
         super('LIQUIDITY_ZONE', {
             price: priceLevel,
-            width: metadata.width || 0.0010 // default spread
+            width: width,
+            top: priceLevel + (width / 2),
+            bottom: priceLevel - (width / 2),
+            time: metadata.time || metadata.startTime || Date.now() / 1000,
+            startTime: metadata.startTime || metadata.time || Date.now() / 1000,
+            endTime: metadata.endTime || null
         }, metadata);
 
         this.zoneType = zoneType; // EQUAL_HIGHS, EQUAL_LOWS, SESSION_HIGH, SESSION_LOW

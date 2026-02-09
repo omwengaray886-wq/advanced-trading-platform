@@ -1,13 +1,22 @@
-import React, { useState } from 'react';
 import { Search, Bell, Menu, X, Sun, Moon, LogOut, User } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { alertOrchestrator } from '../../services/AlertOrchestrator';
+import { useState, useEffect } from 'react';
 
 export default function Header({ toggleSidebar, isSidebarOpen }) {
     const { theme, toggleTheme } = useTheme();
     const { currentUser, logout } = useAuth();
     const navigate = useNavigate();
+    const [alertCount, setAlertCount] = useState(alertOrchestrator.getAlerts().filter(a => a.status === 'ACTIVE').length);
+
+    useEffect(() => {
+        const unsubscribe = alertOrchestrator.onUpdate((alerts) => {
+            setAlertCount(alerts.filter(a => a.status === 'ACTIVE').length);
+        });
+        return unsubscribe;
+    }, []);
 
     // const handleLogout = async () => {
     //     try {
@@ -42,9 +51,24 @@ export default function Header({ toggleSidebar, isSidebarOpen }) {
                     {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
                 </button>
 
-                <button className="btn btn-ghost" style={{ position: 'relative' }}>
+                <button
+                    className="btn btn-ghost"
+                    style={{ position: 'relative' }}
+                    onClick={() => navigate('/app/alerts')}
+                >
                     <Bell size={20} />
-                    <span style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: 'var(--color-danger)', borderRadius: '50%' }}></span>
+                    {alertCount > 0 && (
+                        <span style={{
+                            position: 'absolute',
+                            top: '4px',
+                            right: '4px',
+                            width: '8px',
+                            height: '8px',
+                            background: 'var(--color-danger)',
+                            borderRadius: '50%',
+                            boxShadow: '0 0 5px var(--color-danger)'
+                        }}></span>
+                    )}
                 </button>
 
                 <div style={{ height: '24px', width: '1px', background: 'var(--border-color)' }}></div>

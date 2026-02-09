@@ -11,16 +11,20 @@ export class FundamentalAnalyzer {
      * Analyze fundamental context for a symbol
      * @param {string} symbol - Trading pair
      * @param {string} assetClass - Asset class type
+     * @param {Object} realData - Real data from newsService/calendar
      * @returns {Object} - Fundamental analysis
      */
-    analyzeFundamentals(symbol, assetClass) {
-        const events = this.getRelevantEvents(symbol, assetClass);
-        const impact = this.calculateOverallImpact(events, assetClass);
+    analyzeFundamentals(symbol, assetClass, realData = {}) {
+        const events = realData.events || this.getRelevantEvents(symbol, assetClass);
+        const news = realData.news || [];
+
+        const impact = this.calculateOverallImpact(events, assetClass, news);
         const alignment = this.checkTechnicalAlignment(impact);
         const proximityAnalysis = this.analyzeProximity(events);
 
         return {
             events,
+            news,
             impact,
             alignment,
             proximityAnalysis,
@@ -29,82 +33,10 @@ export class FundamentalAnalyzer {
     }
 
     /**
-     * Get relevant economic events for symbol
-     * @param {string} symbol - Trading pair
-     * @param {string} assetClass - Asset class
-     * @returns {Array} - Relevant events
+     * Get fallback events if real data is missing
      */
     getRelevantEvents(symbol, assetClass) {
-        // In production, this would fetch from a real calendar API
-        // For now, return mock events based on asset class
-
-        const now = Date.now();
-        const events = [];
-
-        if (assetClass === 'FOREX') {
-            // Forex events
-            if (symbol.includes('USD')) {
-                events.push(
-                    new EconomicEvent({
-                        asset: 'USD',
-                        type: 'INTEREST_RATE_DECISION',
-                        description: 'FOMC Meeting',
-                        timestamp: now + 86400000 * 2,
-                        impact: 'HIGH',
-                        bias: 'HAWKISH',
-                        volatilityExpected: 'HIGH'
-                    }),
-                    new EconomicEvent({
-                        asset: 'USD',
-                        type: 'NON_FARM_PAYROLLS',
-                        description: 'Non-Farm Payrolls',
-                        timestamp: now + 86400000 * 5,
-                        impact: 'VERY_HIGH',
-                        bias: 'HAWKISH',
-                        volatilityExpected: 'HIGH'
-                    })
-                );
-            }
-            if (symbol.includes('EUR')) {
-                events.push(
-                    new EconomicEvent({
-                        asset: 'EUR',
-                        type: 'INTEREST_RATE_DECISION',
-                        description: 'ECB Interest Rate Decision',
-                        timestamp: now + 86400000 * 3,
-                        impact: 'VERY_HIGH',
-                        bias: 'NEUTRAL',
-                        volatilityExpected: 'MEDIUM'
-                    })
-                );
-            }
-        } else if (assetClass === 'CRYPTO') {
-            // Crypto fundamental events
-            if (symbol.includes('BTC')) {
-                events.push(
-                    new EconomicEvent({
-                        asset: 'BTC',
-                        type: 'ETF_FLOW',
-                        description: 'Bitcoin ETF Inflows',
-                        timestamp: now,
-                        impact: 'HIGH',
-                        bias: 'RISK_ON',
-                        volatilityExpected: 'MEDIUM'
-                    }),
-                    new EconomicEvent({
-                        asset: 'BTC',
-                        type: 'CRYPTO_SUPPLY',
-                        description: 'Halving Cycle Post-Effect',
-                        timestamp: now - 86400000 * 180,
-                        impact: 'MEDIUM',
-                        bias: 'BULLISH',
-                        volatilityExpected: 'LOW'
-                    })
-                );
-            }
-        }
-
-        return events;
+        return []; // No longer using mock events by default
     }
 
     /**

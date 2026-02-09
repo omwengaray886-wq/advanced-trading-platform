@@ -276,21 +276,19 @@ export default function Dashboard() {
                     </div>
                 </div>
                 <div className="card">
-                    <p style={{ color: 'var(--color-text-secondary)', fontSize: '14px', marginBottom: '8px' }}>Market Obligation</p>
+                    <p style={{ color: 'var(--color-text-secondary)', fontSize: '14px', marginBottom: '8px' }}>Institutional Cycle (AMD)</p>
                     <div style={{
-                        fontSize: '16px',
+                        fontSize: '18px',
                         fontWeight: 'bold',
-                        color: setups[0]?.marketState?.obligations?.state === 'OBLIGATED'
-                            ? 'var(--color-success)'
-                            : 'var(--color-text-secondary)'
+                        color: setups[0]?.marketState?.amdCycle?.phase === 'MANIPULATION' ? 'var(--color-danger)' :
+                            setups[0]?.marketState?.amdCycle?.phase === 'ACCUMULATION' ? 'var(--color-warning)' :
+                                'var(--color-success)'
                     }}>
-                        {setups[0]?.marketState?.obligations?.state || 'UNKNOWN'}
+                        {setups[0]?.marketState?.amdCycle?.phase || 'UNKNOWN'}
                     </div>
-                    {setups[0]?.marketState?.obligations?.primaryObligation && (
-                        <p style={{ fontSize: '11px', marginTop: '4px', color: 'var(--color-text-secondary)' }}>
-                            {setups[0].marketState.obligations.primaryObligation.description}
-                        </p>
-                    )}
+                    <p style={{ fontSize: '11px', marginTop: '4px', color: 'var(--color-text-secondary)' }}>
+                        {setups[0]?.marketState?.amdCycle?.note || 'Waiting for institutional footprints...'}
+                    </p>
                 </div>
                 <SentimentGauge score={setups[0]?.marketState?.sentiment?.score || 50} />
                 <LiveWallet />

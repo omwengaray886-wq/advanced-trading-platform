@@ -135,6 +135,32 @@ export class MarketDataService {
     }
 
     /**
+     * Fetch multiple timeframes concurrently for trend consensus
+     * @param {string} symbol - Trading symbol
+     * @param {Array} timeframes - Intervals to fetch
+     * @param {number} limit - Limit per timeframe
+     * @returns {Promise<Object>} - Map of results
+     */
+    async fetchMultiTimeframe(symbol, timeframes = ['15m', '1h', '4h', '1d'], limit = 100) {
+        try {
+            const results = await Promise.all(
+                timeframes.map(tf => this.fetchHistory(symbol, tf, limit).catch(e => {
+                    console.warn(`Parallel fetch failed for ${symbol} @ ${tf}:`, e.message);
+                    return null;
+                }))
+            );
+
+            return timeframes.reduce((acc, tf, i) => {
+                acc[tf] = results[i];
+                return acc;
+            }, {});
+        } catch (error) {
+            console.error(`Multi-TF fetch failed for ${symbol}`, error);
+            return {};
+        }
+    }
+
+    /**
      * Fetch Order Book Snapshot (REST)
      */
     async fetchOrderBook(symbol, limit = 20) {

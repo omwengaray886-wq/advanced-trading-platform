@@ -15,7 +15,7 @@ export class ScenarioEngine {
     /**
      * Generate probabilistic scenarios
      */
-    static generateScenarios(marketState, setups, fundamentals) {
+    static generateScenarios(marketState, setups, fundamentals, performanceStats = null) {
         const primarySetup = setups[0];
         const proximity = fundamentals?.proximityAnalysis;
 
@@ -131,6 +131,17 @@ export class ScenarioEngine {
         upProb = Math.min(upProb, 0.75);
         downProb = Math.min(downProb, 0.75);
 
+        // Reality Calibration (Phase 2 Upgrade)
+        // If the primary strategy has been underperforming, lower the confidence
+        if (performanceStats && primarySetup) {
+            const stats = performanceStats[primarySetup.name];
+            if (stats && stats.winRate < 0.45) {
+                // Penalize probability for failing strategies
+                if (isBullish) upProb *= (stats.winRate / 0.45);
+                else downProb *= (stats.winRate / 0.45);
+            }
+        }
+
         // Re-normalize range prob
         if (upProb + downProb > 0.85) {
             // If both are high (rare), reduce them proportionally
@@ -174,8 +185,8 @@ export class ScenarioEngine {
         };
 
         // --- Confirmation Logic ---
-        primary.isConfirmed = this.checkConfirmation(marketState, primary);
-        secondary.isConfirmed = this.checkConfirmation(marketState, secondary);
+        primary.isConfirmed = this.checkConfirmation(marketState, primary, setups);
+        secondary.isConfirmed = this.checkConfirmation(marketState, secondary, setups);
 
         // Update styles if not waiting
         if (!isWaiting) {
@@ -204,31 +215,38 @@ export class ScenarioEngine {
     }
 
     /**
-     * Check if a scenario is confirmed by recent price action
+     * Check if a scenario is confirmed by recent price action & Deep Intelligence (Phase 5)
      */
-    static checkConfirmation(marketState, scenario) {
+    static checkConfirmation(marketState, scenario, setups = []) {
         if (scenario.bias === 'NEUTRAL') return true;
 
         const isBullish = scenario.bias === 'LONG';
+        const primarySetup = setups.find(s => s.direction === scenario.bias);
 
-        // 1. Check for recent retest
+        // 1. Bayesian Confidence Check (Mandatory for SOLID arrow)
+        const bayesianProb = primarySetup?.bayesianStats?.probability || 0;
+        const hasBayesianEdge = bayesianProb >= 0.70;
+
+        // 2. Multi-Timeframe (Fractal) Handshake
+        const htfBias = marketState.mtf?.globalBias || 'NEUTRAL';
+        const hasMTFAlignment = htfBias === (isBullish ? 'BULLISH' : 'BEARISH');
+
+        // 3. Technical Confirmations (Retest/Sweep)
         const hasRetest = (marketState.retests || []).some(r =>
             r.direction === (isBullish ? 'BULLISH' : 'BEARISH')
         );
 
-        // 2. Check for recent sweep
         const hasSweep = marketState.liquiditySweep && (
             (isBullish && marketState.liquiditySweep.type === 'BULLISH_SWEEP') ||
             (!isBullish && marketState.liquiditySweep.type === 'BEARISH_SWEEP')
         );
 
-        // 3. Check for structural shift (CHoCH or BOS in alignment)
-        // marketState.currentTrend is 'BULLISH'/'BEARISH', scenario.bias is 'LONG'/'SHORT'
-        const hasStructure = (marketState.currentTrend === 'BULLISH' && scenario.bias === 'LONG') ||
-            (marketState.currentTrend === 'BEARISH' && scenario.bias === 'SHORT');
+        // 4. Order Flow Alignment
+        const orderFlowAligned = marketState.orderFlow?.bias === (isBullish ? 'BULLISH' : 'BEARISH');
 
-        // confirmed if we have a retest OR sweep OR strong structure alignment
-        return hasRetest || hasSweep || (hasStructure && scenario.probability > 0.7);
+        // STICK 100% ACCURACY REQUIREMENT:
+        // Must have Bayesian Edge AND (MTF Alignment OR strong Price Action confirmation)
+        return hasBayesianEdge && (hasMTFAlignment || orderFlowAligned || hasRetest || hasSweep);
     }
 
     /**

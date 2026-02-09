@@ -3,249 +3,221 @@
  * 
  * Provides Bayesian probability weighting for market scenarios.
  * Calculates likelihood of continuation, reversal, and liquidity events
- * with time-based confidence decay.
+ * with time-based confidence decay and Market Obligation overrides.
  */
+
+import { bayesianEngine } from './BayesianInferenceEngine.js';
+import { MarketObligationEngine } from '../analysis/MarketObligationEngine.js';
 
 export class ProbabilisticEngine {
     /**
-     * Calculate probability of trend continuation
-     * @param {Object} marketState - Current market state
-     * @param {Object} mtfData - Multi-timeframe data
-     * @returns {number} Probability 0-100
+     * Generate combined predictions with dynamic Bayesian weighting
+     * @param {string} symbol
+     * @param {Object} marketState
+     * @returns {Object} Combined probabilities
      */
-    static calculateContinuationProbability(marketState, mtfData) {
-        // Bayesian Formula: P(Continuation) = (HTF_Bias * 0.35) + (Structure * 0.25) + (Volume * 0.20) + (Obligation * 0.20)
+    static async generatePredictions(symbol, marketState) {
+        // 1. Get Base Bayesian Priors for this asset/regime
+        // This tells us: "How often do breakdowns actually work in this current volatility?"
+        const regime = marketState.regime || 'RANGING';
+        const continuationPrior = await bayesianEngine.getPosteriorCredibility(symbol, 'CONTINUATION', regime);
+        const reversalPrior = await bayesianEngine.getPosteriorCredibility(symbol, 'REVERSAL', regime);
 
-        // 1. HTF Bias Weight (0-1)
-        const htfBiasWeight = this._getHTFBiasWeight(marketState, mtfData);
-
-        // 2. Structure Strength (0-1)
-        const structureStrength = this._getStructureStrength(marketState);
-
-        // 3. Volume Confirmation (0-1)
-        const volumeConfirmation = this._getVolumeConfirmation(marketState);
-
-        // 4. Market Obligation (0-1) - NEW
-        // If market has "unfinished business" (Obligations), it is compelled to move.
-        // If "Free Roaming", probability drops.
-        const obligationState = marketState.obligations?.state || 'FREE_ROAMING';
-        const obligationWeight = obligationState === 'OBLIGATED' ? 1.0 : 0.5;
-
-        // Weighted sum
-        const probability = (htfBiasWeight * 0.35) + (structureStrength * 0.25) + (volumeConfirmation * 0.20) + (obligationWeight * 0.20);
-
-        return Math.round(probability * 100);
-    }
-
-    /**
-     * Calculate probability of reversal
-     * @param {Object} marketState - Current market state
-     * @param {Array} swingPoints - Swing point history
-     * @returns {number} Probability 0-100
-     */
-    static calculateReversalProbability(marketState, swingPoints) {
-        let reversalScore = 0;
-
-        // 1. Divergence Detection (20 points)
-        if (marketState.divergence?.detected) {
-            reversalScore += 20;
-        }
-
-        // 2. Exhaustion Signals (20 points)
-        if (marketState.volumeAnalysis?.exhaustion) {
-            reversalScore += 20;
-        }
-
-        // 3. Major Resistance/Support Hit (30 points)
-        const atMajorLevel = this._isAtMajorLevel(marketState.currentPrice, swingPoints);
-        if (atMajorLevel) {
-            reversalScore += 30;
-        }
-
-        // 4. Failed BOS Count (15 points)
-        const failedBOS = marketState.structures?.filter(s => s.status === 'FAILED').length || 0;
-        reversalScore += Math.min(failedBOS * 5, 15);
-
-        // 5. Overextension (15 points)
-        const overextended = this._isOverextended(marketState);
-        if (overextended) {
-            reversalScore += 15;
-        }
-
-        return Math.min(reversalScore, 100);
-    }
-
-    /**
-     * Calculate probability of liquidity run
-     * @param {Array} liquidityPools - Available liquidity pools
-     * @param {number} currentPrice - Current market price
-     * @returns {Object} { probability, target }
-     */
-    static calculateLiquidityRunProbability(liquidityPools, currentPrice) {
-        if (!liquidityPools || liquidityPools.length === 0) {
-            return { probability: 0, target: null };
-        }
-
-        // Find nearest high-strength pool
-        const sortedPools = liquidityPools
-            .map(pool => ({
-                ...pool,
-                distance: Math.abs(pool.price - currentPrice),
-                distancePercent: Math.abs(pool.price - currentPrice) / currentPrice
-            }))
-            .sort((a, b) => a.distance - b.distance);
-
-        const nearestPool = sortedPools[0];
-
-        // Probability factors
-        let probability = 0;
-
-        // 1. Pool strength (40 points)
-        const strengthMap = { HIGH: 40, MEDIUM: 25, LOW: 10 };
-        probability += strengthMap[nearestPool.strength] || 10;
-
-        // 2. Proximity (30 points) - closer = higher probability
-        if (nearestPool.distancePercent < 0.005) probability += 30; // Within 0.5%
-        else if (nearestPool.distancePercent < 0.01) probability += 20; // Within 1%
-        else if (nearestPool.distancePercent < 0.02) probability += 10; // Within 2%
-
-        // 3. Trend alignment (30 points)
-        const trendAligned = (nearestPool.type === 'BUY_SIDE' && nearestPool.price > currentPrice) ||
-            (nearestPool.type === 'SELL_SIDE' && nearestPool.price < currentPrice);
-        if (trendAligned) probability += 30;
+        // 2. Calculate Component Probabilities
+        const P_Continuation = this.calculateContinuationProbability(marketState, marketState.mtf, continuationPrior);
+        const P_Reversal = this.calculateReversalProbability(marketState, marketState.swingPoints || [], reversalPrior);
+        const P_LiquidityRun = this.calculateLiquidityRunProbability(marketState.liquidityPools, marketState.currentPrice, marketState.obligations);
+        const P_Consolidation = this.calculateConsolidationProbability(marketState);
 
         return {
-            probability: Math.min(probability, 100),
-            target: nearestPool.price,
-            type: nearestPool.type,
-            label: nearestPool.label
+            continuation: P_Continuation,
+            reversal: P_Reversal,
+            liquidityRun: P_LiquidityRun,
+            consolidation: P_Consolidation,
+            priors: {
+                continuation: continuationPrior,
+                reversal: reversalPrior
+            }
         };
     }
 
     /**
+     * Get dynamic weights based on market regime and volatility
+     * @param {string} regime - RANGING | TRENDING | VOLATILE
+     * @param {Object} volatility - Volatility state object
+     * @returns {Object} Weight configuration
+     */
+    static getDynamicWeights(regime, volatility) {
+        const volLevel = typeof volatility === 'string' ? volatility : (volatility?.volatilityState?.level || 'MODERATE');
+
+        // Default weights (Balanced)
+        let weights = {
+            bayesian: 30,
+            htf: 20,
+            structure: 20,
+            volume: 20,
+            obligation: 10,
+            traps: 20 // for reversal logic
+        };
+
+        if (regime === 'TRENDING') {
+            weights.bayesian = 25;
+            weights.htf = 35;       // Increase weight of HTF alignment
+            weights.structure = 25; // Increase weight of BOS/OrderBlocks
+            weights.volume = 15;
+            weights.obligation = 0; // In strong trends, we don't care about magnets as much
+        } else if (regime === 'RANGING') {
+            weights.bayesian = 35;
+            weights.htf = 10;       // Decrease HTF influence in a range
+            weights.structure = 15;
+            weights.volume = 25;    // Increase volume profile / exhaustion weight
+            weights.obligation = 15; // Magnets are stronger in ranges
+            weights.traps = 40;     // Liquidity sweeps are KING in ranges
+        }
+
+        // Volatility fine-tuning
+        if (volLevel === 'HIGH' || volLevel === 'EXTREME') {
+            weights.bayesian = 40;  // Trust history more when it's chaos
+            weights.traps += 10;    // More fakeouts in high vol
+            weights.htf -= 5;
+        }
+
+        return weights;
+    }
+
+    /**
+     * Calculate probability of trend continuation
+     */
+    static calculateContinuationProbability(marketState, mtfData, priorStats) {
+        const weights = this.getDynamicWeights(marketState.regime, marketState.volatility);
+
+        // Base: Dynamic Bayesian weight
+        let probability = priorStats.probability * weights.bayesian;
+
+        // 1. HTF Bias & Structure (Dynamic Weights)
+        const htfBiasWeight = this._getHTFBiasWeight(marketState, mtfData);
+        const structureStrength = this._getStructureStrength(marketState);
+        probability += (htfBiasWeight * weights.htf) + (structureStrength * weights.structure);
+
+        // 2. Volume & Order Flow
+        const volumeConfirmation = this._getVolumeConfirmation(marketState);
+        probability += (volumeConfirmation * weights.volume);
+
+        // 3. Market Obligation Override
+        const obligation = marketState.obligations?.primaryObligation;
+        if (obligation && obligation.urgency > 80 && weights.obligation > 0) {
+            const trendDir = marketState.trend?.direction || 'NEUTRAL';
+            const obligationDir = obligation.price > marketState.currentPrice ? 'BULLISH' : 'BEARISH';
+
+            if (trendDir === obligationDir) {
+                probability += weights.obligation + 5; // Bonus for alignment
+            } else {
+                probability -= weights.obligation * 2; // Penalty for conflict
+            }
+        }
+
+        return Math.min(Math.round(probability), 100);
+    }
+
+    /**
+     * Calculate probability of reversal
+     */
+    static calculateReversalProbability(marketState, swingPoints, priorStats) {
+        const weights = this.getDynamicWeights(marketState.regime, marketState.volatility);
+
+        // Base: Dynamic Bayesian weight
+        let probability = priorStats.probability * weights.bayesian;
+
+        // 1. Standard Technicals
+        if (marketState.divergence?.detected) probability += 15;
+        if (marketState.volumeAnalysis?.exhaustion) probability += 15;
+        if (this._isAtMajorLevel(marketState.currentPrice, swingPoints)) probability += 10;
+
+        // 2. Failed Patterns (The "Trap" Logic)
+        if (marketState.liquiditySweep) {
+            probability += weights.traps;
+
+            // Boost if verified by absorption
+            if (marketState.liquiditySweep.isConfirmedByAbsorption) {
+                probability += 10;
+            }
+        }
+
+        // 3. Obligation-Driven Reversal
+        const obligation = marketState.obligations?.primaryObligation;
+        if (obligation && obligation.urgency > 75) {
+            const trendDir = marketState.trend?.direction || 'NEUTRAL';
+            const obligationDir = obligation.price > marketState.currentPrice ? 'BULLISH' : 'BEARISH';
+
+            if (trendDir !== 'NEUTRAL' && trendDir !== obligationDir) {
+                probability += 20;
+            }
+        }
+
+        return Math.min(Math.round(probability), 100);
+    }
+
+    /**
+     * Calculate probability of liquidity run
+     * Now heavily weighted by Market Obligation Urgency
+     */
+    static calculateLiquidityRunProbability(liquidityPools, currentPrice, obligationsState) {
+        // If we have a calculated "Primary Obligation", use that directly
+        const primaryOb = obligationsState?.primaryObligation;
+
+        if (primaryOb && primaryOb.type.includes('LIQUIDITY')) {
+            return {
+                probability: primaryOb.urgency, // 0-100 derived from ObligationEngine
+                target: primaryOb.price,
+                type: primaryOb.type,
+                label: `Magnet: ${primaryOb.description}`
+            };
+        }
+
+        // Fallback to minimal logic if no strong obligation
+        return { probability: 0, target: null };
+    }
+
+    /**
      * Apply confidence decay over time
-     * @param {number} initialProbability - Original probability (0-100)
-     * @param {number} timeSinceSetup - Time in milliseconds since setup formed
-     * @param {number} halfLifeMs - Half-life in milliseconds (default 4 hours)
-     * @returns {number} Decayed probability
      */
     static applyConfidenceDecay(initialProbability, timeSinceSetup, halfLifeMs = 4 * 60 * 60 * 1000) {
-        // Exponential decay: P(t) = P(0) × e^(-λt)
-        // where λ = ln(2) / halfLife
-
         const decayRate = Math.log(2) / halfLifeMs;
         const decayedProbability = initialProbability * Math.exp(-decayRate * timeSinceSetup);
-
         return Math.max(Math.round(decayedProbability), 0);
     }
 
-    /**
-     * Get HTF bias alignment weight
-     * @private
-     */
+    // --- Helpers (Same as before, simplified) ---
+
     static _getHTFBiasWeight(marketState, mtfData) {
         const globalBias = marketState.mtf?.globalBias || 'NEUTRAL';
-
-        if (globalBias === 'NEUTRAL') return 0.3;
-
-        // Strong bias if HTF and LTF align
-        const ltfBias = marketState.trend?.direction || 'NEUTRAL';
-        const htfBias = globalBias;
-
-        if (ltfBias === htfBias) return 1.0; // Perfect alignment
-        if (ltfBias === 'NEUTRAL') return 0.6; // HTF bias but LTF neutral
-        return 0.2; // Conflicting bias
+        if (globalBias === 'NEUTRAL') return 0.5;
+        return (marketState.trend?.direction === globalBias) ? 1.0 : 0.2;
     }
 
-    /**
-     * Get structure strength score
-     * @private
-     */
     static _getStructureStrength(marketState) {
-        let strength = 0;
-
-        // BOS confirmed
         const bosCount = marketState.structures?.filter(s => s.markerType === 'BOS' && s.status !== 'FAILED').length || 0;
-        strength += Math.min(bosCount * 0.3, 0.6);
-
-        // MTF alignment
-        if (marketState.mtfBiasAligned) {
-            strength += 0.4;
-        }
-
-        return Math.min(strength, 1.0);
+        return Math.min(bosCount * 0.25, 1.0);
     }
 
-    /**
-     * Get volume confirmation score
-     * @private
-     */
     static _getVolumeConfirmation(marketState) {
         if (marketState.volumeAnalysis?.isInstitutional) return 1.0;
-        if (marketState.volumeAnalysis?.relativeVolume > 1.5) return 0.7;
-        return 0.3;
+        return marketState.volumeAnalysis?.relativeVolume > 1.5 ? 0.7 : 0.4;
     }
 
-    /**
-     * Check if price is at major swing level
-     * @private
-     */
     static _isAtMajorLevel(currentPrice, swingPoints) {
-        if (!swingPoints || swingPoints.length === 0) return false;
-
-        // Check if within 0.2% of any major swing
+        if (!swingPoints) return false;
         return swingPoints.some(swing => {
             const distance = Math.abs(swing.price - currentPrice) / currentPrice;
             return distance < 0.002 && (swing.touches >= 3 || swing.isMajor);
         });
     }
 
-    /**
-     * Check if market is overextended
-     * @private
-     */
-    static _isOverextended(marketState) {
-        // Check if price is in extreme premium/discount
-        const trend = marketState.trend;
-        if (!trend) return false;
-
-        // Simple check: if trend strength > 0.85 for extended period
-        return trend.strength > 0.85 && trend.duration > 20;
-    }
-
-    /**
-     * Calculate consolidation probability
-     * @param {Object} marketState - Current market state
-     * @returns {number} Probability 0-100
-     */
     static calculateConsolidationProbability(marketState) {
         let score = 0;
-
-        // Low volatility (40 points)
         if (marketState.volatility?.state === 'LOW') score += 40;
-
-        // Range regime (40 points)
         if (marketState.regime === 'RANGING') score += 40;
-
-        // Balanced volume (20 points)
-        if (!marketState.volumeAnalysis?.isInstitutional) score += 20;
-
         return Math.min(score, 100);
-    }
-
-    /**
-     * Generate combined predictions for orchestrator (Phase 50)
-     * @param {string} symbol
-     * @param {Object} marketState
-     * @returns {Object} Combined probabilities
-     */
-    static generatePredictions(symbol, marketState) {
-        return {
-            continuation: this.calculateContinuationProbability(marketState, marketState.mtf),
-            reversal: this.calculateReversalProbability(marketState, marketState.swingPoints || []),
-            liquidityRun: this.calculateLiquidityRunProbability(marketState.liquidityPools, marketState.currentPrice),
-            consolidation: this.calculateConsolidationProbability(marketState)
-        };
     }
 }
 

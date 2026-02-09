@@ -98,6 +98,122 @@ export class CorrelationEngine {
      * Detect SMT Divergence between sibling assets
      */
     /**
+     * Phase 2: Check multi-asset correlation alignment
+     * Validates prediction against sibling assets
+     */
+    /**
+     * Phase 2: Check multi-asset correlation alignment
+     * Validates prediction against sibling assets
+     */
+    async checkMultiAssetAlignment(symbol, predictedDirection, timeframe) {
+        const correlationGroups = {
+            'BTCUSDT': ['ETHUSDT', 'SOLUSDT', 'BNBUSDT'],
+            'ETHUSDT': ['BTCUSDT', 'SOLUSDT', 'AVAXUSDT'],
+            'EURUSD': ['GBPUSD', 'AUDUSD', 'NZDUSD'],
+            'GBPUSD': ['EURUSD', 'AUDUSD', 'NZDUSD'],
+            'XAUUSD': ['XAGUSD', 'PAXGUSDT']
+        };
+
+        const siblings = correlationGroups[symbol] || [];
+        if (siblings.length === 0) {
+            return { alignment: 0.5, recommendation: 'NEUTRAL', confidenceAdjustment: 1.0 };
+        }
+
+        let alignedCount = 0;
+        let totalChecked = 0;
+        const siblingDetails = {};
+
+        for (const sibling of siblings) {
+            try {
+                const candles = await marketData.fetchHistory(sibling, timeframe, 20);
+                if (!candles || candles.length < 10) continue;
+
+                const trend = this.calculateTrendSlope(candles);
+                const siblingDirection = trend > 0 ? 'BULLISH' : trend < 0 ? 'BEARISH' : 'NEUTRAL';
+
+                totalChecked++;
+                if (siblingDirection === predictedDirection) {
+                    alignedCount++;
+                }
+
+                siblingDetails[sibling] = { direction: siblingDirection, strength: Math.abs(trend) };
+            } catch (error) {
+                console.warn(`[CorrelationEngine] Failed to fetch sibling ${sibling}:`, error);
+            }
+        }
+
+        const alignmentScore = totalChecked > 0 ? alignedCount / totalChecked : 0.5;
+
+        let confidenceAdjustment = 1.0;
+        let recommendation = 'NEUTRAL';
+
+        if (alignmentScore >= 0.75) {
+            confidenceAdjustment = 1.15;
+            recommendation = 'STRONG_CONFIRMATION';
+        } else if (alignmentScore <= 0.3) {
+            confidenceAdjustment = 0.85;
+            recommendation = 'DIVERGENCE_ALERT';
+        }
+
+        return {
+            alignment: alignmentScore,
+            recommendation,
+            confidenceAdjustment,
+            details: siblingDetails
+        };
+    }
+
+    /**
+     * Calculate Correlation Strength between two assets
+     */
+    async calculateCorrelationStrength(symbolA, symbolB, timeframe = '4h') {
+        try {
+            const [dataA, dataB] = await Promise.all([
+                marketData.fetchHistory(symbolA, timeframe, 50),
+                marketData.fetchHistory(symbolB, timeframe, 50)
+            ]);
+
+            if (dataA.length < 20 || dataB.length < 20) return 0.5;
+
+            // Pearson Correlation Coefficient calculation
+            const returnsA = this.calculateReturns(dataA);
+            const returnsB = this.calculateReturns(dataB);
+
+            const minLen = Math.min(returnsA.length, returnsB.length);
+            const sliceA = returnsA.slice(-minLen);
+            const sliceB = returnsB.slice(-minLen);
+
+            const meanA = sliceA.reduce((a, b) => a + b, 0) / minLen;
+            const meanB = sliceB.reduce((a, b) => a + b, 0) / minLen;
+
+            let num = 0;
+            let denA = 0;
+            let denB = 0;
+
+            for (let i = 0; i < minLen; i++) {
+                const diffA = sliceA[i] - meanA;
+                const diffB = sliceB[i] - meanB;
+                num += (diffA * diffB);
+                denA += (diffA * diffA);
+                denB += (diffB * diffB);
+            }
+
+            return num / Math.sqrt(denA * denB);
+        } catch (error) {
+            console.error('[CorrelationEngine] Strength calculation failed:', error);
+            return 0.5;
+        }
+    }
+
+    calculateReturns(candles) {
+        const returns = [];
+        for (let i = 1; i < candles.length; i++) {
+            returns.push((candles[i].close - candles[i - 1].close) / candles[i - 1].close);
+        }
+        return returns;
+    }
+
+    /**
      * @deprecated - Moved to DivergenceEngine.js
      */
     async detectSMTDivergence(symbol, candles) {

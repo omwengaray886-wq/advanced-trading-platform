@@ -47,6 +47,22 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                 <div style={{ fontSize: '11px', opacity: 0.8, marginTop: '4px' }}>
                     {Math.round((selectedStrategy.suitability || 0) * 100)}% Market Fit
                 </div>
+                {/* Phase 52: Bayesian Reliability Display */}
+                {analysis.prediction?.strategy === selectedStrategy.name && (
+                    <div style={{
+                        marginTop: '8px',
+                        paddingTop: '8px',
+                        borderTop: '1px solid rgba(255,255,255,0.2)',
+                        fontSize: '10px',
+                        display: 'flex',
+                        justifyContent: 'space-between'
+                    }}>
+                        <span>Bayesian Reliability:</span>
+                        <span style={{ fontWeight: 'bold', color: '#fff' }}>
+                            {analysis.prediction.confidenceBreakdown?.positives?.find(p => p.includes('Reliability'))?.match(/\d+%/)?.[0] || 'N/A'}
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* Executive AI Narrative [Phase 68] */}
@@ -108,7 +124,11 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                     </div>
                     <div style={{ background: 'var(--color-bg-tertiary)', padding: '10px', borderRadius: '6px' }}>
                         <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>VOLATILITY</div>
-                        <div style={{ fontSize: '13px', fontWeight: '600' }}>{marketState.volatility}</div>
+                        <div style={{ fontSize: '13px', fontWeight: '600' }}>
+                            {typeof marketState.volatility === 'string'
+                                ? marketState.volatility
+                                : marketState.volatility?.volatilityState?.level || 'MODERATE'}
+                        </div>
                     </div>
                     <div style={{ background: 'var(--color-bg-tertiary)', padding: '10px', borderRadius: '6px' }}>
                         <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>STRENGTH</div>

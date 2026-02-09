@@ -70,7 +70,29 @@ export class ExplanationEngine {
         const smtDir = state.smtDivergence?.direction;
         const hasObligation = !!analysis.setups?.some(s => s.hasObligation);
 
+        // Phase 54: Bayesian Credibility Reference
+        const bayesianStats = setup?.bayesianStats;
+        const credibility = bayesianStats?.credibility || 'NEUTRAL';
+        const isSuppressed = bayesianStats?.isSuppressed || false;
+
+        // Phase 54: Recent CHoCH Structure Break Detection
+        const recentChoch = state.structuralEvents?.slice(-3).find(e => e.markerType === 'CHOCH');
+        const chochMatch = recentChoch && ((recentChoch.metadata?.direction === 'BULLISH' && trend === 'BULLISH') ||
+            (recentChoch.metadata?.direction === 'BEARISH' && trend === 'BEARISH'));
+
         let narrative = `The institutional narrative for ${analysis.symbol} is currently **${trend.toLowerCase()}** within a ${bias.toLowerCase()} structural context. `;
+
+        // Phase 54: Reference Bayesian Credibility
+        if (credibility === 'PREMIUM' && !isSuppressed) {
+            narrative += `This setup carries **PREMIUM Bayesian Credibility** (historical accuracy >70%), meaning the strategy has proven institutional-grade performance in this regime. `;
+        } else if (isSuppressed) {
+            narrative += `⚠️ Note: This strategy is currently **suppressed** by Bayesian historical underperformance—proceed with heightened caution. `;
+        }
+
+        // Phase 53: Reference CHoCH Structure Alignment
+        if (chochMatch) {
+            narrative += `Recent **CHoCH (Change of Character)** confirms that market structure has shifted ${trend.toLowerCase()}, validating the current bias. `;
+        }
 
         if (isMTFAligned) {
             narrative += `We have rare **Fractal Synchronicity**, where high-timeframe truth and local price action are fully synchronized. `;
@@ -82,8 +104,26 @@ export class ExplanationEngine {
             narrative += `VHF Order Flow analysis confirms high-magnitude institutional participation at current levels. `;
         }
 
+        // Phase 52: Magnet Urgency Reference
         if (hasObligation) {
-            narrative += `The market currently carries an **Institutional Obligation** (Magnet) to the ${trend === 'BULLISH' ? 'upside' : 'downside'}, making the current setup high-urgency. `;
+            const obligation = state.obligations?.magnets?.[0];
+            const urgency = obligation?.urgency || 0;
+            narrative += `The market currently carries an **Institutional Obligation** (Magnet at ${obligation?.price?.toFixed(5) || 'N/A'}, Urgency: ${urgency}%), making this a high-priority institutional target. `;
+        }
+
+        // Phase 56: Directional Confidence Display
+        const confidenceScore = setup?.directionalConfidence;
+        const confidenceChecks = setup?.confidenceChecks || [];
+
+        if (confidenceScore !== undefined) {
+            const confidenceLabel = confidenceScore >= 0.7 ? 'HIGH' : confidenceScore >= 0.5 ? 'MEDIUM' : 'LOW';
+            narrative += `\n\n**Directional Confidence: ${(confidenceScore * 100).toFixed(0)}%** (${confidenceLabel})`;
+
+            if (confidenceChecks.length > 0) {
+                narrative += `\n⚠️ **Validation Warnings**: ${confidenceChecks.join('; ')}. Consider waiting for stronger confirmation.`;
+            } else if (confidenceScore >= 0.7) {
+                narrative += ` - All directional validation checks passed.`;
+            }
         }
 
         // Add closing risk synthesis
@@ -133,7 +173,9 @@ export class ExplanationEngine {
      * Build regime explanation
      */
     buildRegime(analysis) {
-        return `Market is in a ${analysis.marketState.regime.toLowerCase()} state with ${analysis.marketState.volatility.toLowerCase()} volatility.`;
+        const vol = analysis.marketState.volatility;
+        const volLevel = (typeof vol === 'string' ? vol : vol?.volatilityState?.level) || 'MODERATE';
+        return `Market is in a ${analysis.marketState.regime.toLowerCase()} state with ${volLevel.toLowerCase()} volatility.`;
     }
 
     /**
@@ -513,11 +555,22 @@ export class ExplanationEngine {
      */
     buildEdgeAnalysis(analysis, mode) {
         const pred = analysis.prediction;
+        const setup = analysis.setups?.[0];
         if (!pred || pred.bias === 'NO_EDGE') return null;
 
         let msg = `### 📊 Edge Analysis v2\n`;
         msg += `**Prediction ID:** \`${pred.id}\` (Auditable)\n`;
         msg += `**Edge Score:** \`${pred.edgeScore}/10\` (${pred.edgeLabel})\n\n`;
+
+        // Phase 54: Bayesian Credibility Display
+        if (setup?.bayesianStats) {
+            const bayes = setup.bayesianStats;
+            msg += `**Bayesian Credibility:** \`${bayes.credibility}\` (Prior: ${(bayes.prior * 100).toFixed(0)}%, Posterior: ${(bayes.posterior * 100).toFixed(0)}%)\n`;
+            if (bayes.isSuppressed) {
+                msg += `⚠️ **Strategy Suppressed** due to recent underperformance.\n`;
+            }
+            msg += `\n`;
+        }
 
         msg += `**Confidence Breakdown:**\n`;
         pred.confidenceBreakdown.positives.forEach(p => msg += `✅ ${p}\n`);
@@ -554,8 +607,9 @@ export class ExplanationEngine {
      * Build Institutional Factors summary
      */
     buildInstitutionalFactors(analysis, mode) {
-        const volatility = analysis.marketState.volatility;
+        const vol = analysis.marketState.volatility;
+        const volLevel = (typeof vol === 'string' ? vol : vol?.volatilityState?.level) || 'MODERATE';
         const volume = analysis.marketState.volumeAnalysis?.isInstitutional ? 'High' : 'Normal';
-        return `Liquidity state is ${volatility.toLowerCase()} with ${volume.toLowerCase()} institutional volume participation. Cross-asset correlation is ${analysis.fundamentalAlignment ? 'aligned' : 'shifting'}.`;
+        return `Liquidity state is ${volLevel.toLowerCase()} with ${volume.toLowerCase()} institutional volume participation. Cross-asset correlation is ${analysis.fundamentalAlignment ? 'aligned' : 'shifting'}.`;
     }
 }

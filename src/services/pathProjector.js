@@ -144,6 +144,12 @@ export class PathProjector {
             probability += 10;
         }
 
+        // Phase 5: Bayesian Booster
+        // If probability is already high, Bayesian confirmation pushes it towards certain institutional draw.
+        if (marketState.orderFlow?.bias === marketState.mtf?.globalBias) {
+            probability += 10;
+        }
+
         // Reduce if far from current price
         const distancePercent = Math.abs(pool.price - currentPrice) / currentPrice;
         if (distancePercent > 0.05) { // > 5% away
@@ -235,6 +241,10 @@ export class PathProjector {
 
         const direction = paths.primaryTarget.price > marketState.currentPrice ? 'upside' : 'downside';
         const summary = `HTF ${htfBias} bias targeting ${direction} liquidity at ${paths.primaryTarget.price.toFixed(5)} (${paths.primaryTarget.label}). `;
+
+        if (marketState.mtfBiasAligned) {
+            return summary + `Institutional convergence detected: High-TF draw is in perfect sync with local setup.`;
+        }
 
         if (paths.secondaryTargets.length > 0) {
             return summary + `Extension targets: ${paths.secondaryTargets.map(t => t.price.toFixed(5)).join(', ')}.`;

@@ -125,14 +125,15 @@ export function drawStructureMarker(chart, marker) {
 
         return {
             id: marker.id,
-            type: 'choch_line',
-            price: marker.coordinates.price,
-            time: marker.coordinates.time,
-            color: chochColor,
-            lineWidth: 2,
-            lineStyle: 2, // Dashed
-            label: `🔄 CHoCH ${marker.metadata?.direction || ''}`,
-            direction: marker.metadata?.direction
+            type: 'price_line',
+            priceLine: {
+                price: marker.coordinates.price,
+                color: chochColor,
+                lineWidth: 2,
+                lineStyle: 2, // Dashed
+                axisLabelVisible: true,
+                title: `🔄 CHoCH ${marker.metadata?.direction || ''}`,
+            }
         };
     }
 

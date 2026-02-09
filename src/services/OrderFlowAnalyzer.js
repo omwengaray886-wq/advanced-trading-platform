@@ -1,16 +1,108 @@
 /**
- * Order Flow Analyzer
- * Detects institutional volume signatures and relative volume (RV) spikes.
+ * Order Flow Analyzer (Phase 5)
+ * 
+ * Estimates institutional intent via Volume Delta and Absorption Analysis.
+ * Validates whether a "Liquidity Sweep" or "BOS" has the underlying 
+ * volume commitment required for high-accuracy predictions.
  */
 export class OrderFlowAnalyzer {
     /**
-     * Detect Institutional Volume Activity
+     * Analyze recent order flow for a set of candles
+     * @param {Array} candles 
+     * @returns {Object} { delta, absorption, intensity }
+     */
+    static analyze(candles) {
+        if (!candles || candles.length === 0) return null;
+
+        const recentCandles = candles.slice(-5);
+        const results = recentCandles.map(c => this._calculateDelta(c));
+
+        const netDelta = results.reduce((sum, r) => sum + r.net, 0);
+        const avgVolume = results.reduce((sum, r) => sum + r.volume, 0) / results.length;
+
+        // 1. Detect Absorption
+        // If volume is high (1.5x avg) but range is low, institutions are absorbing.
+        const absorption = this._detectAbsorption(recentCandles[recentCandles.length - 1], avgVolume, recentCandles);
+
+        // 2. Identify Climax
+        // Extremely high delta in one direction often indicates exhaustion
+        const climax = this._detectClimax(results[results.length - 1], avgVolume);
+
+        return {
+            currentDelta: results[results.length - 1].net,
+            netDelta5: netDelta,
+            bias: netDelta > 0 ? 'BULLISH' : 'BEARISH',
+            intensity: Math.abs(netDelta) / avgVolume,
+            absorption,
+            climax,
+            isInstitutional: Math.abs(results[results.length - 1].net) > (avgVolume * 0.4) // 40% of volume is directional
+        };
+    }
+
+    /**
+     * Estimate Delta based on Price Action/Volume (OFS - Order Flow Simulation)
+     */
+    static _calculateDelta(candle) {
+        const range = candle.high - candle.low;
+        if (range === 0) return { net: 0, volume: candle.volume };
+
+        // Bullish Pressure: How much of the candle is above the Low?
+        const bullPressure = (candle.close - candle.low) / range;
+        const bearPressure = (candle.high - candle.close) / range;
+
+        const bullVolume = candle.volume * bullPressure;
+        const bearVolume = candle.volume * bearPressure;
+
+        return {
+            bull: bullVolume,
+            bear: bearVolume,
+            net: bullVolume - bearVolume,
+            volume: candle.volume
+        };
+    }
+
+    /**
+     * Detect Institutional Absorption
+     */
+    static _detectAbsorption(candle, avgVolume, recentCandles = []) {
+        const range = Math.abs(candle.high - candle.low);
+        const avgRange = recentCandles.length > 0
+            ? recentCandles.reduce((sum, c) => sum + Math.abs(c.high - c.low), 0) / recentCandles.length
+            : range;
+
+        // High Volume + Low Range = Absorption
+        if (candle.volume > avgVolume * 1.5 && range < avgRange * 0.8) {
+            return {
+                detected: true,
+                type: candle.close > candle.open ? 'BULLISH_ABSORPTION' : 'BEARISH_ABSORPTION',
+                note: 'High volume with minimal price movement indicates institutional accumulation/distribution.'
+            };
+        }
+        return { detected: false };
+    }
+
+    /**
+     * Detect Volume Climax (Exhaustion)
+     */
+    static _detectClimax(lastDelta, avgVolume) {
+        if (Math.abs(lastDelta.net) > avgVolume * 2.0) {
+            return {
+                detected: true,
+                type: lastDelta.net > 0 ? 'BUYING_CLIMAX' : 'SELLING_CLIMAX',
+                note: 'Extreme directional volume peak. Beware of reversal/exhaustion.'
+            };
+        }
+        return { detected: false };
+    }
+
+    /**
+     * Detect Institutional Volume Activity (Phase 6)
      * @param {Array} candles - Candlestick data
      * @param {number} period - Average period for volume (default: 20)
      * @returns {Object} - Volume analysis report
      */
     static detectInstitutionalVolume(candles, period = 20) {
-        if (candles.length < period + 1) {
+        if (!candles || candles.length < period + 1) {
             return { relativeVolume: 1, isInstitutional: false, type: 'NEUTRAL', score: 0 };
         }
 
@@ -67,7 +159,7 @@ export class OrderFlowAnalyzer {
     }
 
     static calculateSimpleATR(candles, period) {
-        if (candles.length < period) return 0;
+        if (!candles || candles.length < period) return 0;
         const recent = candles.slice(-period);
         const tr = recent.map(c => c.high - c.low);
         return tr.reduce((sum, val) => sum + val, 0) / period;

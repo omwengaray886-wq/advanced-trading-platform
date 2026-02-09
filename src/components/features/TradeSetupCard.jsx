@@ -43,6 +43,11 @@ const TradeSetupCard = ({ setup, index = 0, onClick }) => {
                             </span>
                         )}
                         <span className="badge badge-neutral" style={{ fontSize: '10px' }}>{setup.bias}</span>
+                        {setup.marketState?.amdCycle && (
+                            <span className={`badge ${setup.marketState.amdCycle.phase === 'MANIPULATION' ? 'badge-danger' : 'badge-neutral'}`} style={{ fontSize: '10px' }}>
+                                {setup.marketState.amdCycle.phase}
+                            </span>
+                        )}
                     </div>
                     <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
                         {new Date(setup.timestamp).toLocaleString()}
@@ -109,6 +114,12 @@ const TradeSetupCard = ({ setup, index = 0, onClick }) => {
                     {setup.thesis}
                 </p>
             </div>
+
+            {setup.marketState?.performanceWeights && (
+                <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', background: 'rgba(255,255,255,0.03)', padding: '4px 8px', borderRadius: '4px' }}>
+                    Strategy Performance Weight: <span style={{ color: 'var(--color-primary)', fontWeight: 'bold' }}>{setup.marketState.performanceWeights[setup.strategy]?.toFixed(2) || '1.00'}x</span>
+                </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
                 <span className="badge badge-neutral">R:R {setup.rrRatio}</span>

@@ -102,6 +102,7 @@ export class ZoneMapper {
      * Dynamically updates zone intent based on live price action.
      */
     static assignDynamicRole(mapping, zone, currentPrice) {
+        if (!zone.coordinates) return;
         const { top, bottom } = zone.coordinates;
         const isDemand = mapping.allowedDirection === 'LONG';
 

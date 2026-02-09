@@ -86,10 +86,107 @@ class PortfolioRiskService {
     }
 
     /**
+     * Calculate exposure per currency (USD, EUR, GBP, etc.)
+     */
+    calculateCurrencyConcentration() {
+        const concentrations = {};
+        const currencies = ['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'NZD', 'BTC', 'ETH'];
+
+        this.openPositions.forEach(pos => {
+            currencies.forEach(cur => {
+                if (pos.symbol.includes(cur)) {
+                    if (!concentrations[cur]) concentrations[cur] = { long: 0, short: 0, total: 0 };
+
+                    // Logic: EUR/USD Long = EUR Long, USD Short
+                    const [base, quote] = pos.symbol.split('/');
+                    if (base === cur) {
+                        if (pos.direction === 'LONG') concentrations[cur].long++;
+                        else concentrations[cur].short++;
+                    } else if (quote === cur) {
+                        if (pos.direction === 'LONG') concentrations[cur].short++; // Long EUR/USD = Short USD
+                        else concentrations[cur].long++;
+                    }
+                    concentrations[cur].total++;
+                }
+            });
+        });
+
+        return concentrations;
+    }
+
+    /**
+     * Suggest hedges based on high concentration
+     */
+    getHedgeSuggestions() {
+        const concentrations = this.calculateCurrencyConcentration();
+        const suggestions = [];
+
+        Object.entries(concentrations).forEach(([cur, stats]) => {
+            const net = stats.long - stats.short;
+            if (Math.abs(net) >= 3) {
+                suggestions.push({
+                    currency: cur,
+                    type: net > 0 ? 'SHORT_CONCENTRATION' : 'LONG_CONCENTRATION',
+                    severity: Math.abs(net) >= 5 ? 'CRITICAL' : 'WARNING',
+                    recommendation: net > 0 ? `Consider hedging ${cur} exposure with a Short setup.` : `Consider hedging ${cur} exposure with a Long setup.`
+                });
+            }
+        });
+
+        return suggestions;
+    }
+
+    /**
      * Sync open positions from exchange/wallet
      */
     syncPositions(positions) {
         this.openPositions = positions;
+    }
+
+    /**
+     * Phase 7: Automatic Portfolio Rebalancing Logic
+     * Evaluates open positions and suggests actions based on alpha decay or growth.
+     * @param {Map} recentAnalyses - Map of symbol -> analysis object
+     */
+    calculateRebalancingActions(recentAnalyses) {
+        const actions = [];
+
+        this.openPositions.forEach(pos => {
+            const analysis = recentAnalyses.get(pos.symbol);
+            if (!analysis) return;
+
+            const currentScore = analysis.quantScore || 50;
+            const entryScore = pos.entryQuantScore || 60; // Assume 60 if missing
+
+            // 1. Alpha Decay (Trim/Exit)
+            if (currentScore < entryScore * 0.7) {
+                actions.push({
+                    symbol: pos.symbol,
+                    action: currentScore < 30 ? 'EXIT' : 'TRIM',
+                    reason: `Alpha decay detected. QuantScore dropped from ${entryScore} to ${currentScore}.`,
+                    strength: (entryScore - currentScore) / entryScore
+                });
+            }
+
+            // 2. Alpha Growth (Scale In)
+            // If new institutional confirmation (Dark Pool or Wall) appears
+            const hasNewWall = analysis.marketState?.orderBookDepth?.pressure === (pos.direction === 'LONG' ? 'BULLISH' : 'BEARISH');
+            const hasDarkPool = (analysis.marketState?.darkPools || []).some(p =>
+                (pos.direction === 'LONG' && p.price <= analysis.marketState.currentPrice) ||
+                (pos.direction === 'SHORT' && p.price >= analysis.marketState.currentPrice)
+            );
+
+            if (currentScore > entryScore * 1.2 && (hasNewWall || hasDarkPool)) {
+                actions.push({
+                    symbol: pos.symbol,
+                    action: 'SCALE_IN',
+                    reason: 'Alpha growth: New institutional walls/sentiment supporting the trend.',
+                    strength: (currentScore - entryScore) / entryScore
+                });
+            }
+        });
+
+        return actions.sort((a, b) => b.strength - a.strength);
     }
 }
 
