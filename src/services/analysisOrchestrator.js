@@ -92,7 +92,8 @@ import { FundamentalAnalyzer } from './fundamentalAnalyzer.js';
 import { CorrelationEngine } from './correlationEngine.js';
 import { AssetClassAdapter } from './assetClassAdapter.js';
 import { EdgeScoringEngine } from './edgeScoringEngine.js';
-import { DirectionalConfidenceGate } from '../analysis/DirectionalConfidenceGate.js';
+// DirectionalConfidenceGate is now dynamically imported in analyze() to break circular dependencies
+
 
 export class AnalysisOrchestrator {
     constructor() {
@@ -507,7 +508,10 @@ export class AnalysisOrchestrator {
                 const bayesianStats = await bayesianEngine.getPosteriorCredibility(symbol, c.strategy.name, marketState.regime);
 
                 // --- PHASE 56: DIRECTIONAL CONFIDENCE GATE ---
-                const validation = await DirectionalConfidenceGate.validateDirection(
+                // Dynamically imported to prevent initialization circularity
+                const { DirectionalConfidenceGate: Gate } = await import('../analysis/DirectionalConfidenceGate.js');
+                const validation = await Gate.validateDirection(
+
                     { ...c, direction, ...riskParams },
                     marketState,
                     candles,
