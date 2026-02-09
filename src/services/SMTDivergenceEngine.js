@@ -1,6 +1,6 @@
 import { marketData } from './marketData.js';
 import { DivergenceMarker } from '../models/annotations/DivergenceMarker.js';
-import { normalizeDirection, isInversePair } from '../utils/normalization.js';
+import { normalizeDirection, isInversePair as isInversePairUtil } from '../utils/normalization.js';
 
 /**
  * SMC Divergence Engine (Renamed from DivergenceEngine)
@@ -256,7 +256,7 @@ export class SMTDivergenceEngine {
     }
 
     static isInversePair(a, b) {
-        return isInversePair(a, b);
+        return isInversePairUtil(a, b);
     }
 
     // Basic local swing detection if not provided (Legacy/Backup)

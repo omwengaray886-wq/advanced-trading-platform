@@ -94,36 +94,11 @@ export class EdgeScoringEngine {
             positives.push('Primary obligation target (Magnet theory)');
         }
 
-        // Macro Filtering (DXY/BTC Dominance)
-        const correlation = marketState.correlation;
-        if (correlation && correlation.benchmark) {
-            const isForex = ['EUR', 'GBP', 'JPY', 'AUD', 'USD', 'CHF', 'CAD', 'NZD'].some(c => symbol.includes(c));
-            if (isForex && correlation.benchmark === 'DXY') {
-                const dxyBullish = correlation.benchmarkDirection === 'BULLISH';
-                const isShorting = setupDir === 'BEARISH';
-                const isLonging = setupDir === 'BULLISH';
-
-                if (dxyBullish && isLonging) {
-                    totalPoints -= 30;
-                    risks.push('DXY Macro Headwind (Inverse Correlation)');
-                } else if (!dxyBullish && isShorting) {
-                    totalPoints -= 30;
-                    risks.push('DXY Macro Headwind (Inverse Correlation)');
-                } else if (!dxyBullish && isLonging) {
-                    totalPoints += 15;
-                    positives.push('DXY Macro Tailwind (Beta Alignment)');
-                } else if (dxyBullish && isShorting) {
-                    totalPoints += 15;
-                    positives.push('DXY Macro Tailwind (Beta Alignment)');
-                }
-            }
-        }
-
-        // Penalty for Trading AGAINST Obligation
+        // 5. Market Obligation Alignment (Phase 52)
         const primaryMagnet = marketState.obligations?.primaryObligation;
         if (primaryMagnet && primaryMagnet.urgency > 80) {
             const magnetDir = primaryMagnet.price > marketState.currentPrice ? 'BULLISH' : 'BEARISH';
-            if (magnetDir !== setupDir) {
+            if (normalizeDirection(magnetDir) !== setupDir) {
                 totalPoints -= 40;
                 risks.push(`CRITICAL: Trading against Major Magnet (${primaryMagnet.type})`);
             } else {
@@ -132,7 +107,7 @@ export class EdgeScoringEngine {
             }
         }
 
-        // 5. Volume Profile & DOM Confluence
+        // 6. Volume Profile & DOM Confluence
         const vp = marketState.volumeProfile;
         const entryPrice = setup.entryZone?.optimal || marketState.currentPrice;
         const hasDOMWall = marketState.orderBook?.walls?.some(w =>
