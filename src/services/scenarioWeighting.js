@@ -1,3 +1,5 @@
+import { normalizeDirection, isInversePair } from '../utils/normalization.js';
+
 /**
  * Scenario Weighting & Conflict Resolution
  * 
@@ -91,12 +93,23 @@ export class ScenarioWeighting {
     static _getHTFBiasScore(scenario, marketState) {
         const htfBias = marketState.mtf?.globalBias || 'NEUTRAL';
         const scenarioDirection = scenario.direction;
+        const currentSymbol = marketState.symbol || 'BTCUSDT';
+
+        const normalizedHTF = normalizeDirection(htfBias);
+        const normalizedScenario = normalizeDirection(scenarioDirection);
+
+        if (normalizedHTF === 'NEUTRAL') return 0.5;
+
+        // Check for inverse correlation (e.g. DXY vs EURUSD)
+        const isInverse = isInversePair(currentSymbol, 'DXY');
+
+        let isAligned = normalizedHTF === normalizedScenario;
+        if (isInverse && normalizedHTF !== 'NEUTRAL') {
+            isAligned = normalizedHTF !== normalizedScenario; // Inverse: BULLISH DXY = BEARISH Setup
+        }
 
         // Perfect alignment
-        if (htfBias === scenarioDirection) return 1.0;
-
-        // HTF neutral but scenario has direction
-        if (htfBias === 'NEUTRAL') return 0.5;
+        if (isAligned) return 1.0;
 
         // Conflicting bias
         return 0.2;
@@ -139,14 +152,17 @@ export class ScenarioWeighting {
         const structures = marketState.structures || [];
         const scenarioDirection = scenario.direction;
 
+        // Normalize scenario direction for comparison with structure markers
+        const isBullish = scenarioDirection === 'BULLISH' || scenarioDirection === 'LONG' || scenarioDirection === 'up';
+        const isBearish = scenarioDirection === 'BEARISH' || scenarioDirection === 'SHORT' || scenarioDirection === 'down';
+
         // Count recent BOS in scenario direction
         const recentStructures = structures.slice(-10);
-        const alignedBOS = recentStructures.filter(s =>
-            s.markerType === 'BOS' &&
-            s.status !== 'FAILED' &&
-            ((scenarioDirection === 'BULLISH' && s.direction === 'up') ||
-                (scenarioDirection === 'BEARISH' && s.direction === 'down'))
-        ).length;
+        const alignedBOS = recentStructures.filter(s => {
+            const structDir = normalizeDirection(s.direction);
+            const scenarioDir = normalizeDirection(scenarioDirection);
+            return s.markerType === 'BOS' && s.status !== 'FAILED' && structDir === scenarioDir;
+        }).length;
 
         if (alignedBOS >= 3) return 1.0;
         if (alignedBOS >= 2) return 0.75;

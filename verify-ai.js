@@ -8,7 +8,7 @@ let apiKey = null;
 
 try {
     const envContent = fs.readFileSync(envPath, 'utf-8');
-    const match = envContent.match(/VITE_GEMINI_API_KEY=(.*)/);
+    const match = envContent.match(/^GEMINI_API_KEY=(.*)/m);
     apiKey = match ? match[1].trim() : null;
 } catch (e) {
     console.error("Could not read .env file");

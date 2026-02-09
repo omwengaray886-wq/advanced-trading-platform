@@ -204,14 +204,21 @@ async function getFearGreedIndex(symbol) {
             const url = '/api/sentiment/fng';
             const response = await fetch(url);
 
+            if (!response.ok) {
+                throw new Error(`Fear & Greed fetch failed: ${response.status}`);
+            }
+
             const contentType = response.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                // If we get HTML (e.g. from a server crash/proxy), don't try to parse it
+                console.warn('[SENTIMENT] Fear & Greed received non-JSON response:', text.substring(0, 100));
                 throw new Error('Fear & Greed response not JSON');
             }
 
             const data = await response.json();
 
-            if (data.data && data.data[0]) {
+            if (data && data.data && data.data[0]) {
                 const fngValue = parseInt(data.data[0].value);
                 const fngLabel = data.data[0].value_classification;
 
@@ -226,8 +233,9 @@ async function getFearGreedIndex(symbol) {
                     label: fngLabel
                 };
             }
+            throw new Error('Fear & Greed data format unexpected');
         } catch (error) {
-            console.warn('Fear & Greed index fetch failed:', error);
+            console.warn('[SENTIMENT] Fear & Greed index fetch failed:', error.message);
             return { score: 0, confidence: 0.3, source: 'FNG_FETCH_ERROR' };
         }
     }

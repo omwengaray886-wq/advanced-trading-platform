@@ -112,4 +112,37 @@ export class LiquidityMapService {
 
         return { buyClusters, sellClusters };
     }
+
+    /**
+     * Logic Integration: Detect Micro-Pulses (Spoofing/Liquidity Flashing)
+     * Compares 100ms updates to find rapid order removal.
+     * @param {Object} currentDepth 
+     * @returns {Array} List of spoofing events
+     */
+    static detectMicroPulse(currentDepth) {
+        if (!this._prevDepth) {
+            this._prevDepth = currentDepth;
+            return [];
+        }
+
+        const events = [];
+        const THRESHOLD = 0.5; // 50% volume drop
+
+        // Check Bids
+        currentDepth.bids.forEach(level => {
+            const prev = this._prevDepth.bids.find(p => p.price === level.price);
+            if (prev && level.quantity < prev.quantity * (1 - THRESHOLD)) {
+                // If quantity dropped > 50% in 100ms, flag as potential spoof removal
+                events.push({
+                    price: level.price,
+                    type: 'LIQUIDITY_FLASH_REMOVAL',
+                    side: 'BUY',
+                    magnitude: (prev.quantity - level.quantity) / prev.quantity
+                });
+            }
+        });
+
+        this._prevDepth = currentDepth;
+        return events;
+    }
 }

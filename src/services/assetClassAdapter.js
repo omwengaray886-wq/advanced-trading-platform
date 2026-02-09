@@ -253,9 +253,9 @@ export class AssetClassAdapter {
      * @param {string} timeframe - Current timeframe
      * @returns {Object} - Precision metrics { score, spreadImpact, slippageProb }
      */
-    static calculateExecutionPrecision(assetClass, timeframe, atr = 0) {
+    static calculateExecutionPrecision(assetClass, timeframe, atr = 0, timestamp = null) {
         const isScalp = timeframe === '5m' || timeframe === '15m' || timeframe === '5M';
-        const date = new Date();
+        const date = timestamp ? new Date(timestamp * 1000) : new Date();
         const hour = date.getUTCHours();
 
         const baseMetrics = {

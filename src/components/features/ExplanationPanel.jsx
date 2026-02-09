@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Layers, AlertCircle, TrendingUp, Target, Shield, Zap } from 'lucide-react';
+import { Activity, Layers, AlertCircle, TrendingUp, Target, Shield, Zap, Sparkles } from 'lucide-react';
 import { ScenarioEngine } from '../../services/scenarioEngine';
 
 /**

@@ -12,13 +12,23 @@ export class ScalperEngine {
      * @returns {Object|null} - Scalp Setup or null
      */
     static analyze(liquidityMaps, currentPrice, marketState) {
+        // Step 1: Institutional Cycle Gating (Phase 4)
+        if (marketState && marketState.amdCycle) {
+            const phase = marketState.amdCycle.phase;
+            // Skip scalping in Accumulation (low edge/chop) unless high urgency magnet exists
+            if (phase === 'ACCUMULATION' && (!marketState.primaryMagnet || marketState.primaryMagnet.urgency < 80)) {
+                return null;
+            }
+        }
+
         // 1. Order Book Scalps (Wall Front-Run)
         if (liquidityMaps && liquidityMaps.length > 0) {
-            const obi = this.calculateImbalance(liquidityMaps);
+            const obi = this.calculateImbalance(liquidityMaps, currentPrice);
             const wallSetup = this.findWallFrontRun(liquidityMaps, currentPrice);
 
             // Logic: Require CONFLUENCE of Imbalance + Wall
             if (wallSetup && obi.direction === wallSetup.direction) {
+                const amdBoost = (marketState?.amdCycle?.phase === 'DISTRIBUTION') ? 0.1 : 0;
                 return {
                     type: 'SCALP_V1',
                     direction: wallSetup.direction,
@@ -26,7 +36,7 @@ export class ScalperEngine {
                     stopLoss: wallSetup.stopLoss,
                     target: wallSetup.target,
                     rationale: `Scalp: ${obi.direction} Flow (${obi.ratio.toFixed(1)}x) front-running wall at ${wallSetup.wallPrice}`,
-                    confidence: Math.min(0.95, 0.5 + (obi.ratio / 10))
+                    confidence: Math.min(0.95, 0.5 + (obi.ratio / 10) + amdBoost)
                 };
             }
         }
@@ -55,7 +65,8 @@ export class ScalperEngine {
             // 3b. Micro-Structure Sweep Detection
             const microSweep = MicroStructureEngine.detectMicroSweep(
                 marketState.candles || [],
-                marketState.liquidityPools || []
+                marketState.liquidityPools || [],
+                marketState
             );
             if (microSweep) {
                 return {
@@ -114,16 +125,26 @@ export class ScalperEngine {
     }
 
     /**
-     * Calculate Bid/Ask Volume Imbalance
+     * Calculate Bid/Ask Volume Imbalance with Proximity Weighting
+     * @param {Array} maps - Normalized LiquidityMap objects
+     * @param {number} currentPrice - Current price for distance calculation
      * @returns {Object} { direction, ratio }
      */
-    static calculateImbalance(maps) {
+    static calculateImbalance(maps, currentPrice) {
         const bids = maps.filter(m => m.side === 'BID');
         const asks = maps.filter(m => m.side === 'ASK');
 
-        // Sum volume of top 10 levels
-        const bidVol = bids.slice(0, 10).reduce((sum, b) => sum + b.volume, 0);
-        const askVol = asks.slice(0, 10).reduce((sum, a) => sum + a.volume, 0);
+        // Weighting function: e^(-distance * sensitivity)
+        // Aggressive weighting (2000 sensitivity) means orders at 0.1% distance get ~13% weight
+        // Compared to orders at 0.05% distance getting ~36% weight
+        const getWeight = (price) => {
+            const dist = Math.abs(currentPrice - price) / currentPrice;
+            return Math.exp(-dist * 2000);
+        };
+
+        // Sum weighted volume of top 15 levels
+        const bidVol = bids.slice(0, 15).reduce((sum, b) => sum + (b.volume * getWeight(b.price)), 0);
+        const askVol = asks.slice(0, 15).reduce((sum, a) => sum + (a.volume * getWeight(a.price)), 0);
 
         if (bidVol > askVol * 1.5) return { direction: 'LONG', ratio: bidVol / askVol };
         if (askVol > bidVol * 1.5) return { direction: 'SHORT', ratio: askVol / bidVol };

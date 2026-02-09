@@ -12,6 +12,18 @@ export class StrategySelector {
     }
 
     /**
+     * Helper to normalize directional strings
+     * @private
+     */
+    static _normalizeDirection(d) {
+        if (!d) return 'NEUTRAL';
+        const upper = d.toUpperCase();
+        if (upper === 'LONG' || upper === 'BULLISH' || upper === 'UP') return 'BULLISH';
+        if (upper === 'SHORT' || upper === 'BEARISH' || upper === 'DOWN') return 'BEARISH';
+        return 'NEUTRAL';
+    }
+
+    /**
      * Select multiple strategy setups for current market state
      * @param {Object} marketState - Current market state and analysis
      * @param {string} assetClass - FOREX, CRYPTO, etc.
@@ -20,14 +32,14 @@ export class StrategySelector {
      */
     selectStrategy(marketState, assetClass = 'FOREX', fundamentals = null, perfWeights = {}) {
         const strategies = this.registry.getAllStrategies();
-        const trend = marketState.trend.direction; // BULLISH, BEARISH, NEUTRAL
+        const trend = this.constructor._normalizeDirection(marketState.trend.direction);
 
         // 1. Evaluate all strategies for BOTH directions
         const allEvaluations = [];
 
         strategies.forEach(strategy => {
             ['LONG', 'SHORT'].forEach(direction => {
-                const suitcaseDirection = direction === 'LONG' ? 'BULLISH' : 'BEARISH';
+                const normalizedDir = this.constructor._normalizeDirection(direction);
                 let suitability = strategy.evaluate(marketState, direction);
                 const name = strategy.name;
 
@@ -35,18 +47,16 @@ export class StrategySelector {
                 const isTrendFollowing = name.match(/Continuation|Order Block|Fair Value Gap|OTE|Fractal|Alignment|Retest/i);
                 const isCounterTrend = name.match(/Reversal|Sweep|Fakeout|Double|Divergence|QM|Pattern/i);
 
-                const isTrendAligned = (direction === 'LONG' && trend === 'BULLISH') ||
-                    (direction === 'SHORT' && trend === 'BEARISH');
+                const isTrendAligned = normalizedDir === trend;
 
                 // A. Trend Alignment Multiplier
                 if (isTrendFollowing) {
-                    if (isTrendAligned) suitability *= (trend === 'NEUTRAL' ? 1.0 : 1.15);
-                    else suitability *= 0.3; // Penalize against-trend continuation
+                    if (isTrendAligned && trend !== 'NEUTRAL') suitability *= 1.15;
+                    else if (!isTrendAligned && trend !== 'NEUTRAL') suitability *= 0.3;
                 }
 
                 if (isCounterTrend) {
                     if (!isTrendAligned && trend !== 'NEUTRAL') {
-                        // Boost counter-trend setups if trend is overextended
                         if (marketState.trend.strength > 0.8) suitability *= 1.1;
                     }
                 }
@@ -55,276 +65,192 @@ export class StrategySelector {
                 suitability = AssetClassAdapter.adaptStrategySuitability(name, assetClass, suitability);
 
                 // C. Fundamental Alignment
-                if (fundamentals?.impact?.direction !== 'NEUTRAL') {
-                    if (fundamentals.impact.direction === suitcaseDirection) suitability *= 1.25;
+                const fundBias = this.constructor._normalizeDirection(fundamentals?.impact?.direction);
+                if (fundBias !== 'NEUTRAL') {
+                    if (fundBias === normalizedDir) suitability *= 1.25;
                     else suitability *= 0.7;
                 }
 
                 // D. Quant-Institutional MTF Confluence
-                const globalBias = marketState.mtf?.globalBias || 'NEUTRAL';
+                const globalBias = this.constructor._normalizeDirection(marketState.mtf?.globalBias);
                 if (globalBias !== 'NEUTRAL') {
-                    if (globalBias === suitcaseDirection) {
-                        suitability *= 1.3; // Major boost for alignment with 4H/Daily flow
+                    if (globalBias === normalizedDir) {
+                        suitability *= 1.3;
                     } else if (isTrendFollowing) {
-                        suitability *= 0.5; // Heavily penalize against-bias continuation
+                        suitability *= 0.5;
                     }
                 }
 
                 // E. Macro Correlation Bias
                 const correlation = marketState.correlation;
                 if (correlation && correlation.bias !== 'NEUTRAL') {
-                    if (correlation.bias === suitcaseDirection) {
-                        suitability *= 1.15; // Boost for macro confluence
+                    const correlationBias = this.constructor._normalizeDirection(correlation.bias);
+                    if (correlationBias === normalizedDir) {
+                        suitability *= 1.15;
                     } else {
-                        suitability *= 0.85; // Slight penalty for macro conflict
+                        suitability *= 0.85;
                     }
                 }
 
-                // G. Session Intelligence (Institutional Timing)
+                // G. Session Intelligence
                 const session = marketState.session;
                 if (session && session.active) {
-                    // Boost specific patterns during their "Prime Time"
                     if (session.killzone) {
-                        // All Institutional strategies get a base boost during killzones
                         if (name.match(/Order Block|Sweep|ICT|SMC/i)) suitability *= 1.15;
-
-                        // Specific Timing Confluence
                         if (name.includes('Breakout') && session.killzone === 'LONDON_OPEN') suitability *= 1.4;
                         if (name.includes('Fakeout') && session.killzone === 'LONDON_OPEN') suitability *= 1.4;
                         if (name.includes('Trend Continuation') && (session.killzone === 'NY_OPEN' || session.killzone === 'LONDON_NY_OVERLAP')) suitability *= 1.25;
                     }
-
-                    // Scalp-specific session constraints
                     if (assetClass === 'CRYPTO' && session.active === 'ASIAN' && name.match(/Trend Continuation/i)) {
-                        suitability *= 0.8; // Trends often fake out during low-volume Asian hours in crypto
-                    }
-                }
-
-                // H. SMT Divergence (Institutional Alpha)
-                const smt = marketState.smtDivergence;
-                if (smt) {
-                    const isSmtBullish = smt.type === 'BULLISH';
-                    const isSmtBearish = smt.type === 'BEARISH';
-
-                    if ((isSmtBullish && direction === 'LONG') || (isSmtBearish && direction === 'SHORT')) {
-                        // SMT validates reversals
-                        if (name.match(/Sweep|Fakeout|Reversal|SMT/i)) {
-                            suitability *= 1.5; // Massive boost for SMT-validated reversals
-                        } else {
-                            suitability *= 1.25; // General boost for alignment
-                        }
-                    } else {
-                        // Conflict with SMT
-                        suitability *= 0.7;
-                    }
-                }
-
-                // I. Order Flow Confirmation (Institutional Volume)
-                const vol = marketState.volumeAnalysis;
-                if (vol && vol.isInstitutional) {
-                    // Volume confirms the move
-                    suitability *= 1.25; // Base boost for institutional participation
-
-                    // Specific Volume logic
-                    if (vol.subType === 'ABSORPTION' && isCounterTrend) {
-                        suitability *= 1.2; // Extra boost for absorption-based reversals
-                    } else if (vol.subType === 'CLIMAX' && isCounterTrend) {
-                        suitability *= 1.3; // Massive boost for volume climax reversals
-                    }
-                }
-
-                // J. Relative Strength/Alpha leadership (Phase 20)
-                const rs = marketState.relativeStrength;
-                if (rs && rs.status !== 'NEUTRAL') {
-                    if (rs.status === 'LEADER' && direction === 'LONG') {
-                        suitability *= 1.3; // Major boost for institutional leaders
-                    } else if (rs.status === 'LAGGARD' && direction === 'SHORT') {
-                        suitability *= 1.3; // Major boost for weak assets in bear moves
-                    } else if (rs.status === 'RECOVERING' && direction === 'LONG') {
-                        suitability *= 1.2; // Boost for early rotation strength
-                    } else if (rs.status === 'FADING' && direction === 'SHORT') {
-                        suitability *= 1.2; // Boost for early rotation weakness
-                    } else {
-                        suitability *= 0.8; // Stronger penalty for trading against leadership flow
-                    }
-                }
-
-                // K. Sweep-to-Expansion (STX) Alpha Boost (Phase 15)
-                const sweep = marketState.liquiditySweep;
-                if (sweep) {
-                    if (sweep.type === 'BULLISH_SWEEP' && direction === 'LONG') {
-                        suitability *= 1.4; // Massive boost for Bullish STX
-                    } else if (sweep.type === 'BEARISH_SWEEP' && direction === 'SHORT') {
-                        suitability *= 1.4; // Massive boost for Bearish STX
-                    }
-                }
-
-                // L. Gap Magnet (FVG) Rebalancing Boost (Phase 16)
-                const gap = marketState.relevantGap;
-                if (gap) {
-                    const isPriceBelowGap = marketState.currentPrice < gap.bottom;
-                    const isPriceAboveGap = marketState.currentPrice > gap.top;
-
-                    if (gap.type === 'BULLISH_FVG' && direction === 'LONG' && isPriceBelowGap) {
-                        suitability *= 1.25; // Price is drawn up to fill bullish FVG (Magnet)
-                    } else if (gap.type === 'BEARISH_FVG' && direction === 'SHORT' && isPriceAboveGap) {
-                        suitability *= 1.25; // Price is drawn down to fill bearish FVG (Magnet)
-                    }
-                }
-
-                // M. News Hazard (Institutional Risk Management)
-                if (fundamentals?.proximityAnalysis?.isImminent) {
-                    const newsAligned = fundamentals.impact.direction === 'NEUTRAL' ||
-                        fundamentals.impact.direction === suitcaseDirection;
-
-                    if (!newsAligned) {
-                        suitability *= 0.5; // Heavily penalize technical setups that contradict imminent news
-                    } else {
-                        suitability *= 0.9; // Slight universal penalty during high-volatility news windows (wait for release)
-                    }
-                }
-
-                // N. Market Cycle Adaptation (Phase 34: Cycle-Aware Trading)
-                const cycle = marketState.cycle;
-                const cycleStrength = marketState.cycleStrength || 50;
-                const regimeShift = marketState.regimeShift;
-
-                if (cycle) {
-                    const isTrendStrategy = name.match(/Continuation|Order Block|Fair Value Gap|OTE|Fractal|Alignment|Retest|Breaker|Mitigation/i);
-                    const isReversalStrategy = name.match(/Sweep|Fakeout|Divergence|QM|Double|Head|Exhaustion/i);
-                    const isRangeStrategy = name.match(/Range|Support.*Resistance|Breakout|Asian/i);
-
-                    // BULL MARKET: Favor trend-following
-                    if (cycle === 'BULL') {
-                        if (isTrendStrategy && direction === 'LONG') {
-                            const strengthMultiplier = 1 + (cycleStrength / 200); // 1.0 to 1.5x
-                            suitability *= strengthMultiplier;
-                        } else if (isReversalStrategy && direction === 'SHORT') {
-                            suitability *= 0.6; // Heavily penalize counter-trend reversals in bull markets
-                        }
-                    }
-                    // BEAR MARKET: Favor reversals and bearish setups
-                    else if (cycle === 'BEAR') {
-                        if (isTrendStrategy && direction === 'SHORT') {
-                            const strengthMultiplier = 1 + (cycleStrength / 200);
-                            suitability *= strengthMultiplier;
-                        } else if (isReversalStrategy && direction === 'LONG') {
-                            suitability *= 0.6; // Penalize bullish reversals in bear markets
-                        } else if (isReversalStrategy && direction === 'SHORT') {
-                            suitability *= 1.3; // Boost bearish reversals (catching knives with institutional logic)
-                        }
-                    }
-                    // SIDEWAYS: Favor range strategies and breakouts
-                    else if (cycle === 'SIDEWAYS') {
-                        if (isRangeStrategy) {
-                            const strengthMultiplier = 1 + (cycleStrength / 150); // Boost for tight ranges
-                            suitability *= strengthMultiplier;
-                        } else if (isTrendStrategy) {
-                            suitability *= 0.7; // Trends often fail in ranging markets
-                        }
-                    }
-
-                    // Universal penalty during regime shifts (uncertainty)
-                    if (regimeShift) {
-                        suitability *= 0.75; // 25% reduction during cycle transitions
-                    }
-                }
-
-                // O. Sentiment Confluence (Phase 35)
-                const sentiment = marketState.sentiment;
-                if (sentiment && sentiment.confidence > 0.5) {
-                    if (sentiment.bias === 'CONTRARIAN_BULLISH' && direction === 'LONG') {
-                        suitability *= 1.3; // Buy extreme fear
-                    } else if (sentiment.bias === 'CONTRARIAN_BEARISH' && direction === 'SHORT') {
-                        suitability *= 1.3; // Sell extreme greed
-                    } else if (sentiment.bias.includes('NEUTRAL') && sentiment.score > 50 && direction === 'SHORT') {
-                        suitability *= 1.15; // Moderate greed = slight bearish edge
-                    } else if (sentiment.bias.includes('NEUTRAL') && sentiment.score < -50 && direction === 'LONG') {
-                        suitability *= 1.15; // Moderate fear = slight bullish edge
-                    }
-                }
-
-                // P. On-Chain Confluence (Phase 35 - Crypto only)
-                const onChain = marketState.onChain;
-                if (onChain && onChain.confidence > 0.6) {
-                    if (onChain.bias === 'BULLISH' && direction === 'LONG') {
-                        suitability *= 1.35; // Major exchange outflow = supply shock
-                    } else if (onChain.bias === 'BEARISH' && direction === 'SHORT') {
-                        suitability *= 1.25; // Major exchange inflow = sell pressure
-                    } else if (onChain.bias === 'BULLISH' && direction === 'SHORT') {
-                        suitability *= 0.7; // Don't fight on-chain accumulation
-                    } else if (onChain.bias === 'BEARISH' && direction === 'LONG') {
-                        suitability *= 0.7; // Don't fight on-chain distribution
-                    }
-                }
-
-                // Q. Options Flow Confluence (Phase 35 - Equities only)
-                const optionsFlow = marketState.optionsFlow;
-                if (optionsFlow && optionsFlow.confidence > 0.6) {
-                    if (optionsFlow.flowBias === 'BULLISH' && direction === 'LONG') {
-                        suitability *= 1.3; // Smart money call buying
-                    } else if (optionsFlow.flowBias === 'BEARISH' && direction === 'SHORT') {
-                        suitability *= 1.25; // Smart money put buying
-                    }
-                }
-
-                // R. Seasonality Edge (Phase 35)
-                const seasonality = marketState.seasonality;
-                if (seasonality && seasonality.confidence > 0.65) {
-                    if (seasonality.combinedBias === 'BULLISH' && direction === 'LONG') {
-                        suitability *= 1.2; // Historical monthly/weekly edge
-                    } else if (seasonality.combinedBias === 'BEARISH' && direction === 'SHORT') {
-                        suitability *= 1.2;
-                    } else if (seasonality.combinedBias === 'BULLISH' && direction === 'SHORT') {
-                        suitability *= 0.8; // Against seasonal trend
-                    } else if (seasonality.combinedBias === 'BEARISH' && direction === 'LONG') {
                         suitability *= 0.8;
                     }
                 }
 
-                // S. Volume Profile & POC Confluence (Phase 55)
+                // H. SMT Divergence
+                const smt = marketState.smtDivergence;
+                if (smt) {
+                    const smtType = this.constructor._normalizeDirection(smt.type);
+                    if (smtType === normalizedDir) {
+                        if (name.match(/Sweep|Fakeout|Reversal|SMT/i)) suitability *= 1.5;
+                        else suitability *= 1.25;
+                    } else {
+                        suitability *= 0.7;
+                    }
+                }
+
+                // I. Order Flow Confirmation
+                const vol = marketState.volumeAnalysis;
+                if (vol && vol.isInstitutional) {
+                    suitability *= 1.25;
+                    if (vol.subType === 'ABSORPTION' && isCounterTrend) {
+                        suitability *= 1.2;
+                    } else if (vol.subType === 'CLIMAX' && isCounterTrend) {
+                        suitability *= 1.3;
+                    }
+                }
+
+                // J. Relative Strength/Alpha leadership
+                const rs = marketState.relativeStrength;
+                if (rs && rs.status !== 'NEUTRAL') {
+                    if (rs.status === 'LEADER' && normalizedDir === 'BULLISH') {
+                        suitability *= 1.3;
+                    } else if (rs.status === 'LAGGARD' && normalizedDir === 'BEARISH') {
+                        suitability *= 1.3;
+                    } else if (rs.status === 'RECOVERING' && normalizedDir === 'BULLISH') {
+                        suitability *= 1.2;
+                    } else if (rs.status === 'FADING' && normalizedDir === 'BEARISH') {
+                        suitability *= 1.2;
+                    } else {
+                        suitability *= 0.8;
+                    }
+                }
+
+                // K. Sweep-to-Expansion (STX) Alpha Boost
+                const sweep = marketState.liquiditySweep;
+                if (sweep) {
+                    const sweepDir = this.constructor._normalizeDirection(sweep.type.split('_')[0]); // BULLISH_SWEEP -> BULLISH
+                    if (sweepDir === normalizedDir) {
+                        suitability *= 1.4;
+                    }
+                }
+
+                // L. Market Obligation (Magnet Theory)
+                const primaryMagnet = marketState.primaryMagnet || marketState.obligations?.primaryObligation;
+                if (primaryMagnet) {
+                    const magnetDir = primaryMagnet.price > marketState.currentPrice ? 'BULLISH' : 'BEARISH';
+                    if (magnetDir === normalizedDir) {
+                        suitability *= 1 + (primaryMagnet.urgency / 200);
+                    } else if (primaryMagnet.urgency > 70) {
+                        suitability *= 0.4;
+                    }
+                }
+
+                // M. News Hazard
+                if (fundamentals?.proximityAnalysis?.isImminent) {
+                    const newsAligned = fundBias === 'NEUTRAL' || fundBias === normalizedDir;
+                    if (!newsAligned) suitability *= 0.5;
+                    else suitability *= 0.9;
+                }
+
+                // N. Institutional AMD Cycle Adaptation
+                const amdCycle = marketState.amdCycle;
+                if (amdCycle && amdCycle.phase !== 'UNKNOWN') {
+                    const cycleDir = this.constructor._normalizeDirection(amdCycle.direction);
+                    const isTrendStrategy = name.match(/Continuation|Order Block|Fair Value Gap|OTE|Fractal|Alignment|Retest|Breaker|Mitigation/i);
+                    const isReversalStrategy = name.match(/Sweep|Fakeout|Divergence|QM|Double|Head|Exhaustion|SMT/i);
+
+                    if (amdCycle.phase === 'MANIPULATION') {
+                        if (cycleDir !== normalizedDir) suitability *= 1.4;
+                        else if (isTrendStrategy) suitability *= 0.2;
+                    } else if (amdCycle.phase === 'DISTRIBUTION') {
+                        if (cycleDir === normalizedDir && isTrendStrategy) suitability *= 1.35;
+                        else if (cycleDir !== normalizedDir && isReversalStrategy) suitability *= 0.3;
+                    } else if (amdCycle.phase === 'ACCUMULATION') {
+                        if (isTrendStrategy) suitability *= 0.6;
+                    }
+                }
+
+                // O. Sentiment Confluence
+                const sentiment = marketState.sentiment;
+                if (sentiment && sentiment.confidence > 0.5) {
+                    const sentBias = this.constructor._normalizeDirection(sentiment.bias.replace('CONTRARIAN_', ''));
+                    if (sentiment.bias.startsWith('CONTRARIAN_')) {
+                        if (sentBias === normalizedDir) suitability *= 1.3;
+                    } else if (sentiment.bias.includes('NEUTRAL')) {
+                        if (sentiment.score > 50 && normalizedDir === 'BEARISH') suitability *= 1.15;
+                        else if (sentiment.score < -50 && normalizedDir === 'BULLISH') suitability *= 1.15;
+                    }
+                }
+
+                // P. On-Chain Confluence
+                const onChain = marketState.onChain;
+                if (onChain && onChain.confidence > 0.6) {
+                    const onChainBias = this.constructor._normalizeDirection(onChain.bias);
+                    if (onChainBias === normalizedDir) suitability *= 1.3;
+                    else suitability *= 0.7;
+                }
+
+                // Q. Options Flow Confluence
+                const optionsFlow = marketState.optionsFlow;
+                if (optionsFlow && optionsFlow.confidence > 0.6) {
+                    const optionsBias = this.constructor._normalizeDirection(optionsFlow.flowBias);
+                    if (optionsBias === normalizedDir) suitability *= 1.3;
+                }
+
+                // R. Seasonality Edge
+                const seasonality = marketState.seasonality;
+                if (seasonality && seasonality.confidence > 0.65) {
+                    const seasonalBias = this.constructor._normalizeDirection(seasonality.combinedBias);
+                    if (seasonalBias === normalizedDir) suitability *= 1.2;
+                    else suitability *= 0.8;
+                }
+
+                // S. Volume Profile & POC Confluence
                 const vp = marketState.volumeProfile;
                 if (vp) {
                     const price = marketState.currentPrice;
-                    const isInsideVA = price >= vp.val && price <= vp.vah;
                     const isNearPOC = Math.abs(price - vp.poc) / vp.poc < 0.002;
                     const isPremium = price > vp.vah;
                     const isDiscount = price < vp.val;
 
-                    if (isNearPOC) {
-                        suitability *= 1.2; // POC is high-interest institutional fair value
-                    }
+                    if (isNearPOC) suitability *= 1.2;
+                    if (normalizedDir === 'BULLISH' && isDiscount) suitability *= 1.25;
+                    else if (normalizedDir === 'BEARISH' && isPremium) suitability *= 1.25;
+                    else if (!isTrendFollowing) suitability *= 0.7;
 
-                    if (direction === 'LONG') {
-                        if (isDiscount) suitability *= 1.25; // Buying in discount (below VAL)
-                        if (isPremium && !isTrendFollowing) suitability *= 0.7; // Avoid counter-trend longs in premium
-                    } else {
-                        if (isPremium) suitability *= 1.25; // Selling in premium (above VAH)
-                        if (isDiscount && !isTrendFollowing) suitability *= 0.7; // Avoid counter-trend shorts in discount
-                    }
-
-                    // nPOC Magnet Alignment
                     const nPOCs = marketState.nPOCs || [];
-                    const targetingNPOC = nPOCs.some(npoc => {
-                        if (direction === 'LONG' && npoc.price > price) return true;
-                        if (direction === 'SHORT' && npoc.price < price) return true;
-                        return false;
-                    });
-
-                    if (targetingNPOC) suitability *= 1.15; // Setup is trading towards an institutional magnet
+                    const targetingNPOC = nPOCs.some(npoc => (normalizedDir === 'BULLISH' && npoc.price > price) || (normalizedDir === 'BEARISH' && npoc.price < price));
+                    if (targetingNPOC) suitability *= 1.15;
                 }
 
-                // T. Strategy Performance (Phase 2 Upgrade)
+                // T. Strategy Performance
                 const strategyWeight = (perfWeights && perfWeights[name]) ? perfWeights[name] : 1.0;
                 suitability *= strategyWeight;
-
-                const finalScore = Math.min(suitability, 1.0);
-
 
                 allEvaluations.push({
                     strategy,
                     direction,
-                    suitability: finalScore,
+                    suitability: Math.min(suitability, 1.0),
                     isCounterTrend
                 });
             });

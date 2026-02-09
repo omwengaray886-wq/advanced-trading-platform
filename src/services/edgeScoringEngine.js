@@ -1,3 +1,5 @@
+import { normalizeDirection, isInversePair } from '../utils/normalization.js';
+
 /**
  * Edge Scoring Engine (Phase 51)
  * 
@@ -6,7 +8,8 @@
  */
 
 export class EdgeScoringEngine {
-    /**
+    // Local helper removed in favor of shared utility
+
     /**
      * Calculate Edge Score
      * @param {Object} setup - Trade setup
@@ -22,9 +25,9 @@ export class EdgeScoringEngine {
         const positives = [];
         const risks = [];
 
+        const setupDir = normalizeDirection(setup.direction);
+
         // 1. Bayesian Strategy Reliability (up to 40 points)
-        // bayesianStats.probability is 0.0 - 1.0
-        // We convert to 0-100 percentage
         const reliability = (bayesianStats?.probability || 0.5) * 100;
 
         if (reliability >= 80) {
@@ -51,79 +54,85 @@ export class EdgeScoringEngine {
         }
 
         // 3. Timeframe Stacking (up to 25 points)
-        const mtfAligned = marketState.mtf?.globalBias === setup.direction;
-        if (mtfAligned) {
-            totalPoints += 25; // Boosted from 20
+        const globalBias = normalizeDirection(marketState.mtf?.globalBias);
+        const mtfAligned = globalBias === setupDir;
+
+        if (globalBias === 'NEUTRAL') {
+            totalPoints += 5;
+        } else if (mtfAligned) {
+            totalPoints += 25;
             positives.push('HTF Context alignment (1D/4H)');
         } else {
-            totalPoints -= 15; // Penalize trading against HTF
+            totalPoints -= 15;
             risks.push('HTF Bias conflict');
         }
 
-        // 4. Institutional Confluence (up to 50 points - Expanded)
+        // 4. Institutional Confluence (up to 50 points)
         const hasInstitutionalVolume = marketState.volumeAnalysis?.isInstitutional;
         const hasSMT = marketState.divergences?.length > 0;
         const inKillzone = !!marketState.session?.killzone;
         const targetsObligation = marketState.obligations?.primaryObligation?.urgency > 70;
 
         if (hasInstitutionalVolume) {
-            totalPoints += 10; // Boosted from 5
+            totalPoints += 10;
             positives.push('Institutional volume participation');
         }
         if (hasSMT) {
-            // SMT is the strongest institutional signal
             const smtStrength = marketState.smtConfluence || 50;
             const smtBonus = smtStrength >= 80 ? 25 : 15;
             totalPoints += smtBonus;
             positives.push(`Inter-market divergence (SMT) ${smtStrength >= 80 ? 'PREMIUM' : 'DETECTED'}`);
         }
         if (inKillzone) {
-            // Killzone Power Hour (First 2 hours of session)
-            const hour = new Date().getUTCHours();
-            const isPowerHour = (hour === 8 || hour === 9 || hour === 13 || hour === 14); // Lon/NY Open
+            const hour = marketState.session?.hour ?? new Date().getUTCHours();
+            const isPowerHour = (hour === 8 || hour === 9 || hour === 13 || hour === 14);
             totalPoints += isPowerHour ? 20 : 10;
             positives.push(`Killzone alignment (${marketState.session.killzone}${isPowerHour ? ' - POWER HOUR' : ''})`);
         }
         if (targetsObligation) {
-            totalPoints += 15; // Boosted from 10
+            totalPoints += 15;
             positives.push('Primary obligation target (Magnet theory)');
         }
 
         // Macro Filtering (DXY/BTC Dominance)
         const correlation = marketState.correlation;
         if (correlation && correlation.benchmark) {
-            const isForex = ['EUR', 'GBP', 'JPY', 'AUD', 'USD'].some(c => symbol.includes(c));
+            const isForex = ['EUR', 'GBP', 'JPY', 'AUD', 'USD', 'CHF', 'CAD', 'NZD'].some(c => symbol.includes(c));
             if (isForex && correlation.benchmark === 'DXY') {
                 const dxyBullish = correlation.benchmarkDirection === 'BULLISH';
-                const assetBullish = setup.direction === 'LONG';
+                const isShorting = setupDir === 'BEARISH';
+                const isLonging = setupDir === 'BULLISH';
 
-                // EUR/USD vs DXY is inverse
-                if (dxyBullish && assetBullish) {
-                    totalPoints -= 30; // Heavy penalty if buying against DXY strength
+                if (dxyBullish && isLonging) {
+                    totalPoints -= 30;
                     risks.push('DXY Macro Headwind (Inverse Correlation)');
-                } else if (!dxyBullish && assetBullish) {
-                    totalPoints += 10;
-                    positives.push('DXY Macro Tailwin (Beta Alignment)');
+                } else if (!dxyBullish && isShorting) {
+                    totalPoints -= 30;
+                    risks.push('DXY Macro Headwind (Inverse Correlation)');
+                } else if (!dxyBullish && isLonging) {
+                    totalPoints += 15;
+                    positives.push('DXY Macro Tailwind (Beta Alignment)');
+                } else if (dxyBullish && isShorting) {
+                    totalPoints += 15;
+                    positives.push('DXY Macro Tailwind (Beta Alignment)');
                 }
             }
         }
 
         // Penalty for Trading AGAINST Obligation
-        // If there is a strong magnet (Urgency > 80) and we are trading away from it
         const primaryMagnet = marketState.obligations?.primaryObligation;
         if (primaryMagnet && primaryMagnet.urgency > 80) {
-            const magnetDirection = primaryMagnet.price > setup.entryZone?.optimal ? 'LONG' : 'SHORT';
-            if (magnetDirection !== setup.direction) {
-                totalPoints -= 40; // MASSIVE PENALTY (Increased from 25)
+            const magnetDir = primaryMagnet.price > marketState.currentPrice ? 'BULLISH' : 'BEARISH';
+            if (magnetDir !== setupDir) {
+                totalPoints -= 40;
                 risks.push(`CRITICAL: Trading against Major Magnet (${primaryMagnet.type})`);
             } else {
-                // Calibration: If we are trading WITH a massive magnet, give extra boost
                 totalPoints += 15;
                 positives.push(`Magnet Acceleration (${primaryMagnet.type})`);
             }
         }
 
-        // 5. Volume Profile & DOM Confluence (up to 15 points) (Phase 55/66)
+        // 5. Volume Profile & DOM Confluence
         const vp = marketState.volumeProfile;
         const entryPrice = setup.entryZone?.optimal || marketState.currentPrice;
         const hasDOMWall = marketState.orderBook?.walls?.some(w =>
@@ -148,48 +157,87 @@ export class EdgeScoringEngine {
             positives.push('Entry supported by DOM Liquidity Wall');
         }
 
-
-        // 6. Cross-Asset Consensus (Phase 66)
+        // 6. Cross-Asset Consensus (Macro Alignment)
         if (correlation && correlation.bias !== 'NEUTRAL' && correlation.bias !== 'SELF') {
-            if (correlation.bias !== setup.direction) {
+            const correlationBias = normalizeDirection(correlation.bias);
+            const isInverse = isInversePair(symbol, 'DXY'); // Simplified for common benchmark
+
+            let isAligned = correlationBias === setupDir;
+            if (isInverse && correlationBias !== 'NEUTRAL') {
+                isAligned = correlationBias !== setupDir; // Inverse: BULLISH DXY = BEARISH Setup
+            }
+
+            if (!isAligned && correlationBias !== 'NEUTRAL') {
                 totalPoints -= 15;
-                risks.push(`Correlation Conflict: Benchmark is ${correlation.bias}`);
-            } else {
+                risks.push(`Macro Conflict: Benchmark is ${correlationBias}${isInverse ? ' (Inverse)' : ''}`);
+            } else if (isAligned) {
                 totalPoints += 5;
                 positives.push('Macro Correlation alignment');
             }
         }
 
-        // Apply News Penalty
+        // News Penalty
         if (marketState.activeShock?.severity === 'HIGH') {
-            totalPoints -= 35; // Increased from 30
+            totalPoints -= 35;
             risks.push(`High-impact news hazard (${marketState.activeShock.event})`);
         }
 
-        // 7. REAL DATA: Institutional Alpha & Sentiment (Phase 55)
+        // Trap Zone Penalty
+        if (marketState.trapZones && (marketState.trapZones.warning || marketState.trapZones.count > 0)) {
+            totalPoints -= 30;
+            risks.push(`Trap Zone Detected: ${marketState.trapZones.warning || 'Pattern Failure'}`);
+        }
+
+        // AMD Cycle Calibration
+        const cycle = marketState.marketCycle;
+        if (cycle && cycle.phase !== 'UNKNOWN') {
+            const cycleDir = normalizeDirection(cycle.direction);
+            if (cycle.phase === 'MANIPULATION') {
+                const isJudas = cycleDir === setupDir;
+                if (isJudas) {
+                    totalPoints -= 40;
+                    risks.push('CRITICAL: High probability Judas Swing (Manipulation phase)');
+                } else {
+                    totalPoints += 15;
+                    positives.push('Fading manipulation move');
+                }
+            } else if (cycle.phase === 'DISTRIBUTION') {
+                const isTrendAligned = cycleDir === setupDir;
+                if (isTrendAligned) {
+                    totalPoints += 20;
+                    positives.push('Institutional Distribution alignment');
+                } else {
+                    totalPoints -= 30;
+                    risks.push('Counter-institutional distribution conflict');
+                }
+            } else if (cycle.phase === 'ACCUMULATION') {
+                totalPoints -= 10;
+                risks.push('Early entry hazard (Accumulation phase)');
+            }
+        }
+
+        // 7. Institutional Flow & Sentiment
         const alpha = marketState.institutionalFlow;
         const sentiment = marketState.sentiment;
 
         if (alpha && alpha.score !== 0) {
-            totalPoints += alpha.score; // alpha.score is already weighted (e.g., +30, -20)
+            totalPoints += alpha.score;
             if (alpha.score > 0) positives.push(`Institutional Flow Alpha: ${alpha.summary}`);
             else risks.push(`Institutional Flow Headwind: ${alpha.summary}`);
         }
 
         if (sentiment && sentiment.label !== 'NEUTRAL') {
-            const isBullishSentiment = sentiment.bias?.includes('BULLISH');
-            const isBullishSetup = setup.direction === 'LONG';
-
-            if (isBullishSentiment === isBullishSetup) {
+            const sentimentDir = normalizeDirection(sentiment.bias);
+            if (sentimentDir === setupDir && sentimentDir !== 'NEUTRAL') {
                 totalPoints += 5;
                 positives.push(`Crowd Sentiment Alignment (${sentiment.label})`);
-            } else if (sentiment.confidence > 0.7) {
+            } else if (sentiment.confidence > 0.7 && sentimentDir !== 'NEUTRAL') {
                 totalPoints -= 10;
                 risks.push(`Crowd Sentiment Conflict (${sentiment.label})`);
             }
         }
 
-        // 8. PHASE 56: Directional Confidence Logic
+        // 8. Directional Confidence
         if (setup.directionalConfidence !== undefined) {
             const confidence = setup.directionalConfidence;
             if (confidence >= 0.7) {
@@ -202,7 +250,6 @@ export class EdgeScoringEngine {
         }
 
         // Resolution Score (1-10)
-        // Cap max points at 120 (bonus points) but normalize to 10
         const score = Math.max(0, Math.min(10, (totalPoints / 100) * 10)).toFixed(1);
 
         return {
@@ -224,4 +271,5 @@ export class EdgeScoringEngine {
         if (score >= 4.0) return 'LOW CONVICTION';
         return 'NO EDGE';
     }
+
 }

@@ -13,6 +13,18 @@ import { DivergenceMarker } from '../models/annotations/DivergenceMarker.js';
 export class DivergenceEngine {
 
     /**
+     * Helper to normalize directional strings
+     * @private
+     */
+    static _normalizeDirection(d) {
+        if (!d) return 'NEUTRAL';
+        const upper = d.toUpperCase();
+        if (upper === 'LONG' || upper === 'BULLISH' || upper === 'UP') return 'BULLISH';
+        if (upper === 'SHORT' || upper === 'BEARISH' || upper === 'DOWN') return 'BEARISH';
+        return 'NEUTRAL';
+    }
+
+    /**
      * Main Detection Entry Point
      * @param {string} symbol
      * @param {Array} candles
@@ -109,8 +121,8 @@ export class DivergenceEngine {
         // Find matching indicator swings around the same time (+/- tolerance)
         const tolerance = 2; // candles
 
-        const i1 = indicatorSwings.find(s => Math.abs(s.index - s1.index) <= tolerance && s.type === (type === 'BEARISH' ? 'HIGH' : 'LOW'));
-        const i2 = indicatorSwings.find(s => Math.abs(s.index - s2.index) <= tolerance && s.type === (type === 'BEARISH' ? 'HIGH' : 'LOW'));
+        const i1 = indicatorSwings.find(s => Math.abs(s.index - s1.index) <= tolerance && s.type === (this._normalizeDirection(type) === 'BEARISH' ? 'HIGH' : 'LOW'));
+        const i2 = indicatorSwings.find(s => Math.abs(s.index - s2.index) <= tolerance && s.type === (this._normalizeDirection(type) === 'BEARISH' ? 'HIGH' : 'LOW'));
 
         if (!i1 || !i2) return null;
 
@@ -122,8 +134,9 @@ export class DivergenceEngine {
 
         let divType = null;
         let category = null;
+        const normalizedType = this._normalizeDirection(type);
 
-        if (type === 'BULLISH') { // LOWS
+        if (normalizedType === 'BULLISH') { // LOWS
             const priceLL = s2.price < s1.price;
             const priceHL = s2.price > s1.price;
             const rsiHL = i2.price > i1.price; // i2 (current) > i1 (prev)
@@ -136,7 +149,7 @@ export class DivergenceEngine {
                 divType = 'Bullish Hidden';    // Continuation
                 category = 'HIDDEN';
             }
-        } else { // WILDCARD / HIGHs
+        } else { // BEARISH / HIGHs
             const priceHH = s2.price > s1.price;
             const priceLH = s2.price < s1.price;
             const rsiLH = i2.price < i1.price;
@@ -156,10 +169,10 @@ export class DivergenceEngine {
         return new DivergenceMarker(
             s2.time,
             s2.price,
-            type, // 'BULLISH' or 'BEARISH'
+            normalizedType,
             `${divType} (${Math.abs(s2.index - s1.index)} bars)`, // Text label
             {
-                id: `DIV-${Date.now()}-${type.substring(0, 3)}`,
+                id: `DIV-${Date.now()}-${normalizedType.substring(0, 3)}`,
                 category,
                 indicator: 'RSI',
                 swings: { p1: s1, p2: s2, i1, i2 },
@@ -179,31 +192,27 @@ export class DivergenceEngine {
         const indDist = Math.abs(i2.price - i1.price);
         const scoreInd = Math.min(indDist / 10, 1); // Max score if > 10 RSI points
 
-        // 3. Slope Disagreement (Concept: Stronger divergence = sharper contrast)
+        // 3. Slope Disagreement
         // 4. Time Efficiency (Candle count)
         const candleCount = Math.abs(p2.index - p1.index);
         const scoreTime = candleCount > 5 && candleCount < 50 ? 1 : 0.5;
 
         // Formula from Spec:
         // strength = priceDistance * 0.30 + indicatorDistance * 0.30 + slope * 0.25 + timing * 0.15
-        // Simplifying slope for now to 1 as detection implies disagreement
         const strength = (scorePrice * 0.3) + (scoreInd * 0.3) + (1 * 0.25) + (scoreTime * 0.15);
 
         return Number(strength.toFixed(2));
     }
 
     static validateLocation(div, marketState) {
-        if (!marketState) return true; // Fail open if no state, or fail close? Spec says Validate CRITICAL.
+        if (!marketState) return true;
 
-        // Key Levels Check
-        // Proximity to Support/Resistance, FVG, or Liquidity
         const zoneProx = 0.005; // 0.5% tolerance
 
         // 1. Liquidity Pools
         const nearLiquidity = marketState.liquidityPools?.some(p => Math.abs(p.price - div.price) / div.price < zoneProx);
 
-        // 2. Session High/Low (from marketState.session)
-        // 3. HTF POI
+        // 2. HTF POI
         const nearPOI = marketState.annotations?.some(a =>
             ['ORDER_BLOCK', 'FVG', 'SUPPORT', 'RESISTANCE'].includes(a.type) &&
             a.coordinates &&
@@ -217,16 +226,17 @@ export class DivergenceEngine {
     static validateContext(div, marketState) {
         if (!marketState) return true;
 
-        const trendDir = marketState.trend?.direction || 'NEUTRAL';
+        const trendDir = this._normalizeDirection(marketState.trend?.direction);
         const trendStrength = marketState.trend?.strength || 0;
+        const normalizedDivType = this._normalizeDirection(div.type);
 
         // Regular Divergence (Reversal) disabled in Strong Trends
         if (div.category === 'REGULAR' && trendStrength > 0.6) {
             // Reject Top-Picking in Strong Bull Trend
-            if (trendDir === 'BULLISH' && div.type === 'BEARISH') return false;
+            if (trendDir === 'BULLISH' && normalizedDivType === 'BEARISH') return false;
 
             // Reject Bottom-Picking in Strong Bear Trend
-            if (trendDir === 'BEARISH' && div.type === 'BULLISH') return false;
+            if (trendDir === 'BEARISH' && normalizedDivType === 'BULLISH') return false;
         }
 
         // Hidden Divergence (Continuation) disabled in Ranging markets

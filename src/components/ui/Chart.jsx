@@ -1,8 +1,12 @@
 /* eslint-disable react/prop-types */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createChart, CandlestickSeries } from 'lightweight-charts';
+import { normalizeDirection } from '../../utils/normalization';
+import { EntryConfirmationOverlay } from './EntryConfirmationOverlay';
+import { ChartLegend } from './ChartLegend';
+import { HelpOverlay } from './HelpOverlay';
 
-export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], labels: [] }, externalCrosshair = null, onCrosshairMove = null }) => {
+export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], labels: [] }, externalCrosshair = null, onCrosshairMove = null, analysis = null, setups = [] }) => {
     const chartContainerRef = useRef();
     const chartRef = useRef();
     const seriesRef = useRef();
@@ -21,6 +25,13 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
         markers: [],
         paths: []
     });
+
+    // UI Component State
+    const [showLegend, setShowLegend] = useState(true);
+    const [showVolumeProfile, setShowVolumeProfile] = useState(true);
+    const [showEntryZones, setShowEntryZones] = useState(true);
+    const [showHelp, setShowHelp] = useState(false);
+    const [showConfirmationOverlay, setShowConfirmationOverlay] = useState(true);
 
     // --- Sync Logic ---
     const syncOverlays = useCallback(() => {
@@ -187,6 +198,34 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
             paths: newPaths
         });
     }, [overlays, data]);
+
+    // --- Keyboard Shortcuts ---
+    useEffect(() => {
+        const handleKeyPress = (e) => {
+            // Ignore if typing in an input field
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            switch (e.key.toLowerCase()) {
+                case 'l':
+                    setShowLegend(prev => !prev);
+                    break;
+                case 'v':
+                    setShowVolumeProfile(prev => !prev);
+                    break;
+                case 'e':
+                    setShowEntryZones(prev => !prev);
+                    break;
+                case '?':
+                    setShowHelp(prev => !prev);
+                    break;
+                default:
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyPress);
+        return () => window.removeEventListener('keydown', handleKeyPress);
+    }, []);
 
     // --- Chart Instance ---
     useEffect(() => {
@@ -400,7 +439,8 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                             opacity = 1.0;
                         }
 
-                        const arrowId = path.direction === 'LONG' ? 'arrowhead-long' : path.direction === 'SHORT' ? 'arrowhead-short' : 'arrowhead-gray';
+                        const normDir = normalizeDirection(path.direction);
+                        const arrowId = normDir === 'BULLISH' ? 'arrowhead-long' : normDir === 'BEARISH' ? 'arrowhead-short' : 'arrowhead-gray';
 
                         // Conviction Scaling (High probability = bolder, brighter)
                         const conviction = path.probability || 70;
@@ -415,7 +455,7 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                                     <polyline
                                         points={path.mappedPoints.map(p => `${p.x},${p.y}`).join(' ')}
                                         fill="none"
-                                        stroke={path.color || (path.direction === 'LONG' ? '#10B981' : '#EF4444')}
+                                        stroke={path.color || (normDir === 'BULLISH' ? '#10B981' : '#EF4444')}
                                         strokeWidth={finalStrokeWidth + 4}
                                         opacity={0.15}
                                         filter="blur(4px)"
@@ -425,7 +465,7 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                                 <polyline
                                     points={path.mappedPoints.map(p => `${p.x},${p.y}`).join(' ')}
                                     fill="none"
-                                    stroke={path.color || (path.direction === 'LONG' ? 'url(#long-gradient)' : 'url(#short-gradient)')}
+                                    stroke={path.color || (normDir === 'BULLISH' ? 'url(#long-gradient)' : 'url(#short-gradient)')}
                                     strokeWidth={finalStrokeWidth}
                                     strokeDasharray={dashArray}
                                     opacity={opacity}
@@ -775,6 +815,21 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                     50% { opacity: .5; }
                 }
             `}</style>
+
+            {/* Entry Confirmation Overlay */}
+            {showConfirmationOverlay && setups && setups.length > 0 && (
+                <EntryConfirmationOverlay
+                    setup={setups[0]}
+                    analysis={analysis}
+                    position="top-right"
+                />
+            )}
+
+            {/* Chart Legend */}
+            {showLegend && <ChartLegend position="bottom-left" />}
+
+            {/* Help Overlay */}
+            {showHelp && <HelpOverlay onClose={() => setShowHelp(false)} />}
         </div>
     );
 };

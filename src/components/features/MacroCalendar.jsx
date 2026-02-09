@@ -8,9 +8,13 @@ export default function MacroCalendar() {
     const [now, setNow] = useState(Math.floor(Date.now() / 1000));
 
     useEffect(() => {
-        const fetchEvents = () => {
-            const upcoming = newsService.getUpcomingShocks(48); // 48h outlook
-            setEvents(upcoming.sort((a, b) => a.time - b.time));
+        const fetchEvents = async () => {
+            const upcoming = await newsService.getUpcomingShocks(48); // 48h outlook
+            if (Array.isArray(upcoming)) {
+                setEvents(upcoming.sort((a, b) => a.time - b.time));
+            } else {
+                setEvents([]);
+            }
         };
 
         fetchEvents();

@@ -34,6 +34,14 @@ export default defineConfig({
       '/api/news': {
         target: 'http://localhost:3001',
         changeOrigin: true
+      },
+      '/api/sentiment': {
+        target: 'http://localhost:3001',
+        changeOrigin: true
+      },
+      '/api/ai': {
+        target: 'http://localhost:3001',
+        changeOrigin: true
       }
     }
   }

@@ -70,9 +70,11 @@ export class OrderBlock extends StrategyBase {
             const obMid = (targetOB.high + targetOB.low) / 2;
             const bodySize = Math.abs(targetOB.high - targetOB.low);
 
-            // Tighten entry to the "sweet spot"
-            const entryTop = direction === 'LONG' ? targetOB.high : (targetOB.high + obMid) / 2;
-            const entryBottom = direction === 'LONG' ? (targetOB.low + obMid) / 2 : targetOB.low;
+            // INSTITUTIONAL PRECISION: Alignment with OB 'Open' and 'Mean Threshold' (50%)
+            // For a Bullish OB (Demand), Entry is the HIGH of the candle.
+            // For a Bearish OB (Supply), Entry is the LOW of the candle.
+            const entryTop = direction === 'LONG' ? targetOB.high : obMid;
+            const entryBottom = direction === 'LONG' ? obMid : targetOB.low;
 
             const entryZone = new EntryZone(
                 entryTop,

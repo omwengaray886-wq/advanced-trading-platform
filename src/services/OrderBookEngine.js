@@ -9,9 +9,10 @@ export class OrderBookEngine {
      * Analyze Order Book Depth
      * @param {Object} depth - { bids: [{price, quantity}], asks: [{price, quantity}] }
      * @param {number} currentPrice - Market mid-price
+     * @param {number} customRange - Optional range for imbalance calculation (default: 2%)
      * @returns {Object} Analysis results
      */
-    static analyze(depth, currentPrice) {
+    static analyze(depth, currentPrice, customRange = null) {
         if (!depth || !depth.bids || !depth.asks) {
             return { imbalance: 0, walls: [], pressure: 'NEUTRAL' };
         }
@@ -20,8 +21,8 @@ export class OrderBookEngine {
         const bidWalls = this._findWalls(depth.bids, 'BUY');
         const askWalls = this._findWalls(depth.asks, 'SELL');
 
-        // 2. Calculate Order Flow Imbalance (within 2% range)
-        const range = currentPrice * 0.02;
+        // 2. Calculate Order Flow Imbalance (within range)
+        const range = customRange || currentPrice * 0.02;
         const imbalance = this._calculateImbalance(depth, currentPrice, range);
 
         // 3. Determine Execution Pressure

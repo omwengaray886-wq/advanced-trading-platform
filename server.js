@@ -20,6 +20,58 @@ const cache = {
 
 const CACHE_TTL = 60 * 1000; // 60 seconds
 
+// Request Queue for Rate Limiting (Phase 1: API Stability)
+class RequestQueue {
+    constructor(maxPerMinute = 10) {
+        this.queue = [];
+        this.processing = false;
+        this.requestTimestamps = [];
+        this.maxPerMinute = maxPerMinute;
+    }
+
+    async enqueue(fn) {
+        return new Promise((resolve, reject) => {
+            this.queue.push({ fn, resolve, reject });
+            this.process();
+        });
+    }
+
+    async process() {
+        if (this.processing || this.queue.length === 0) return;
+
+        this.processing = true;
+
+        // Clean old timestamps
+        const now = Date.now();
+        this.requestTimestamps = this.requestTimestamps.filter(t => now - t < 60000);
+
+        // Check rate limit
+        if (this.requestTimestamps.length >= this.maxPerMinute) {
+            const oldestTimestamp = this.requestTimestamps[0];
+            const waitTime = 60000 - (now - oldestTimestamp);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            this.requestTimestamps = [];
+        }
+
+        const { fn, resolve, reject } = this.queue.shift();
+        this.requestTimestamps.push(Date.now());
+
+        try {
+            const result = await fn();
+            resolve(result);
+        } catch (error) {
+            reject(error);
+        } finally {
+            this.processing = false;
+            if (this.queue.length > 0) {
+                this.process();
+            }
+        }
+    }
+}
+
+const coinGeckoQueue = new RequestQueue(10); // 10 requests per minute for free tier
+
 // Enable CORS for frontend
 app.use(cors({
     origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
@@ -51,14 +103,19 @@ app.get('/api/binance/klines', async (req, res) => {
         });
         res.json(response.data);
     } catch (error) {
-        const targetUrl = `${BINANCE_BASE}/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=${limit || 100}`;
-        console.error(`[PROXY ERROR] Klines 500 for ${req.query.symbol} (Target: ${targetUrl}): ${error.message}`);
+        const status = error.response?.status || 500;
+        console.error(`[PROXY ERROR] Klines ${status} for ${req.query.symbol}: ${error.message}`);
 
         if (error.response) {
             console.error('[BINANCE ERROR DATA]', error.response.data);
-            return res.status(error.response.status).json(error.response.data);
+            return res.status(status).json(error.response.data);
         }
-        res.status(500).json({ error: 'Binance Proxy Connection Failed', details: error.message, target: targetUrl });
+
+        res.status(status).json({
+            error: 'Binance Proxy Connection Failed',
+            details: error.message,
+            target: `${BINANCE_BASE}/api/v3/klines`
+        });
     }
 });
 
@@ -79,11 +136,12 @@ app.get('/api/binance/depth', async (req, res) => {
         });
         res.json(response.data);
     } catch (error) {
-        console.error(`[PROXY ERROR] Depth for ${req.query.symbol}: ${error.message}`);
+        const status = error.response?.status || 500;
+        console.error(`[PROXY ERROR] Depth ${status} for ${req.query.symbol}: ${error.message}`);
         if (error.response) {
-            return res.status(error.response.status).json(error.response.data);
+            return res.status(status).json(error.response.data);
         }
-        res.status(500).json({ error: 'Binance Depth Proxy Internal Error', message: error.message });
+        res.status(status).json({ error: 'Binance Depth Proxy Internal Error', message: error.message });
     }
 });
 
@@ -95,29 +153,42 @@ app.use('/api/coingecko', async (req, res) => {
 
     // Dynamic TTL based on content: snapshots live longer than live data
     const isStatic = path.includes('list') || path.includes('info');
-    const dynamicTTL = isStatic ? 3600000 : 300000; // 1h for static, 5m for charts/live
+    const dynamicTTL = isStatic ? 3600000 : 600000; // 1h for static, 10m for charts/live (increased from 5m)
 
     if (cached && (Date.now() - cached.timestamp < dynamicTTL)) {
         return res.json(cached.data);
     }
 
-    try {
-        const url = `https://api.coingecko.com/api/v3/${path}`;
-        const cgKey = process.env.COINGECKO_API_KEY;
+    const cgKey = process.env.COINGECKO_API_KEY;
 
-        if (!cgKey || cgKey.trim() === '') {
-            console.warn(`[PROXY WARNING] CoinGecko request for ${path} initiated without API Key. Public rate limits apply.`);
+    // Graceful Degradation: If no API key, return cached data or empty response
+    if (!cgKey || cgKey.trim() === '') {
+        if (cached) {
+            console.warn(`[PROXY] CoinGecko disabled (no API key). Serving stale cache for ${path}`);
+            return res.json(cached.data);
         }
+        console.warn(`[PROXY] CoinGecko disabled (no API key). Request for ${path} blocked.`);
+        return res.status(503).json({
+            error: 'CoinGecko features disabled',
+            message: 'Add COINGECKO_API_KEY to .env to enable',
+            isConfigError: true
+        });
+    }
 
-        const response = await axios.get(url, {
-            params: req.query,
-            headers: {
-                'User-Agent': 'Institutional-Trading-Platform/1.0',
-                'Accept': 'application/json',
-                // Only send header if key exists and isn't a placeholder
-                ...(cgKey && cgKey.trim() !== '' && cgKey !== 'YOUR_KEY' ? { 'x-cg-demo-api-key': cgKey.trim() } : {})
-            },
-            timeout: 8000
+    try {
+        // Use request queue to prevent rate limiting
+        const response = await coinGeckoQueue.enqueue(async () => {
+            const url = `https://api.coingecko.com/api/v3/${path}`;
+
+            return await axios.get(url, {
+                params: req.query,
+                headers: {
+                    'User-Agent': 'Institutional-Trading-Platform/1.0',
+                    'Accept': 'application/json',
+                    'x-cg-demo-api-key': cgKey.trim()
+                },
+                timeout: 8000
+            });
         });
 
         cache.coingecko.set(cacheKey, { data: response.data, timestamp: Date.now() });
@@ -127,16 +198,22 @@ app.use('/api/coingecko', async (req, res) => {
         console.error(`[PROXY ERROR] CoinGecko (${req.path}): ${status} - ${error.message}`);
 
         // FALLBACK: If throttled but we HAVE cached data (even if stale), return it
-        if ((status === 429 || status === 500) && cached) {
+        if ((status === 429 || status === 500 || status === 503) && cached) {
             console.warn(`[PROXY] Serving stale CoinGecko data for ${path} due to error ${status}`);
             return res.json(cached.data);
         }
 
         if (status === 401) {
+            console.warn(`[PROXY] CoinGecko Unauthorized - Check API Key`);
             return res.status(401).json({ error: 'CoinGecko Unauthorized. Check COINGECKO_API_KEY in .env', isConfigError: true });
         }
 
-        res.status(status).json(error.response?.data || { error: error.message });
+        // Final safety: Ensure response is always JSON
+        const errorData = (error.response?.data && typeof error.response.data === 'object')
+            ? error.response.data
+            : { error: error.message, status };
+
+        res.status(status).json(errorData);
     }
 });
 
@@ -146,7 +223,7 @@ app.use('/api/news', async (req, res) => {
     const cacheKey = `news_${JSON.stringify(req.query)}`;
     const cached = cache.coingecko.get(cacheKey); // Reuse coingecko map for generic caching
 
-    if (cached && (Date.now() - cached.timestamp < 900000)) { // 15m TTL for news
+    if (cached && (Date.now() - cached.timestamp < 1800000)) { // 30m TTL for news (increased from 15m)
         return res.json(cached.data);
     }
 
@@ -176,7 +253,12 @@ app.use('/api/news', async (req, res) => {
             return res.json(cached.data);
         }
 
-        res.status(status).json(error.response?.data || { error: error.message });
+        // Final safety: Ensure response is always JSON
+        const errorData = (error.response?.data && typeof error.response.data === 'object')
+            ? error.response.data
+            : { error: error.message, status };
+
+        res.status(status).json(errorData);
     }
 });
 
@@ -207,7 +289,11 @@ app.get('/api/binance/ticker/24hr', async (req, res) => {
         console.error(`[PROXY ERROR] Ticker for ${req.query.symbol}: ${error.message}`);
         if (cached) return res.json(cached.data);
         const status = error.response?.status || 500;
-        res.status(status).json(error.response?.data || { error: error.message });
+        const errorData = (error.response?.data && typeof error.response.data === 'object')
+            ? error.response.data
+            : { error: error.message, status };
+
+        res.status(status).json(errorData);
     }
 });
 
@@ -221,13 +307,20 @@ app.get('/api/sentiment/fng', async (req, res) => {
     }
 
     try {
-        const response = await axios.get('https://api.alternative.me/fng/?limit=1');
+        const response = await axios.get('https://api.alternative.me/fng/?limit=1', { timeout: 5000 });
         cache.coingecko.set(cacheKey, { data: response.data, timestamp: Date.now() });
         res.json(response.data);
     } catch (error) {
         console.error(`[PROXY ERROR] Fear & Greed: ${error.message}`);
         if (cached) return res.json(cached.data);
-        res.status(500).json({ error: 'Failed to fetch Fear & Greed', message: error.message });
+
+        const status = error.response?.status || 500;
+        res.status(status).json({
+            error: 'Failed to fetch Fear & Greed',
+            message: error.message,
+            timestamp: Date.now(),
+            fallback: true
+        });
     }
 });
 
@@ -249,10 +342,20 @@ app.post('/api/ai/generate', async (req, res) => {
         const response = await result.response;
         const text = response.text();
 
+        if (!text) {
+            throw new Error('Empty response from Gemini');
+        }
+
         res.json({ text });
     } catch (error) {
-        console.error(`[AI PROXY ERROR]: ${error.message}`);
-        res.status(500).json({ error: 'AI Generation Failed', details: error.message });
+        console.error(`[AI PROXY ERROR] Model: ${req.body.model || 'default'}: ${error.message}`);
+        if (error.stack) console.error(error.stack);
+
+        res.status(500).json({
+            error: 'AI Generation Failed',
+            details: error.message,
+            timestamp: new Date().toISOString()
+        });
     }
 });
 

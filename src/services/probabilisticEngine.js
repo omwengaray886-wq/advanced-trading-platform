@@ -86,6 +86,18 @@ export class ProbabilisticEngine {
     }
 
     /**
+     * Helper to normalize directional strings
+     * @private
+     */
+    static _normalizeDirection(d) {
+        if (!d) return 'NEUTRAL';
+        const upper = d.toUpperCase();
+        if (upper === 'LONG' || upper === 'BULLISH' || upper === 'UP') return 'BULLISH';
+        if (upper === 'SHORT' || upper === 'BEARISH' || upper === 'DOWN') return 'BEARISH';
+        return 'NEUTRAL';
+    }
+
+    /**
      * Calculate probability of trend continuation
      */
     static calculateContinuationProbability(marketState, mtfData, priorStats) {
@@ -106,7 +118,7 @@ export class ProbabilisticEngine {
         // 3. Market Obligation Override
         const obligation = marketState.obligations?.primaryObligation;
         if (obligation && obligation.urgency > 80 && weights.obligation > 0) {
-            const trendDir = marketState.trend?.direction || 'NEUTRAL';
+            const trendDir = this._normalizeDirection(marketState.trend?.direction);
             const obligationDir = obligation.price > marketState.currentPrice ? 'BULLISH' : 'BEARISH';
 
             if (trendDir === obligationDir) {
@@ -146,7 +158,7 @@ export class ProbabilisticEngine {
         // 3. Obligation-Driven Reversal
         const obligation = marketState.obligations?.primaryObligation;
         if (obligation && obligation.urgency > 75) {
-            const trendDir = marketState.trend?.direction || 'NEUTRAL';
+            const trendDir = this._normalizeDirection(marketState.trend?.direction);
             const obligationDir = obligation.price > marketState.currentPrice ? 'BULLISH' : 'BEARISH';
 
             if (trendDir !== 'NEUTRAL' && trendDir !== obligationDir) {
@@ -190,9 +202,11 @@ export class ProbabilisticEngine {
     // --- Helpers (Same as before, simplified) ---
 
     static _getHTFBiasWeight(marketState, mtfData) {
-        const globalBias = marketState.mtf?.globalBias || 'NEUTRAL';
+        const globalBias = this._normalizeDirection(marketState.mtf?.globalBias);
+        const trendDir = this._normalizeDirection(marketState.trend?.direction);
+
         if (globalBias === 'NEUTRAL') return 0.5;
-        return (marketState.trend?.direction === globalBias) ? 1.0 : 0.2;
+        return (trendDir === globalBias) ? 1.0 : 0.2;
     }
 
     static _getStructureStrength(marketState) {

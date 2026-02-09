@@ -183,10 +183,62 @@ export default function FullAnalysisReport({ analysis, loading }) {
                     </div>
                 </header>
 
+                {/* Institutional Alerts (Phase 4 Integration) */}
+                {marketState.alphaLeaks?.length > 0 && (
+                    <div style={{ marginBottom: '24px' }}>
+                        {marketState.alphaLeaks.map((leak, idx) => (
+                            <motion.div
+                                key={idx}
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: idx * 0.1 }}
+                                style={{
+                                    background: leak.severity === 'HIGH' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                                    border: `1px solid ${leak.severity === 'HIGH' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+                                    padding: '12px 16px',
+                                    borderRadius: '10px',
+                                    marginBottom: '8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    color: leak.severity === 'HIGH' ? '#ef4444' : '#f59e0b',
+                                    fontSize: '13px'
+                                }}
+                            >
+                                <AlertCircle size={18} />
+                                <span style={{ fontWeight: '500' }}>{leak.warning}</span>
+                            </motion.div>
+                        ))}
+                    </div>
+                )}
+                {marketState.amdCycle?.phase === 'MANIPULATION' && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        style={{
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            padding: '16px',
+                            borderRadius: '12px',
+                            marginBottom: '24px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '16px',
+                            color: '#ef4444'
+                        }}
+                    >
+                        <AlertCircle size={24} />
+                        <div>
+                            <div style={{ fontWeight: 'bold', fontSize: '16px' }}>MANIPULATION DETECTED (Judas Swing)</div>
+                            <div style={{ fontSize: '13px', opacity: 0.8 }}>Institutional fakeout in progress. Avoid chasing the current momentum; wait for distribution expansion.</div>
+                        </div>
+                    </motion.div>
+                )}
+
                 {/* Accuracy & Convergence Map (Phase 5) */}
                 <div style={{
                     display: 'grid',
-                    gridTemplateColumns: '1fr 1fr 1fr',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
                     gap: '16px',
                     marginBottom: '32px'
                 }}>
@@ -207,11 +259,72 @@ export default function FullAnalysisReport({ analysis, loading }) {
                     </div>
 
                     <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                        <h4 style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginBottom: '8px', textTransform: 'uppercase' }}>Institutional Delta</h4>
-                        <div style={{ fontSize: '18px', fontWeight: 'bold', color: marketState.orderFlow?.bias === setups[0]?.direction ? '#10b981' : '#f59e0b' }}>
-                            {marketState.orderFlow?.bias || 'NEUTRAL'}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <h4 style={{ fontSize: '11px', color: 'var(--color-text-secondary)', margin: 0, textTransform: 'uppercase' }}>DOM Pressure</h4>
+                            {marketState.domStats?.isLive && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '9px',
+                                    color: '#10b981',
+                                    background: 'rgba(16, 185, 129, 0.1)',
+                                    padding: '2px 6px',
+                                    borderRadius: '10px'
+                                }}>
+                                    LIVE
+                                </div>
+                            )}
                         </div>
-                        <p style={{ fontSize: '10px', opacity: 0.6, marginTop: '4px' }}>Intensity: {Math.round((marketState.orderFlow?.intensity || 0) * 100)}%</p>
+                        <div style={{ fontSize: '18px', fontWeight: 'bold', color: marketState.orderBookDepth?.pressure === 'BULLISH' ? '#10b981' : marketState.orderBookDepth?.pressure === 'BEARISH' ? '#ef4444' : 'var(--color-text-secondary)' }}>
+                            {Math.abs((marketState.orderBookDepth?.imbalance || 0) * 100).toFixed(1)}% {marketState.orderBookDepth?.pressure || 'NEUTRAL'}
+                        </div>
+                        <div style={{ height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', marginTop: '8px', overflow: 'hidden', position: 'relative' }}>
+                            <div style={{
+                                position: 'absolute',
+                                left: '50%',
+                                width: `${Math.abs((marketState.orderBookDepth?.imbalance || 0) * 50)}%`,
+                                height: '100%',
+                                background: (marketState.orderBookDepth?.imbalance || 0) > 0 ? '#10b981' : '#ef4444',
+                                transform: (marketState.orderBookDepth?.imbalance || 0) > 0 ? 'translateX(0)' : 'translateX(-100%)'
+                            }} />
+                        </div>
+                    </div>
+
+                    <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <h4 style={{ fontSize: '11px', color: 'var(--color-text-secondary)', margin: 0, textTransform: 'uppercase' }}>Market Obligation</h4>
+                            {marketState.domStats && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    fontSize: '9px',
+                                    color: marketState.domStats.isLive ? '#10b981' : '#ef4444',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    padding: '2px 6px',
+                                    borderRadius: '10px'
+                                }}>
+                                    <motion.div
+                                        animate={{ opacity: [1, 0.4, 1] }}
+                                        transition={{ duration: 1.5, repeat: Infinity }}
+                                        style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'currentColor' }}
+                                    />
+                                    {marketState.domStats.latency || 0}ms
+                                </div>
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ fontSize: '18px', fontWeight: 'bold', color: marketState.obligationState === 'OBLIGATED' ? '#10b981' : 'var(--color-text-secondary)' }}>
+                                {marketState.obligationState || 'FREE_ROAMING'}
+                            </div>
+                            {marketState.primaryMagnet && (
+                                <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#10b981' }}>{marketState.primaryMagnet.urgency.toFixed(0)}% PULL</div>
+                            )}
+                        </div>
+                        <p style={{ fontSize: '10px', opacity: 0.6, marginTop: '4px' }}>
+                            {marketState.primaryMagnet ? `Magnet: ${marketState.primaryMagnet.type}` : 'No clear magnet'}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -463,7 +576,14 @@ export default function FullAnalysisReport({ analysis, loading }) {
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'rgba(255, 255, 255, 0.03)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
                                     <div>
                                         <div style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.5)', marginBottom: '4px' }}>TARGET 1 (TP)</div>
-                                        <div style={{ fontWeight: 'bold', fontSize: '14px', color: 'var(--color-success)' }}>{setup.targets?.[0]?.price?.toFixed(5) || 'N/A'}</div>
+                                        <div style={{ fontWeight: 'bold', fontSize: '14px', color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            {setup.targets?.[0]?.price?.toFixed(5) || 'N/A'}
+                                            {setup.isClusterSynced && (
+                                                <span title="Institutional Cluster Sync" style={{ color: '#8b5cf6', display: 'flex' }}>
+                                                    <Database size={12} />
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.5)', marginBottom: '4px' }}>TARGET 2 (TP)</div>
@@ -480,6 +600,27 @@ export default function FullAnalysisReport({ analysis, loading }) {
                                         boxShadow: '0 0 10px var(--color-success)'
                                     }} />
                                 </div>
+
+                                {/* Phase 6: Monte Carlo Projection HUD */}
+                                {setup.monteCarlo && (
+                                    <div style={{
+                                        background: 'rgba(59, 130, 246, 0.05)',
+                                        padding: '10px',
+                                        borderRadius: '8px',
+                                        border: '1px solid rgba(59, 130, 246, 0.2)',
+                                        fontSize: '11px'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                            <span style={{ color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', fontSize: '9px' }}>Monte Carlo Projection</span>
+                                            <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>{setup.monteCarlo.riskOfRuin}% Ruin Risk</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.8)' }}>
+                                            <span>P10: <span style={{ color: '#ef4444' }}>${setup.monteCarlo.percentiles?.p10?.toFixed(0) || '0'}</span></span>
+                                            <span>P50: <span>${setup.monteCarlo.percentiles?.p50?.toFixed(0) || '0'}</span></span>
+                                            <span>P90: <span style={{ color: '#10b981' }}>${setup.monteCarlo.percentiles?.p90?.toFixed(0) || '0'}</span></span>
+                                        </div>
+                                    </div>
+                                )}
 
                                 <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', lineHeight: '1.5', fontStyle: 'italic' }}>
                                     "{setup.rationale}"
@@ -598,6 +739,68 @@ export default function FullAnalysisReport({ analysis, loading }) {
                 </section>
             )}
 
+            {/* Phase 60: Portfolio Risk & Stress HUD */}
+            {analysis.stressMetrics && (
+                <section style={{
+                    marginTop: '32px',
+                    padding: '24px',
+                    background: 'rgba(239, 68, 68, 0.03)',
+                    border: '1px solid rgba(239, 68, 68, 0.15)',
+                    borderRadius: '12px'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                        <Shield size={20} color="#ef4444" />
+                        <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#ef4444' }}>Portfolio Risk & Stress Analysis</h3>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                        {/* Value at Risk (VaR) */}
+                        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', marginBottom: '8px' }}>Value at Risk (95% Confidence)</div>
+                            <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--color-text-primary)' }}>
+                                ${analysis.stressMetrics.var?.dollarVaR?.toFixed(2) || '0.00'}
+                                <span style={{ fontSize: '12px', color: '#ef4444', marginLeft: '8px' }}>
+                                    ({analysis.stressMetrics.var?.pctVaR?.toFixed(2) || '0'}%)
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>Estimated daily drawdown exposure</div>
+                        </div>
+
+                        {/* Shock Scenarios */}
+                        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', marginBottom: '8px' }}>Black Swan simulations</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                                    <span style={{ color: 'rgba(255,255,255,0.7)' }}>Flash Crash Loss</span>
+                                    <span style={{ color: '#ef4444', fontWeight: 'bold' }}>-${analysis.stressMetrics.shocks?.flashCrash?.estimatedLoss?.toFixed(0) || '0'}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                                    <span style={{ color: 'rgba(255,255,255,0.7)' }}>USD Shock Loss</span>
+                                    <span style={{ color: '#ef4444', fontWeight: 'bold' }}>-${analysis.stressMetrics.shocks?.usdShock?.estimatedLoss?.toFixed(0) || '0'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Concentration Status */}
+                        {analysis.portfolioHealth && (
+                            <div style={{
+                                background: analysis.portfolioHealth.isConcentrated ? 'rgba(234, 179, 8, 0.05)' : 'rgba(16, 185, 129, 0.05)',
+                                padding: '16px',
+                                borderRadius: '8px',
+                                border: `1px solid ${analysis.portfolioHealth.isConcentrated ? 'rgba(234, 179, 8, 0.3)' : 'rgba(16, 185, 129, 0.2)'}`
+                            }}>
+                                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', marginBottom: '4px' }}>Health Status</div>
+                                <div style={{ fontSize: '14px', fontWeight: 'bold', color: analysis.portfolioHealth.isConcentrated ? '#eab308' : '#10b981' }}>
+                                    {analysis.portfolioHealth.isConcentrated ? 'CONCENTRATED EXPOSURE' : 'OPTIMIZED PORTFOLIO'}
+                                </div>
+                                <p style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
+                                    {analysis.portfolioHealth.reason}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </section>
+            )}
+
             {/* Execution Optimization (Phase 8) */}
             {setups[0]?.executionAdvice && (
                 <section style={{ marginTop: '48px', padding: '24px', background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.2)', borderRadius: '12px' }}>
@@ -629,25 +832,86 @@ export default function FullAnalysisReport({ analysis, loading }) {
                 </section>
             )}
 
-            {/* Alpha Attribution (Phase 8) */}
-            <section style={{ marginTop: '48px', padding: '24px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+            {/* Alpha Attribution (Phase 7 - Autonomous Alpha Learning) */}
+            <section style={{
+                marginTop: '48px',
+                padding: '24px',
+                background: 'rgba(15, 23, 42, 0.3)',
+                border: '1px solid rgba(255, 255, 255, 0.05)',
+                borderRadius: '16px',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    padding: '8px 16px',
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    color: '#10b981',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    borderBottomLeftRadius: '12px',
+                    letterSpacing: '0.05em'
+                }}>
+                    PHASE 7: AUTONOMOUS ALPHA
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                     <BarChart2 size={20} color="#10b981" />
-                    <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>Intelligence Reliability (Alpha Attribution)</h3>
+                    <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>Engine Reliability HUD</h3>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-                    {[['DARK_POOL', 82], ['SENTIMENT', 64], ['ORDER_BOOK', 71], ['VOLATILITY', 58]].map(([engine, winRate]) => (
-                        <div key={engine} style={{ padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', marginBottom: '4px' }}>{engine.replace('_', ' ')}</div>
-                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: winRate > 70 ? '#10b981' : winRate > 60 ? '#f59e0b' : '#94a3b8' }}>
-                                {winRate}% <span style={{ fontSize: '10px', opacity: 0.5 }}>WR</span>
+
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                    gap: '16px'
+                }}>
+                    {marketState.alphaMetrics && Object.keys(marketState.alphaMetrics).length > 0 ? (
+                        Object.entries(marketState.alphaMetrics).sort((a, b) => b[1].winRate - a[1].winRate).map(([engine, data]) => (
+                            <div key={engine} style={{
+                                padding: '16px',
+                                background: 'rgba(0,0,0,0.2)',
+                                borderRadius: '12px',
+                                border: `1px solid ${data.status === 'INSTITUTIONAL' ? 'rgba(16, 185, 129, 0.3)' :
+                                    data.status === 'DEGRADING' ? 'rgba(239, 68, 68, 0.3)' :
+                                        'rgba(255,255,255,0.05)'
+                                    }`,
+                                transition: 'all 0.2s ease'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                    <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', fontWeight: 'bold' }}>
+                                        {engine.replace('_', ' ')}
+                                    </span>
+                                    <div style={{
+                                        width: '6px',
+                                        height: '6px',
+                                        borderRadius: '50%',
+                                        background: data.status === 'INSTITUTIONAL' ? '#10b981' :
+                                            data.status === 'HIGH_ALPHA' ? '#3b82f6' :
+                                                data.status === 'DEGRADING' ? '#ef4444' : '#94a3b8'
+                                    }} />
+                                </div>
+                                <div style={{ fontSize: '20px', fontWeight: 'bold', color: data.winRate > 65 ? '#10b981' : data.winRate > 50 ? '#f59e0b' : '#94a3b8' }}>
+                                    {data.winRate}% <span style={{ fontSize: '10px', opacity: 0.5, fontWeight: 'normal' }}>WR</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '10px' }}>
+                                    <span style={{ opacity: 0.6 }}>Impact: {data.impactScore}</span>
+                                    <span style={{
+                                        color: data.status === 'INSTITUTIONAL' ? '#10b981' :
+                                            data.status === 'DEGRADING' ? '#ef4444' : 'inherit'
+                                    }}>{data.status}</span>
+                                </div>
                             </div>
+                        ))
+                    ) : (
+                        <div style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '12px' }}>
+                            <Activity className="animate-pulse" style={{ margin: '0 auto 12px' }} />
+                            <p style={{ fontSize: '14px' }}>Calibrating Alpha Tracker... Awaiting historical trade attribution points.</p>
+                            <p style={{ fontSize: '11px', marginTop: '4px' }}>System is monitoring live institutional signals to establish engine reliability baselines.</p>
                         </div>
-                    ))}
+                    )}
                 </div>
-                <p style={{ marginTop: '16px', fontSize: '12px', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
-                    Note: Module reliability scores are derived by correlating institutional signal presence with historical trade success. "DARK POOL" currently shows the highest predictive alpha.
-                </p>
             </section>
 
             {/* Portfolio Risk Dashboard */}

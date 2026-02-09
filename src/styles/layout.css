@@ -41,6 +41,13 @@
     padding: var(--spacing-lg);
 }
 
+/* Terminal Mode: For full-bleed screens like Markets/Dashboard */
+.content-area.terminal-mode {
+    padding: 0;
+    overflow: hidden;
+    /* Markets.jsx handles its own internal scrolling */
+}
+
 /* Utilities for layout */
 .flex-row {
     display: flex;

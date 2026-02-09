@@ -409,6 +409,9 @@ export function drawVolumeProfile(chart, profile) {
 export function drawScenarioPath(chart, scenario) {
     if (!scenario.visible) return null;
 
+    // Determine color based on direction
+    const baseColor = scenario.direction === 'LONG' ? '#10b981' : scenario.direction === 'SHORT' ? '#ef4444' : '#94a3b8';
+
     // Dynamic Visual Confidence (Phase 37)
     // Scale thickness based on probability (0.2 -> 1px, 0.8 -> 4px)
     const prob = scenario.probability || 0.5;
@@ -422,7 +425,12 @@ export function drawScenarioPath(chart, scenario) {
     const baseOpacity = scenario.isConfirmed ? 0.85 : 0.35;
     const confidenceModifier = prob > 0.6 ? 1.0 : 0.7;
     const finalOpacity = baseOpacity * confidenceModifier;
-    const finalColor = color.replace('0.6', finalOpacity.toFixed(2));
+
+    // Convert hex to rgba with opacity
+    const r = parseInt(baseColor.slice(1, 3), 16);
+    const g = parseInt(baseColor.slice(3, 5), 16);
+    const b = parseInt(baseColor.slice(5, 7), 16);
+    const color = `rgba(${r}, ${g}, ${b}, ${finalOpacity})`;
 
     return {
         id: scenario.id,

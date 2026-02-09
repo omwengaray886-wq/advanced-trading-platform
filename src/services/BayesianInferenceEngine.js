@@ -34,9 +34,16 @@ export class BayesianInferenceEngine {
             };
         } else {
             try {
-                stats = await PredictionTracker.getStats(symbol);
+                // Phase 55: Robustness - Race against timeout (2s) to prevent analysis hang
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Bayesian stats fetch timed out')), 5000)
+                );
+                stats = await Promise.race([
+                    PredictionTracker.getStats(symbol),
+                    timeoutPromise
+                ]);
             } catch (e) {
-                console.warn(`[Bayesian] Failed to fetch stats for ${symbol}, using priors.`);
+                console.warn(`[Bayesian] Stats fetch issue for ${symbol} (${e.message}), using priors.`);
             }
         }
 

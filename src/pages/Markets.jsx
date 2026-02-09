@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
 import Chart from '../components/ui/Chart';
@@ -24,6 +24,9 @@ import MacroCalendar from '../components/features/MacroCalendar';
 import GlobalRiskHUD from '../components/features/GlobalRiskHUD';
 import { proactiveMonitor } from '../services/ProactiveMonitor';
 import { alertOrchestrator } from '../services/AlertOrchestrator';
+import ExplanationPanel from '../components/features/ExplanationPanel';
+import SentimentGauge from '../components/features/SentimentGauge';
+import InstitutionalScanner from '../components/features/InstitutionalScanner';
 
 export default function Markets() {
     const assetRegistry = {
@@ -230,6 +233,8 @@ export default function Markets() {
     // Fetch Data & Subscribe
     useEffect(() => {
         setLoading(true);
+        setAnalysis(null);
+        setActiveSetupId('A');
         const symbol = resolveSymbol(selectedPair);
         const interval = timeframe.toLowerCase();
         let unsubscribe = () => { };
@@ -272,6 +277,10 @@ export default function Markets() {
         };
 
         fetchHistory();
+        // Reset analysis state when pair or timeframe changes
+        setAnalysis(null);
+        analysisRef.current = false;
+
         return () => {
             unsubscribe();
             marketData.disconnect();
@@ -280,12 +289,23 @@ export default function Markets() {
 
     const [analysis, setAnalysis] = useState(null);
     const [activeSetupId, setActiveSetupId] = useState('A');
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-    const handleGenerateAnalysis = async () => {
-        if (!chartData || chartData.length < 50) {
-            return addToast('Insufficient market data for deep analysis (min 50 candles required). Please wait for the chart to populate.', 'warning');
+    const analysisRef = useRef(false);
+
+    const handleGenerateAnalysis = async (force = false) => {
+        if (!chartData || chartData.length < 50) return;
+        if (analysisRef.current && !force) return;
+
+        console.log('[Markets] Starting Analysis for', selectedPair);
+        analysisRef.current = true;
+        setIsAnalyzing(true);
+
+        // Only show the primary loading screen if we don't have ANY analysis yet
+        // This prevents the "Developing..." screen from blinking during background updates
+        if (!analysis) {
+            setLoading(true);
         }
-        setLoading(true);
         try {
             const newAnalysis = await generateTradeAnalysis(
                 chartData,
@@ -294,36 +314,47 @@ export default function Markets() {
                 manualStrategy,
                 complexityMode,
                 (partial) => {
-                    // Stage 1: Fast Pass Complete
+                    console.log('[Markets] Partial analysis received for', selectedPair);
                     setAnalysis(partial);
-                    setLoading(false); // Stop the heavy spinner immediately
-                    addToast(`Fast Scan Complete. Refining Deep Intel...`, 'info');
+                    // Do NOT setLoading(false) here if we already have a previous analysis
+                    // This lets the old UI stay visible while the new one loads in the background
+                    setLoading(false);
                 },
                 accountSize
             );
 
-            // Stage 2: Full Deep-Dive & AI Complete
+            console.log('[Markets] Full analysis complete for', selectedPair);
             setAnalysis(newAnalysis);
-            setActiveSetupId('A'); // Reset to A when final analysis arrives
+            setActiveSetupId('A');
 
-            // Persist to Global Trade Setups DB
             if (newAnalysis.setups && newAnalysis.setups.length > 0) {
                 saveTradeSetups(newAnalysis.setups);
-                addToast(`Published ${newAnalysis.setups.length} new signals to Trade Setups.`, 'success');
+                addToast(`Published ${newAnalysis.setups.length} signals.`, 'success');
             }
-
-            addToast(`Institutional analysis (${complexityMode}) fully enhanced!`, 'success');
         } catch (error) {
+            console.error('[Markets] Analysis Error:', error);
             addToast(`Analysis Error: ${error.message}`, 'error');
+        } finally {
+            setIsAnalyzing(false);
             setLoading(false);
+            // DO NOT reset analysisRef.current = false here, otherwise the useEffect will loop
         }
     };
 
     useEffect(() => {
-        if (chartData.length > 50 && !analysis) {
-            handleGenerateAnalysis();
+        // Trigger analysis if we have data and NO active analysis
+        // We use a timestamp check to avoid infinite loops and unnecessary updates
+        if (chartData.length > 50 && !isAnalyzing) {
+            const lastCandleTime = chartData[chartData.length - 1]?.time;
+            const hasNewData = !analysisRef.current || analysisRef.current !== lastCandleTime;
+
+            if (hasNewData) {
+                console.log('[Markets] Triggering update for new candle at', lastCandleTime);
+                handleGenerateAnalysis();
+                analysisRef.current = lastCandleTime; // Store the time of the last analyzed candle
+            }
         }
-    }, [chartData]);
+    }, [chartData.length, isAnalyzing]);
 
     const TF_COLORS = {
         '4h': '#1e3a8a', // Dark Blue
@@ -538,11 +569,11 @@ export default function Markets() {
         }
 
         // DEBUG: Log overlay results
-        console.log('[Markets.jsx] Overlays Result:', {
+        console.log('[Markets.jsx] Visuals Computed:', {
+            markers: markers.length,
+            lines: lines.length,
             zones: overlays.zones?.length,
-            paths: overlays.paths?.length,
-            labels: overlays.labels?.length,
-            liquidity: overlays.liquidityMap?.length
+            paths: overlays.paths?.length
         });
 
         return { markers, lines, overlays };
@@ -559,7 +590,7 @@ export default function Markets() {
 
     return (
         <div style={{
-            height: '100vh',
+            height: 'calc(100vh - 64px)',
             background: 'radial-gradient(circle at top left, #0f172a, #000000)',
             display: 'flex',
             flexDirection: 'column',
@@ -995,8 +1026,9 @@ export default function Markets() {
                 </main>
 
                 {/* 🛡️ RIGHT COLUMN: COMMAND CENTER */}
+                {/* 🛡️ RIGHT COLUMN: COMMAND CENTER (Restored Single Column) */}
                 <aside style={{
-                    width: '360px',
+                    width: '380px',
                     background: 'rgba(15, 23, 42, 0.6)',
                     backdropFilter: 'blur(30px)',
                     borderLeft: '1px solid rgba(255, 255, 255, 0.05)',
@@ -1004,172 +1036,162 @@ export default function Markets() {
                     flexDirection: 'column',
                     overflowY: 'auto'
                 }}>
-                    {/* Execution Tab */}
                     <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                        <PortfolioRiskDashboard />
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h3 style={{ fontSize: '14px', fontWeight: 'bold', letterSpacing: '1px', color: 'rgba(255,255,255,0.5)' }}>COMMAND CENTER</h3>
-                            <button
-                                onClick={() => setShowReport(!showReport)}
-                                style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}
-                            >
-                                <Layout size={16} />
-                            </button>
-                        </div>
 
-                        {/* Inter-market Visual Intelligence (Phase 37) */}
-                        <SMTCorrelationHeatmap
-                            symbol={selectedPair}
-                            activeTimeframe={timeframe}
-                            divergences={analysis?.marketState?.divergences || []}
-                        />
-
-                        {/* Strategy & Complexity Restoration */}
-                    </div>
-
-                    {/* Auditor Config Section */}
-                    <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                            <div style={{ width: '4px', height: '14px', background: 'var(--color-accent-primary)', borderRadius: '2px' }} />
-                            <h4 style={{ fontSize: '11px', fontWeight: 'bold', color: 'rgba(255,255,255,0.7)', letterSpacing: '0.5px' }}>AUDITOR CONFIG</h4>
-                        </div>
-
+                        {/* 1. Intelligence Layer */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            {/* Account Size Parameter */}
-                            <div>
-                                <label style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                                    ACTIVE TRADING CAPITAL (USD)
-                                </label>
-                                <div style={{ position: 'relative' }}>
-                                    <input
-                                        type="number"
-                                        value={accountSize}
-                                        onChange={(e) => setAccountSize(Number(e.target.value))}
-                                        style={{
-                                            width: '100%',
-                                            background: 'rgba(255,255,255,0.03)',
-                                            border: '1px solid rgba(255,255,255,0.1)',
-                                            borderRadius: '10px',
-                                            padding: '12px',
-                                            color: 'white',
-                                            fontSize: '13px',
-                                            fontWeight: 'bold',
-                                            outline: 'none',
-                                            transition: 'all 0.2s'
-                                        }}
-                                        onFocus={e => e.target.parentElement.style.borderColor = 'var(--color-accent-primary)'}
-                                        onBlur={e => e.target.parentElement.style.borderColor = 'rgba(255,255,255,0.1)'}
-                                    />
-                                    <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', opacity: 0.3 }}>
-                                        <Target size={14} />
+                            <SentimentGauge score={analysis?.marketState?.sentiment?.score || 50} />
+                            <ExplanationPanel
+                                analysis={analysis}
+                                loading={loading}
+                                onGenerateNew={() => handleGenerateAnalysis(true)}
+                            />
+                            <InstitutionalScanner onSelectSymbol={setSelectedPair} />
+                        </div>
+
+                        <div style={{ height: '1px', background: 'rgba(255,255,255,0.05)' }} />
+
+                        {/* 2. Execution & Risk Layer */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                            <PortfolioRiskDashboard />
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h3 style={{ fontSize: '14px', fontWeight: 'bold', letterSpacing: '1px', color: 'rgba(255,255,255,0.5)' }}>COMMAND CENTER</h3>
+                                <button
+                                    onClick={() => setShowReport(!showReport)}
+                                    style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}
+                                >
+                                    <Layout size={16} />
+                                </button>
+                            </div>
+
+                            <SMTCorrelationHeatmap
+                                symbol={selectedPair}
+                                activeTimeframe={timeframe}
+                                divergences={analysis?.marketState?.divergences || []}
+                            />
+
+                            {/* Auditor Config Section */}
+                            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                                    <div style={{ width: '4px', height: '14px', background: 'var(--color-accent-primary)', borderRadius: '2px' }} />
+                                    <h4 style={{ fontSize: '11px', fontWeight: 'bold', color: 'rgba(255,255,255,0.7)', letterSpacing: '0.5px' }}>AUDITOR CONFIG</h4>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    <div>
+                                        <label style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                                            ACTIVE TRADING CAPITAL (USD)
+                                        </label>
+                                        <div style={{ position: 'relative' }}>
+                                            <input
+                                                type="number"
+                                                value={accountSize}
+                                                onChange={(e) => setAccountSize(Number(e.target.value))}
+                                                style={{
+                                                    width: '100%',
+                                                    background: 'rgba(255,255,255,0.03)',
+                                                    border: '1px solid rgba(255,255,255,0.1)',
+                                                    borderRadius: '10px',
+                                                    padding: '12px',
+                                                    color: 'white',
+                                                    fontSize: '13px',
+                                                    fontWeight: 'bold',
+                                                    outline: 'none'
+                                                }}
+                                            />
+                                            <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', opacity: 0.3 }}>
+                                                <Target size={14} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                                            ANALYSIS ARCHITECTURE
+                                        </label>
+                                        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '3px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <button
+                                                onClick={() => setComplexityMode('BEGINNER')}
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '10px',
+                                                    borderRadius: '8px',
+                                                    border: 'none',
+                                                    background: complexityMode === 'BEGINNER' ? 'rgba(255,255,255,0.08)' : 'transparent',
+                                                    color: complexityMode === 'BEGINNER' ? 'white' : 'rgba(255,255,255,0.3)',
+                                                    fontSize: '11px',
+                                                    fontWeight: 'bold',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                <BookOpen size={14} /> LIGHT / RETAIL
+                                            </button>
+                                            <button
+                                                onClick={() => setComplexityMode('ADVANCED')}
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '10px',
+                                                    borderRadius: '8px',
+                                                    background: complexityMode === 'ADVANCED' ? 'rgba(37, 99, 235, 0.15)' : 'transparent',
+                                                    color: complexityMode === 'ADVANCED' ? 'white' : 'rgba(255,255,255,0.3)',
+                                                    fontSize: '11px',
+                                                    fontWeight: 'bold',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                <Activity size={14} /> HEAVY / ALGO
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                                <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', marginTop: '6px' }}>
-                                    Size suggestions scale linearly with capital. Default is $10k base.
-                                </p>
                             </div>
 
-                            {/* Detail Mode Selector */}
                             <div>
-                                <label style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                                    ANALYSIS ARCHITECTURE
-                                </label>
-                                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '3px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                    <button
-                                        onClick={() => setComplexityMode('BEGINNER')}
-                                        style={{
-                                            flex: 1,
-                                            padding: '10px',
-                                            borderRadius: '8px',
-                                            border: 'none',
-                                            background: complexityMode === 'BEGINNER' ? 'rgba(255,255,255,0.08)' : 'transparent',
-                                            color: complexityMode === 'BEGINNER' ? 'white' : 'rgba(255,255,255,0.3)',
-                                            fontSize: '11px',
-                                            fontWeight: 'bold',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: '6px',
-                                            transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        <BookOpen size={14} /> LIGHT / RETAIL
-                                    </button>
-                                    <button
-                                        onClick={() => setComplexityMode('ADVANCED')}
-                                        style={{
-                                            flex: 1,
-                                            padding: '10px',
-                                            borderRadius: '8px',
-                                            background: complexityMode === 'ADVANCED' ? 'rgba(37, 99, 235, 0.15)' : 'transparent',
-                                            color: complexityMode === 'ADVANCED' ? 'white' : 'rgba(255,255,255,0.3)',
-                                            fontSize: '11px',
-                                            fontWeight: 'bold',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: '6px',
-                                            border: complexityMode === 'ADVANCED' ? '1px solid rgba(37, 99, 235, 0.2)' : '1px solid transparent',
-                                            transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        <Activity size={14} /> HEAVY / ALGO
-                                    </button>
-                                </div>
+                                <select
+                                    value={manualStrategy || ''}
+                                    onChange={(e) => setManualStrategy(e.target.value || null)}
+                                    style={{
+                                        width: '100%',
+                                        background: 'rgba(255,255,255,0.05)',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: '10px',
+                                        padding: '10px 12px',
+                                        color: 'white',
+                                        fontSize: '12px'
+                                    }}
+                                >
+                                    <option value="">🤖 AI AUTO-STRATEGY</option>
+                                    {Object.entries(strategyCategories).map(([cat, strats]) => (
+                                        <optgroup label={cat} key={cat} style={{ background: '#0f172a' }}>
+                                            {strats.map(s => <option key={s} value={s}>{s}</option>)}
+                                        </optgroup>
+                                    ))}
+                                </select>
                             </div>
+
+                            <TradeExecution
+                                symbol={selectedPair}
+                                currentPrice={chartData[chartData.length - 1]?.close}
+                                riskData={analysis?.setups?.find(s => s.id === (activeSetupId || 'A'))}
+                                analysis={analysis}
+                                candles={chartData}
+                            />
+
+                            {/* Order Book / DOM Widget - Restored Priority */}
+                            <div style={{
+                                background: 'rgba(0,0,0,0.3)',
+                                borderRadius: '16px',
+                                border: '1px solid rgba(255,255,255,0.05)',
+                                padding: '12px',
+                                minHeight: '300px'
+                            }}>
+                                <DOMWidget symbol={resolveSymbol(selectedPair)} />
+                            </div>
+
+                            <BacktestPanel symbol={resolveSymbol(selectedPair)} timeframe={timeframe} />
                         </div>
                     </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <div style={{ position: 'relative' }}>
-                            <select
-                                value={manualStrategy || ''}
-                                onChange={(e) => setManualStrategy(e.target.value || null)}
-                                style={{
-                                    width: '100%',
-                                    background: 'rgba(255,255,255,0.05)',
-                                    border: '1px solid rgba(255,255,255,0.1)',
-                                    borderRadius: '10px',
-                                    padding: '10px 12px',
-                                    color: 'white',
-                                    fontSize: '12px',
-                                    appearance: 'none',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                <option value="">🤖 AI AUTO-STRATEGY</option>
-                                {Object.entries(strategyCategories).map(([cat, strats]) => (
-                                    <optgroup label={cat} key={cat} style={{ background: '#0f172a' }}>
-                                        {strats.map(s => <option key={s} value={s}>{s}</option>)}
-                                    </optgroup>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    <TradeExecution
-                        symbol={selectedPair}
-                        currentPrice={chartData[chartData.length - 1]?.close}
-                        riskData={analysis?.setups?.find(s => s.id === (activeSetupId || 'A'))}
-                        analysis={analysis}
-                        candles={chartData}
-                    />
-
-                    {/* Order Book / DOM Widget */}
-                    <div style={{
-                        background: 'rgba(0,0,0,0.3)',
-                        borderRadius: '16px',
-                        border: '1px solid rgba(255,255,255,0.05)',
-                        padding: '12px',
-                        minHeight: '300px'
-                    }}>
-                        <DOMWidget symbol={resolveSymbol(selectedPair)} />
-                    </div>
-
-                    {/* Backtest Panel */}
-                    <BacktestPanel symbol={resolveSymbol(selectedPair)} timeframe={timeframe} />
                 </aside>
             </div>
 

@@ -1,7 +1,10 @@
+import { normalizeDirection } from '../utils/normalization.js';
+
 /**
- * Analysis Orchestrator
+ * Analysis Orchestrator (Phase 32)
  * Coordinates the entire analysis pipeline
  */
+import { AssetClassAdapter } from './assetClassAdapter.js';
 
 import { detectSwingPoints, filterSignificantSwings } from '../analysis/swingPoints.js';
 import { detectMarketStructure, detectBOS, detectCHOCH, getCurrentTrend, checkFractalAlignment } from '../analysis/structureDetection.js';
@@ -79,6 +82,8 @@ import { calculateTransitionProbability } from '../analysis/marketRegime.js';
 import { SessionAnalyzer } from '../analysis/SessionAnalyzer.js';
 import { MarketObligationEngine } from '../analysis/MarketObligationEngine.js';
 import { bayesianEngine } from './BayesianInferenceEngine.js';
+import { RegimeTransitionPredictor } from './RegimeTransitionPredictor.js';
+import { liveOrderBookStore } from './LiveOrderBookStore.js';
 
 // Phase 6: Autonomous Alpha Integration
 import { SentimentEngine } from './SentimentEngine.js';
@@ -87,11 +92,17 @@ import { VolatilityEngine } from './VolatilityEngine.js';
 import { OrderBookEngine } from './OrderBookEngine.js';
 import { BasketArbitrageEngine } from './BasketArbitrageEngine.js';
 import { ExecutionEngine } from './ExecutionEngine.js';
-import { AlphaTracker } from './AlphaTracker.js';
+import { AlphaTracker, alphaTracker } from './AlphaTracker.js';
+import { AlphaLeakDetector } from './AlphaLeakDetector.js';
 import { FundamentalAnalyzer } from './fundamentalAnalyzer.js';
 import { CorrelationEngine } from './correlationEngine.js';
-import { AssetClassAdapter } from './assetClassAdapter.js';
 import { EdgeScoringEngine } from './edgeScoringEngine.js';
+
+// Logic Integration: Advanced Analysis Engines
+import { CorrelationClusterEngine } from './CorrelationClusterEngine.js';
+import { PortfolioStressService, portfolioStressService } from './PortfolioStressService.js';
+import { monteCarloService } from './monteCarloService.js';
+import { PortfolioRiskService, portfolioRiskService } from './PortfolioRiskService.js';
 // DirectionalConfidenceGate is now dynamically imported in analyze() to break circular dependencies
 
 
@@ -115,6 +126,11 @@ export class AnalysisOrchestrator {
      * @returns {Object} - Complete analysis result
      */
     async analyze(candles, symbol, timeframe = '1H', manualStrategyName = null, mtfData = null, isLight = false, accountSize = 10000) {
+        // Step 0: Initialize Live DOM Tracking (Phase 4 Perfection)
+        if (!isLight) {
+            liveOrderBookStore.track(symbol);
+        }
+
         if (!candles || candles.length < 50) {
             throw new Error('Insufficient market data for deep institutional analysis.');
         }
@@ -144,6 +160,9 @@ export class AnalysisOrchestrator {
             marketState.assetClass = assetClass;
             marketState.currentPrice = (candles && candles.length > 0) ? candles[candles.length - 1].close : 0;
             if (marketState.currentPrice === 0) throw new Error('Cannot determine current price from market data.');
+
+            // --- Institutional Zone Intelligence (Initialize Early to avoid ReferenceErrors) ---
+            const baseAnnotations = [];
 
             // Step 3.5: Multi-Timeframe (MTF) Confluence (Phase 40 Upgrade)
             marketState.mtf = { context: null, higherContext: null, globalBias: 'NEUTRAL' };
@@ -204,16 +223,31 @@ export class AnalysisOrchestrator {
             let divergences = [];
             let smtResult = { divergences: [], confluenceScore: 0 };
             if (!isLight) {
-                smtResult = await SMTDivergenceEngine.detectDivergence(symbol, candles, timeframe, significantSwings);
-                divergences = smtResult.divergences;
+                try {
+                    smtResult = await SMTDivergenceEngine.detectDivergence(symbol, candles, timeframe, significantSwings);
+                    divergences = smtResult.divergences || [];
+                } catch (smtError) {
+                    console.warn(`[Analysis] SMT Divergence Engine failed for ${symbol}:`, smtError.message);
+                }
             }
             marketState.divergences = divergences;
             marketState.smtConfluence = smtResult.confluenceScore;
             marketState.smtDivergence = (divergences && divergences.length > 0) ? divergences[0] : null;
 
             // Step 3.6.6: Detect Technical Divergence (RSI/MACD) - Phase 56
-            const techDivergences = await DivergenceEngine.detectDivergence(symbol, candles, timeframe, marketState);
+            let techDivergences = [];
+            try {
+                techDivergences = await DivergenceEngine.detectDivergence(symbol, candles, timeframe, marketState);
+            } catch (techDivError) {
+                console.warn(`[Analysis] Technical Divergence Engine failed for ${symbol}:`, techDivError.message);
+            }
             marketState.technicalDivergences = techDivergences;
+
+            // Step 3.6.6b: Detect Failure Patterns (Trap Zones) - Phase 52
+            // Must run after structures and gaps are detected
+            const failurePatterns = FailurePatternDetector.detectAllPatterns(candles, allStructures, fvgs);
+            const trapZones = FailurePatternDetector.getTrapZones(failurePatterns);
+            marketState.trapZones = trapZones;
 
             // --- PHASE 5: DEEP INSTITUTIONAL INTELLIGENCE ---
             // Step 3.6.7: Deep Order Flow Analysis (Estimated Delta & Absorption)
@@ -252,11 +286,17 @@ export class AnalysisOrchestrator {
                 probability: sessionProbability
             };
 
+
             // Step 3.9.7: REAL-TIME NEWS & CALENDAR FETCH (Phase 55)
-            const [realNews, calendarEvents] = await Promise.all([
-                newsService.fetchRealNews(symbol),
-                newsService.getUpcomingShocks(24) // Returns high-impact economic events
-            ]);
+            let realNews = [], calendarEvents = [];
+            try {
+                [realNews, calendarEvents] = await Promise.all([
+                    newsService.fetchRealNews(symbol).catch(e => { console.warn('News fetch failed:', e.message); return []; }),
+                    newsService.getUpcomingShocks(24).catch(e => { console.warn('Shock fetch failed:', e.message); return []; })
+                ]);
+            } catch (newsError) {
+                console.warn(`[Analysis] News/Calendar service issue for ${symbol}:`, newsError.message);
+            }
 
             // Step 4: Analyze fundamentals (using real data)
             const fundamentals = this.fundamentalAnalyzer.analyzeFundamentals(symbol, assetClass, {
@@ -267,9 +307,25 @@ export class AnalysisOrchestrator {
             // Step 3.2: Analyze Correlations (Macro Bias)
             let correlation = { status: 'NEUTRAL', bias: 0 };
             if (!isLight) {
-                correlation = await this.correlationEngine.getCorrelationBias(symbol, assetClass);
+                try {
+                    correlation = await this.correlationEngine.getCorrelationBias(symbol, assetClass);
+                } catch (corrError) {
+                    console.warn(`[Analysis] Correlation Engine failed for ${symbol}:`, corrError.message);
+                }
             }
             marketState.correlation = correlation;
+
+            // Phase 3: Correlation Cluster Detection (Institutional Concentrated Risk)
+            if (!isLight) {
+                try {
+                    // Detect clusters across active watchlist (simulated or pre-fetched)
+                    // For now we detect if this asset is part of a broader risk cluster
+                    const clusters = CorrelationClusterEngine.detectClusters({ [symbol]: { [symbol]: 1.0 } });
+                    marketState.clusters = clusters;
+                } catch (clusterError) {
+                    console.warn(`[Analysis] Cluster detection failed: ${clusterError.message}`);
+                }
+            }
 
             // Step 3.3: Detect SMT Divergence (Institutional Alpha)
             // Deprecated: Now handled in Step 7 by DivergenceEngine directly with Multi-Asset logic
@@ -320,13 +376,30 @@ export class AnalysisOrchestrator {
             const vegaShock = VolatilityEngine.detectVegaShock(candles);
             marketState.vegaShock = vegaShock;
 
-            // Phase 7: Order Book Intelligence (Execution Precision)
+            // Phase 7: Live Order Book Intelligence (Zero Latency)
             if (!isLight) {
                 try {
-                    const depth = await marketData.fetchOrderBook(symbol);
+                    // Use instant snapshot from Live Store instead of REST polling
+                    const depth = liveOrderBookStore.getSnapshot();
+
                     if (depth) {
-                        const depthAnalysis = OrderBookEngine.analyze(depth, marketState.currentPrice);
+                        const dynamicRange = (marketState.atr * 1.5) || (marketState.currentPrice * 0.02);
+                        const depthAnalysis = OrderBookEngine.analyze(depth, marketState.currentPrice, dynamicRange);
                         marketState.orderBookDepth = depthAnalysis;
+                        marketState.domStats = liveOrderBookStore.getStats();
+
+                        // Detect Micro-Pulses (Spoofing)
+                        const spoofEvents = LiquidityMapService.detectMicroPulse(depth);
+                        spoofEvents.forEach(e => {
+                            baseAnnotations.push({
+                                id: `spoof-${e.price}-${Date.now()}`,
+                                type: 'INSTITUTIONAL_SPOOF',
+                                price: e.price,
+                                magnitude: e.magnitude,
+                                label: `⚠️ Spoof: ${e.side} removal (${(e.magnitude * 100).toFixed(0)}%)`,
+                                visible: true
+                            });
+                        });
 
                         // Inject depth walls into liquidity pools for visualization
                         if (depthAnalysis.walls?.length > 0) {
@@ -336,11 +409,16 @@ export class AnalysisOrchestrator {
                                     price: w.price,
                                     type: w.side === 'BUY' ? 'BUY_SIDE' : 'SELL_SIDE',
                                     strength: 'INSTITUTIONAL',
-                                    label: `Order Book Wall (${w.strength.toFixed(1)}x)`,
+                                    label: `Live Wall (${w.strength.toFixed(1)}x)`,
                                     isOrderBookWall: true
                                 }))
                             ];
                         }
+                    } else if (Date.now() % 10 === 0) {
+                        // Periodic fallback to REST if stream is dead (silent background sync)
+                        marketData.fetchOrderBook(symbol).then(d => {
+                            if (d) liveOrderBookStore.lastSnapshot = d;
+                        }).catch(() => { });
                     }
                 } catch (depthError) {
                     console.warn(`Depth analysis failed for ${symbol}:`, depthError.message);
@@ -420,10 +498,74 @@ export class AnalysisOrchestrator {
             marketState.lastCandle = lastCandle;
             marketState.velocity = this._calculateVelocity(candles, marketState.atr);
 
+            // Phase 48: Volume Profile Analysis (VPVR)
+            try {
+                // Calculate Session Profiles (Day/Session based)
+                const volumeProfiles = VolumeProfileAnalyzer.calculateSessionProfiles(candles);
+
+                // Get the most recent profile (current session)
+                const currentProfile = volumeProfiles.length > 0 ? volumeProfiles[volumeProfiles.length - 1] : null;
+
+                marketState.volumeProfile = {
+                    profiles: volumeProfiles,
+                    current: currentProfile,
+                    poc: currentProfile ? currentProfile.poc : null,
+                    val: currentProfile ? currentProfile.val : null,
+                    vah: currentProfile ? currentProfile.vah : null
+                };
+
+                // Create Visual Annotation (Phase 48 Visualization)
+                if (currentProfile) {
+                    const vpAnnotation = new VolumeProfile(currentProfile, {
+                        side: 'RIGHT',
+                        width: 0.15, // 15% width
+                        timeframe: marketState.timeframe
+                    });
+
+                    // Add to baseAnnotations or ensure it gets picked up
+                    // We'll attach it to marketState for now, and push to annotations later
+                    marketState.vpAnnotation = vpAnnotation;
+                    baseAnnotations.push(vpAnnotation);
+                }
+            } catch (vpError) {
+                console.warn(`[Analysis] Volume Profile failed:`, vpError.message);
+            }
+
+
+            // --- NEW PREDICTIVE FORECASTING LAYER ---
+
+            // 1. Regime Transition Prediction
+            const transitionPrediction = new RegimeTransitionPredictor().predictNextRegime(
+                marketState,
+                allStructures,
+                consolidations
+            );
+            marketState.regimeTransition = transitionPrediction;
+
+            // 2. Probabilistic Forecasting (Continuation vs Reversal)
+            let probabilities = { long: 0.5, short: 0.5 };
+            try {
+                probabilities = await ProbabilisticEngine.generatePredictions(symbol, marketState);
+            } catch (probError) {
+                console.warn(`[Analysis] Probabilistic Engine failed:`, probError.message);
+            }
+            marketState.probabilities = probabilities;
+
+            // 3. HTF Path Projection (Roadmap)
+            // Use MTF data if available, otherwise fallback to current TF for structure (less ideal)
+            const mtfForProjection = mtfData || { [timeframe]: candles };
+            const roadmap = PathProjector.generateRoadmap(marketState, mtfForProjection);
+            marketState.roadmap = roadmap;
+
+            // 4. Analysis Result Construction (Pre-Scenario)
+            // We inject these early so scenarios can access them if needed
+
             // Step 3.9.5: Prediction Accuracy Upgrade (Layer 1 & 2)
             // Detect Market Obligations (Liquidity Magnets / Unfinished Business)
             const obligationAnalysis = MarketObligationEngine.detectObligations(marketState, candles);
             marketState.obligations = obligationAnalysis;
+            marketState.primaryMagnet = obligationAnalysis.primaryObligation;
+            marketState.obligationState = obligationAnalysis.state;
 
             // Step 4.2: Institutional Cycle Intelligence (Phase 3 AMD)
             const amdCycle = AMDEngine.detectCycle(candles, marketState.session);
@@ -433,6 +575,12 @@ export class AnalysisOrchestrator {
             if (activeShock && activeShock.severity === 'HIGH') {
                 fundamentals.suitabilityPenalty = 0.4; // 40% reduction for AI setups
             }
+
+            // Phase 7: Autonomous Alpha Learning (Reliability & Leaks)
+            const alphaStats = alphaTracker.getReliability();
+            const alphaLeaks = AlphaLeakDetector.detectLeaks(marketState.regime, alphaStats);
+            marketState.alphaMetrics = alphaStats;
+            marketState.alphaLeaks = alphaLeaks;
 
             // Step 5: Select setup candidates (Multi-directional)
             const performanceWeights = await StrategyPerformanceTracker.getAllStrategyWeights(marketState.regime);
@@ -472,6 +620,9 @@ export class AnalysisOrchestrator {
                 // Phase 48: Institutional Liquidity Refinement
                 if (marketState.orderBook) {
                     this.refineLevelsWithLiquidity(riskParams, marketState, direction);
+
+                    // Sync refinements back to annotations for visualization
+                    this.updateAnnotationsWithRefinements(annotations, riskParams, marketState);
                 }
 
                 // STRICT ALIGNMENT ENFORCEMENT
@@ -551,6 +702,36 @@ export class AnalysisOrchestrator {
                 const macroBonus = SentimentEngine.getMacroAlignmentBonus(direction, marketState.macroSentiment);
                 quantScore = Math.max(0, Math.min(100, quantScore + macroBonus));
 
+                // Phase 7: Alpha Weighting Integration
+                if (alphaStats) {
+                    // Engines contributing to this setup (strategy name + context markers)
+                    const contributingEngines = [c.strategy.name.toUpperCase()];
+                    if (marketState.orderBookDepth) contributingEngines.push('ORDER_BOOK', 'LIVE_DOM');
+                    if (marketState.smtDivergence) contributingEngines.push('SMT');
+                    if (marketState.relevantGap) contributingEngines.push('FVG');
+                    if (marketState.macroSentiment) contributingEngines.push('SENTIMENT');
+                    if (marketState.obligations?.primaryObligation) contributingEngines.push('MARKET_OBLIGATION');
+
+                    let alphaBonus = 0;
+                    contributingEngines.forEach(engineId => {
+                        const stats = alphaStats[engineId];
+                        if (stats) {
+                            // Boost if High Alpha, penalize if Degrading
+                            if (stats.status === 'INSTITUTIONAL') alphaBonus += 15;
+                            else if (stats.status === 'HIGH_ALPHA') alphaBonus += 8;
+                            else if (stats.status === 'DEGRADING') alphaBonus -= 12;
+                        }
+                    });
+
+                    // Check for Alpha Leaks (Engine Hazards)
+                    const activeLeaks = alphaLeaks.filter(l => contributingEngines.includes(l.engine));
+                    activeLeaks.forEach(leak => {
+                        alphaBonus -= leak.severity === 'HIGH' ? 20 : 10;
+                    });
+
+                    quantScore = Math.max(0, Math.min(100, quantScore + alphaBonus));
+                }
+
                 // Phase 7: Order Book Alignment Bonus
                 if (marketState.orderBookDepth) {
                     const depthBonus = OrderBookEngine.getDepthAlignmentBonus(direction, marketState.orderBookDepth);
@@ -583,10 +764,14 @@ export class AnalysisOrchestrator {
                 const riskReward = (riskParams.targets?.length > 0) ? (Math.abs(riskParams.targets[0].price - riskParams.entry.optimal) / stopDistance) : 2.0;
                 const kellyRisk = ExecutionEngine.calculateKellySize(winRate, riskReward, quantScore / 100);
 
+                // Phase 40: Portfolio Risk Multiplier (Drawdown Protection)
+                const riskMultiplier = portfolioRiskService.getRiskMultiplier();
+                const adjustedKellyRisk = kellyRisk * riskMultiplier;
+
                 const strategyWeight = performanceWeights[c.strategy.name] || 1.0;
                 const suggestedSize = hasRiskParams ? this.calculateInstitutionalSize(
                     accountSize,
-                    kellyRisk, // Use dynamic Kelly risk instead of fixed 1%
+                    adjustedKellyRisk, // Use drawdown-adjusted Kelly risk
                     stopDistance,
                     quantScore,
                     assetClass,
@@ -612,7 +797,7 @@ export class AnalysisOrchestrator {
                 }
 
                 // --- Precision Execution Logic (Phase 12) ---
-                const executionPrecision = AssetClassAdapter.calculateExecutionPrecision(assetClass, timeframe, marketState.atr);
+                const executionPrecision = AssetClassAdapter.calculateExecutionPrecision(assetClass, timeframe, marketState.atr, lastCandle.time);
 
                 // Detect Execution Hazards
                 const executionHazards = ExecutionHazardDetector.detectHazards(candles, marketState, assetParams);
@@ -658,6 +843,14 @@ export class AnalysisOrchestrator {
                         quantScore: finalQuantScore,
                         suitability: finalSuitability,
                         bayesianStats,
+
+                        // Phase 6: Monte Carlo Simulation (Outcome Distribution)
+                        // Only run for full analysis to preserve 200ms 'Instant' response time
+                        monteCarlo: !isLight ? monteCarloService.runSimulation({
+                            winRate: (winRate * 100).toFixed(0),
+                            profitFactor: riskReward,
+                            totalTrades: 100
+                        }, 500, 30, accountSize) : null,
                         fractalHandshake,
                         orderFlowInfo: orderFlow.bias === direction ? 'ALIGNED' : 'COUNTER',
                         capitalScore,
@@ -688,18 +881,30 @@ export class AnalysisOrchestrator {
             this.optimizeForProfile(setups, marketState.profile);
 
             // Step 6.1: Generate Scenarios (Phase 5)
-            const performanceStats = {};
+            const statsForScenarios = {};
             for (const setup of setups) {
-                performanceStats[setup.strategy.name] = await StrategyPerformanceTracker.getStrategyPerformance(setup.strategy.name, marketState.regime);
+                statsForScenarios[setup.strategy] = await StrategyPerformanceTracker.getStrategyPerformance(setup.strategy, marketState.regime);
             }
-            const scenarios = ScenarioEngine.generateScenarios(marketState, setups, fundamentals, performanceStats);
-            marketState.scenarios = scenarios;
+            const rawScenarios = ScenarioEngine.generateScenarios(marketState, setups, fundamentals, statsForScenarios);
+            const scenarios = rawScenarios;
+
+            // Phase 50: Scenario Weighting & Selection
+            const dominantScenarioData = ScenarioWeighting.selectDominantScenario(rawScenarios.all, marketState, probabilities);
+
+            marketState.scenarios = rawScenarios;
+            marketState.dominantScenario = dominantScenarioData;
+            marketState.prediction = {
+                bias: dominantScenarioData.bias,
+                confidence: dominantScenarioData.confidence,
+                horizon: '24H',
+                nextLikelyRegime: transitionPrediction.expectedRegime,
+                transitionProbability: transitionPrediction.probability
+            };
 
             // --- Phase 4: News Intelligence Layer ---
             if (!isLight) this.applyNewsIntelligence(marketState, setups, fundamentals);
 
             // --- Institutional Zone Intelligence (15 Types) ---
-            const baseAnnotations = [];
 
             // 0. SMT Divergences (Phase 25)
             if (marketState.divergences && marketState.divergences.length > 0) {
@@ -763,11 +968,13 @@ export class AnalysisOrchestrator {
                 ));
             }
 
-            // 6. Structure Zones (Phase 15 Requirement)
-            allStructures.filter(s => ['BOS', 'CHOCH'].includes(s.markerType)).forEach(s => {
-                baseAnnotations.push(new StructureZone(
-                    s.price, s.time, s.markerType, s.direction,
-                    { timeframe, strength: s.significance }
+            // 6. Structure Markers (Phase 15 Requirement)
+            allStructures.filter(s => ['BOS', 'CHOCH', 'HH', 'LL', 'HL', 'LH'].includes(s.markerType)).forEach(s => {
+                // Return to StructureMarker for line-based visuals as requested by "working logic"
+                baseAnnotations.push(new StructureMarker(
+                    { price: s.price, time: s.time },
+                    s.markerType,
+                    { timeframe, significance: s.significance }
                 ));
             });
 
@@ -883,6 +1090,7 @@ export class AnalysisOrchestrator {
                 marketState.obligations.obligations.forEach(mag => {
                     // Create a horizontal line annotation for the magnet
                     baseAnnotations.push({
+                        id: `magnet-${mag.type}-${mag.price}`,
                         type: 'MAGNET_LINE',
                         price: mag.price,
                         urgency: mag.urgency,
@@ -1004,6 +1212,36 @@ export class AnalysisOrchestrator {
                 const heatmap = new OrderFlowHeatmap(heatmapData);
                 baseAnnotations.push(heatmap);
                 marketState.heatmap = heatmapData; // For AI explanation
+            }
+
+            // Step 14: Visual Institutional Markers (Phase 4 Integration)
+            if (marketState.primaryMagnet) {
+                baseAnnotations.push(new InstitutionalLevel(
+                    marketState.primaryMagnet.price,
+                    marketState.primaryMagnet.price > marketState.currentPrice ? 'SUPPLY' : 'DEMAND',
+                    {
+                        label: `Institutional Magnet (${marketState.primaryMagnet.urgency.toFixed(0)}%)`,
+                        isInstitutional: true,
+                        isMagnet: true,
+                        urgency: marketState.primaryMagnet.urgency
+                    }
+                ));
+            }
+
+            if (marketState.amdCycle && marketState.amdCycle.phase !== 'UNKNOWN') {
+                const recent24 = candles.slice(-24);
+                const startTime = recent24[0]?.time || (lastCandle.time - 86400 * 1000);
+                baseAnnotations.push(new SessionZone(
+                    marketState.amdCycle.phase,
+                    startTime,
+                    lastCandle.time,
+                    Math.max(...recent24.map(c => c.high)),
+                    Math.min(...recent24.map(c => c.low)),
+                    {
+                        killzone: marketState.amdCycle.phase === 'MANIPULATION',
+                        note: `AMD Phase: ${marketState.amdCycle.phase}`
+                    }
+                ));
             }
 
             // 15. Zone Mapping & Confidence Scoring (Phase 20)
@@ -1135,12 +1373,24 @@ export class AnalysisOrchestrator {
             // Periodically evaluate pending outcomes (receipt generation)
             // SKIPPED in Light Mode (Firebase Query)
             if (!isLight) {
-                await PredictionTracker.evaluatePending(symbol, lastCandle);
+                // Phase 55: Non-blocking tracking (1.5s timeout)
+                try {
+                    const timeoutTracker = new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Tracking evaluation timed out')), 1500)
+                    );
+                    await Promise.race([
+                        PredictionTracker.evaluatePending(symbol, lastCandle),
+                        timeoutTracker
+                    ]);
+                } catch (e) {
+                    // console.warn(`[Analysis] Tracking skipped: ${e.message}`);
+                }
             }
 
             // 10.1: Calculate probabilities (Phase 50 Upgrade)
             // 10.1: Calculate probabilities (Phase 50 Upgrade)
-            const probabilities = await ProbabilisticEngine.generatePredictions(symbol, marketState);
+            // 10.1: Probabilities already calculated in Phase 50 Upgrade above (line 445)
+            // Reuse existing variable
 
             // 10.2: Apply confidence decay if setup is old
             const setupAge = Date.now() - analysis.timestamp;
@@ -1157,20 +1407,11 @@ export class AnalysisOrchestrator {
             analysis.annotations.push(...globalVisualScenarios);
 
             // 10.4: Predict regime transition
-            const regimeTransition = calculateTransitionProbability(
-                { ...marketState, candles },
-                allStructures,
-                marketState.consolidations || []
-            );
+            // 10.4: Regime transition already calculated (Phase 50 Upgrade)
+            // Reuse existing variable
 
-            // 10.5: Detect failure patterns (trap zones)
-            const failurePatterns = FailurePatternDetector.detectAllPatterns(
-                candles,
-                allStructures,
-                marketState.fvgs || []
-            );
-            const trapZones = FailurePatternDetector.getTrapZones(failurePatterns);
-
+            // 10.5: Use existing Scenarios (Already defined in Phase 5)
+            // No redeclaration needed
 
             // 10.6: Weighted scenario selection
             const dominantScenario = ScenarioWeighting.selectDominantScenario(
@@ -1212,18 +1453,35 @@ export class AnalysisOrchestrator {
             // 10.10: Handle Track & Outcome Receipts (Phase 51)
             // SKIPPED in Light Mode (Firebase Persistence)
             if (!isLight && prediction.bias !== 'NO_EDGE' && prediction.bias !== 'WAIT_COOLDOWN') {
-                await PredictionTracker.track(prediction, symbol);
+                try {
+                    const trackTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Tracking timed out')), 1000));
+                    await Promise.race([
+                        PredictionTracker.track(prediction, symbol),
+                        trackTimeout
+                    ]);
+                } catch (e) {
+                    // console.warn('[Analysis] Tracking save skipped');
+                }
             }
 
             // 10.11: Update Cooldown Stats (Internal)
             // SKIPPED in Light Mode (Firebase Query)
             if (!isLight) {
-                const stats = await PredictionTracker.getStats(symbol);
-                if (stats && stats.last10?.[0] === 'FAIL' && stats.last10?.[1] === 'FAIL') {
-                    _cooldowns.set(symbol, {
-                        expiresAt: Date.now() + 4 * 60 * 60 * 1000, // 4h cooldown
-                        reason: 'Recent double invalidation'
-                    });
+                try {
+                    const statsTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Stats fetch timed out')), 1000));
+                    const stats = await Promise.race([
+                        PredictionTracker.getStats(symbol),
+                        statsTimeout
+                    ]);
+
+                    if (stats && stats.last10?.[0] === 'FAIL' && stats.last10?.[1] === 'FAIL') {
+                        _cooldowns.set(symbol, {
+                            expiresAt: Date.now() + 4 * 60 * 60 * 1000, // 4h cooldown
+                            reason: 'Recent double invalidation'
+                        });
+                    }
+                } catch (e) {
+                    // console.warn('[Analysis] Cooldown check skipped');
                 }
             }
 
@@ -1231,10 +1489,50 @@ export class AnalysisOrchestrator {
             analysis.prediction = prediction;
             analysis.probabilities = probabilities;
             analysis.pathProjection = pathProjection;
-            analysis.regimeTransition = regimeTransition;
+            analysis.regimeTransition = marketState.regimeTransition;
             analysis.trapZones = trapZones;
             analysis.dominantScenario = dominantScenario;
             analysis.dominantBias = dominantBias;
+
+            // Step 11: Portfolio Stress & Concentration Analysis (Phase 60)
+            if (!isLight && setups.length > 0) {
+                try {
+                    analysis.stressMetrics = {
+                        var: PortfolioStressService.calculateVaR(setups, accountSize),
+                        clusters: PortfolioStressService.analyzeCorrelations(setups),
+                        shocks: {
+                            flashCrash: PortfolioStressService.simulateShock(setups, 'FLASH_CRASH'),
+                            usdShock: PortfolioStressService.simulateShock(setups, 'USD_SHOCK')
+                        }
+                    };
+
+                    // Check for extreme concentration risk via PortfolioRiskService
+                    const primarySetup = setups[0];
+                    if (primarySetup) {
+                        const concentration = portfolioRiskService.checkConcentrationRisk(symbol, primarySetup.direction);
+                        analysis.portfolioHealth = {
+                            isConcentrated: concentration.risky,
+                            reason: concentration.reason,
+                            hedgeSuggestions: portfolioRiskService.getHedgeSuggestions()
+                        };
+                    }
+                } catch (stressError) {
+                    console.warn(`[Analysis] Stress analysis failed: ${stressError.message}`);
+                }
+            }
+
+            // 12.6: Scenario Path Projections (Phase 12 Restoration)
+            if (dominantScenario?.path) {
+                baseAnnotations.push({
+                    id: `path-${Date.now()}`,
+                    type: 'SCENARIO_PATH',
+                    points: dominantScenario.path,
+                    label: `PROJECTION: ${dominantScenario.name}`,
+                    direction: dominantBias === 'BULLISH' ? 'LONG' : dominantBias === 'BEARISH' ? 'SHORT' : 'NEUTRAL',
+                    confidence: prediction?.confidence || 0.5,
+                    style: 'DASHED'
+                });
+            }
 
             // 6. Generate Liquidity Map (Phase 24)
             // Note: In Phase 27, LiquidityMapService.generateMap expects raw depth data, but here we might be 
@@ -1265,6 +1563,7 @@ export class AnalysisOrchestrator {
                         suitability: scalpSetup.confidence * 100,
                         quantScore: scalpSetup.confidence * 100,
                         capitalTag: 'High Frequency',
+                        isClusterSynced: scalpSetup.isClusterSynced,
                         rationale: scalpSetup.rationale,
                         annotations: []
                     });
@@ -1305,6 +1604,189 @@ export class AnalysisOrchestrator {
 
         // Re-sort based on new suitability
         setups.sort((a, b) => b.suitability - a.suitability);
+    }
+
+    /**
+     * Calculate capital friendliness score for small accounts
+     * @param {Object} riskParams - Entry, SL, Targets
+     * @param {Object} assetParams - Asset properties (swing size etc)
+     * @returns {number} - Score (0-1)
+     */
+    /**
+     * Phase 48: Refine Entry/Exit levels using Order Book Liquidity
+     * "Front-runs" institutional walls and accounts for dynamic spread/slippage.
+     */
+    refineLevelsWithLiquidity(riskParams, marketState, direction) {
+        if (!riskParams.entry || !marketState.orderBook) return;
+
+        const { bids, asks } = marketState.orderBook;
+        const currentPrice = marketState.currentPrice;
+        const assetClass = marketState.assetClass || 'FOREX';
+
+        // 1. Get Precision Metrics (Dynamic Spread/Slippage)
+        const precisionParams = AssetClassAdapter.calculateExecutionPrecision(
+            assetClass,
+            marketState.timeframe,
+            marketState.volatility?.atr || 0
+        );
+
+        // buffer = spread impact + volatility buffer
+        const buffer = precisionParams.dynamicBuffer || (currentPrice * 0.0002);
+
+        // 2. Analyze Liquidity Walls (Whale Detection)
+        // Look for walls within 0.5% of the optimal entry
+        const searchRange = currentPrice * 0.005;
+        let bestWall = null;
+
+        if (direction === 'LONG') {
+            // For LONG: Look for BID walls (Support) BELOW current price to front-run
+
+            const nearbyBids = bids.filter(b => Math.abs(b.price - riskParams.entry.optimal) < searchRange);
+            const sortedBids = nearbyBids.sort((a, b) => b.quantity - a.quantity);
+            if (sortedBids.length > 0) bestWall = sortedBids[0]; // Largest wall
+
+            if (bestWall && bestWall.quantity > (marketState.avgVolume || 100) * 2) {
+                // FRONT-RUN STRATEGY: Place buy limit 1 tick ABOVE the Bid Wall
+                const frontRunPrice = bestWall.price + buffer;
+                riskParams.entry.optimal = frontRunPrice;
+                riskParams.entry.note = `Front-running Liquidity Wall at ${bestWall.price}`;
+            } else {
+                // Standard spread buffer
+                riskParams.entry.optimal += buffer;
+            }
+
+        } else {
+            // For SHORT: Look for ASK walls (Resistance) ABOVE current price
+            const nearbyAsks = asks.filter(a => Math.abs(a.price - riskParams.entry.optimal) < searchRange);
+            const sortedAsks = nearbyAsks.sort((a, b) => b.quantity - a.quantity);
+            if (sortedAsks.length > 0) bestWall = sortedAsks[0];
+
+            if (bestWall && bestWall.quantity > (marketState.avgVolume || 100) * 2) {
+                // FRONT-RUN STRATEGY: Place sell limit 1 tick BELOW the Ask Wall
+                const frontRunPrice = bestWall.price - buffer;
+                riskParams.entry.optimal = frontRunPrice;
+                riskParams.entry.note = `Front-running Liquidity Wall at ${bestWall.price}`;
+            } else {
+                // Standard spread buffer
+                riskParams.entry.optimal -= buffer;
+            }
+        }
+
+        // 3. Refine Take Profit Targets (Exit Front-Running)
+        if (riskParams.targets && riskParams.targets.length > 0) {
+            riskParams.targets.forEach(target => {
+                let bestExitWall = null;
+                const exitSearchRange = target.price * 0.005; // Look within 0.5% of target
+
+                if (direction === 'LONG') {
+                    // Exiting a LONG = SELLING.
+                    // We need to sell into Bids? No, we place a Sell Limit.
+                    // A Sell Limit sits on the ASK side.
+                    // We want to sell BEFORE a massive Resistance Wall (Ask Wall).
+                    // So look for ASK walls near the target.
+
+                    const nearbyAsks = asks.filter(a => Math.abs(a.price - target.price) < exitSearchRange);
+                    const sortedAsks = nearbyAsks.sort((a, b) => b.quantity - a.quantity);
+                    if (sortedAsks.length > 0) bestExitWall = sortedAsks[0];
+
+                    if (bestExitWall && bestExitWall.quantity > (marketState.avgVolume || 100) * 2) {
+                        // Place Sell Limit 1 tick BELOW the Ask Wall (Front-run resistance)
+                        // If target is 100, and wall is 99.90, we sell at 99.85?
+                        // If target is 100, and wall is 100.10, we sell at 100.05.
+                        // We want to capture the move UP TO the wall.
+
+                        // Logic: If there is a huge wall AT or NEAR our target, we undercut it.
+                        // If wall is at 100, we sell at 99.95.
+                        const refinedPrice = bestExitWall.price - buffer;
+
+                        // Only move target DOWN (don't extend risk if wall is further away)
+                        if (refinedPrice < target.price) {
+                            target.price = refinedPrice;
+                            target.note = `Front-running Resistance Wall at ${bestExitWall.price}`;
+                        }
+                    }
+
+                } else {
+                    // Exiting a SHORT = BUYING (Covering).
+                    // We place a Buy Limit.
+                    // We want to buy BEFORE a massive Support Wall (Bid Wall).
+                    // So look for BIDS near the target.
+
+                    const nearbyBids = bids.filter(b => Math.abs(b.price - target.price) < exitSearchRange);
+                    const sortedBids = nearbyBids.sort((a, b) => b.quantity - a.quantity);
+                    if (sortedBids.length > 0) bestExitWall = sortedBids[0];
+
+                    if (bestExitWall && bestExitWall.quantity > (marketState.avgVolume || 100) * 2) {
+                        // Place Buy Limit 1 tick ABOVE the Bid Wall (Front-run support)
+                        // If wall is at 100, we buy at 100.05.
+                        const refinedPrice = bestExitWall.price + buffer;
+
+                        // Only move target UP (don't extend risk/drawdown)
+                        if (refinedPrice > target.price) {
+                            target.price = refinedPrice;
+                            target.note = `Front-running Support Wall at ${bestExitWall.price}`;
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    /**
+     * Sync refined risk parameters back to annotations for visualization
+     * Also injects "Liquidity Wall" markers if front-running occurred.
+     */
+    updateAnnotationsWithRefinements(annotations, riskParams, marketState) {
+        // 1. Update Entry Zone
+        const entryAnnotation = annotations.find(a => a.type === 'ENTRY_ZONE');
+        if (entryAnnotation && riskParams.entry) {
+            // Update the zone to center around the refined optimal price
+            const currentOptimal = entryAnnotation.coordinates.price;
+            const diff = riskParams.entry.optimal - currentOptimal;
+
+            if (Math.abs(diff) > 0.000001) {
+                entryAnnotation.coordinates.price = riskParams.entry.optimal;
+                // Move zone boundaries too
+                if (entryAnnotation.coordinates.top) entryAnnotation.coordinates.top += diff;
+                if (entryAnnotation.coordinates.bottom) entryAnnotation.coordinates.bottom += diff;
+
+                // Add note about front-running
+                if (riskParams.entry.note && riskParams.entry.note.includes('Front-running')) {
+                    entryAnnotation.note = riskParams.entry.note;
+
+                    // Extract Wall Price from note "Front-running Liquidity Wall at X"
+                    const match = riskParams.entry.note.match(/at\s([\d.]+)/);
+                    if (match) {
+                        const wallPrice = parseFloat(match[1]);
+                        // Add a visual marker for the wall - Using correct LiquidityZone(price, type, meta) signature
+                        annotations.push(new LiquidityZone(
+                            wallPrice,
+                            'ORDER_BOOK_WALL',
+                            {
+                                label: '🐳 WHALE WALL',
+                                width: wallPrice * 0.001, // 0.1% width visual
+                                liquidity: 'HIGH',
+                                type: 'ORDER_BOOK_WALL' // Override for mapper
+                            }
+                        ));
+                    }
+                }
+            }
+        }
+
+        // 2. Update Targets
+        riskParams.targets.forEach((refinedTarget, index) => {
+            // Find corresponding target annotation
+            // Assuming order is preserved or matching by proximity
+            const targets = annotations.filter(a => a.type === 'TARGET_PROJECTION' && a.projectionType.startsWith('TARGET_'));
+            if (targets[index]) {
+                const t = targets[index];
+                if (Math.abs(t.coordinates.price - refinedTarget.price) > 0.000001) {
+                    t.coordinates.price = refinedTarget.price;
+                    if (refinedTarget.note) t.note = refinedTarget.note;
+                }
+            }
+        });
     }
 
     /**
@@ -1727,6 +2209,64 @@ export class AnalysisOrchestrator {
         return normalizedVelocity; // >1.2 = High, <0.5 = Low
     }
 
+    /**
+     * Sync refined risk parameters back to annotations for visualization
+     * Also injects "Liquidity Wall" markers if front-running occurred.
+     */
+    updateAnnotationsWithRefinements(annotations, riskParams, marketState) {
+        // 1. Update Entry Zone
+        const entryAnnotation = annotations.find(a => a.type === 'ENTRY_ZONE');
+        if (entryAnnotation && riskParams.entry) {
+            // Update the zone to center around the refined optimal price
+            const currentOptimal = entryAnnotation.coordinates.price;
+            const diff = riskParams.entry.optimal - currentOptimal;
+
+            if (Math.abs(diff) > 0.000001) {
+                entryAnnotation.coordinates.price = riskParams.entry.optimal;
+                // Move zone boundaries too
+                if (entryAnnotation.coordinates.top) entryAnnotation.coordinates.top += diff;
+                if (entryAnnotation.coordinates.bottom) entryAnnotation.coordinates.bottom += diff;
+
+                // Add note about front-running
+                if (riskParams.entry.note && riskParams.entry.note.includes('Front-running')) {
+                    entryAnnotation.note = riskParams.entry.note;
+
+                    // Extract Wall Price from note "Front-running Liquidity Wall at X"
+                    const match = riskParams.entry.note.match(/at\s([\d.]+)/);
+                    if (match) {
+                        const wallPrice = parseFloat(match[1]);
+                        // Add a visual marker for the wall - Using correct LiquidityZone(price, type, meta) signature
+                        annotations.push(new LiquidityZone(
+                            wallPrice,
+                            'ORDER_BOOK_WALL',
+                            {
+                                label: '🐳 WHALE WALL',
+                                width: wallPrice * 0.001, // 0.1% width visual
+                                liquidity: 'HIGH',
+                                type: 'ORDER_BOOK_WALL' // Override for mapper
+                            }
+                        ));
+                    }
+                }
+            }
+        }
+
+        // 2. Update Targets
+        if (riskParams.targets && riskParams.targets.length > 0) {
+            riskParams.targets.forEach((refinedTarget, index) => {
+                // Find corresponding target annotation
+                // Assuming order is preserved or matching by proximity
+                const targets = annotations.filter(a => a.type === 'TARGET_PROJECTION' && a.projectionType.startsWith('TARGET_'));
+                if (targets[index]) {
+                    const t = targets[index];
+                    if (Math.abs(t.coordinates.price - refinedTarget.price) > 0.000001) {
+                        t.coordinates.price = refinedTarget.price;
+                        if (refinedTarget.note) t.note = refinedTarget.note;
+                    }
+                }
+            });
+        }
+    }
 }
 
 /**
@@ -1735,20 +2275,21 @@ export class AnalysisOrchestrator {
  */
 function verifyFractalHandshake(marketState, direction) {
     if (!marketState.trend) return false;
-    const trend = marketState.trend.direction;
+
+    const normDir = normalizeDirection(direction);
+    const normTrend = normalizeDirection(marketState.trend.direction);
+    const normGlobalBias = normalizeDirection(marketState.mtf?.globalBias);
 
     // 1. Base alignment
-    if (direction === 'LONG' && trend === 'BULLISH') return true;
-    if (direction === 'SHORT' && trend === 'BEARISH') return true;
+    if (normDir === normTrend && normDir !== 'NEUTRAL') return true;
 
     // 2. Counter-trend allowance (if supported by HTF or Cycle)
-    const globalBias = marketState.mtf?.globalBias;
-    if (globalBias && globalBias === direction) return true;
+    if (normGlobalBias && normGlobalBias === normDir) return true;
 
     // 3. Cycle Exception (Catching tops/bottoms in exhaustion)
     const cycle = marketState.cycle;
-    if (cycle === 'BEAR' && direction === 'SHORT' && trend === 'NEUTRAL') return true;
-    if (cycle === 'BULL' && direction === 'LONG' && trend === 'NEUTRAL') return true;
+    if (cycle === 'BEAR' && normDir === 'BEARISH' && normTrend === 'NEUTRAL') return true;
+    if (cycle === 'BULL' && normDir === 'BULLISH' && normTrend === 'NEUTRAL') return true;
 
     return false;
 }

@@ -116,7 +116,7 @@ export class AnnotationMapper {
             // 1. Box Zones
             if ([
                 'ENTRY_ZONE', 'SUPPLY_DEMAND_ZONE', 'CONSOLIDATION_ZONE',
-                'ORDER_BLOCK', 'FAIR_VALUE_GAP', 'LIQUIDITY_ZONE',
+                'ORDER_BLOCK', 'FAIR_VALUE_GAP', 'LIQUIDITY_ZONE', 'LIQUIDITY_SWEEP_ZONE',
                 'STRUCTURE_ZONE', 'CONFLUENCE_ZONE', 'PREMIUM_DISCOUNT_ZONE', 'CHOCH_ZONE', 'FVG', 'TRAP_ZONE',
                 'DARK_POOL', 'VOLATILITY_CORRIDOR', 'ORDER_BOOK_WALL'
             ].includes(anno.type)) {
@@ -300,6 +300,92 @@ export class AnnotationMapper {
                     firstPoint: mappedPoints[0],
                     lastPoint: mappedPoints[mappedPoints.length - 1]
                 });
+            }
+
+            // 8. Volume Profile (Phase 48)
+            else if (anno.type === 'VOLUME_PROFILE') {
+                // 1. Map Buckets to Liquidity Map (Histogram)
+                if (anno.buckets) {
+                    anno.buckets.forEach((bucket, idx) => {
+                        // Total Volume Strip
+                        /* 
+                        // Split view (Optional - for now using total volume as NEUTRAL/GRAY or split?)
+                        // Using 'ASK' for total for now to show as Red/Orange or we can add a 'VOL' type to Chart.jsx later.
+                        // For now, let's try to simulate Bid/Ask split if available, otherwise just total.
+                        */
+
+                        // Scale intensity relative to the Point of Control (POC) which has relVol = 1.0 (100% width)
+                        // effectiveIntensity = (partVolume / totalBucketVolume) * bucket.relVol
+
+                        const totalVol = bucket.volume;
+                        if (totalVol > 0 && bucket.relVol) {
+                            // Up Volume (Green/Bid)
+                            if (bucket.upVolume > 0) {
+                                overlays.liquidityMap.push({
+                                    id: `vp-${anno.id}-${idx}-up`,
+                                    price: bucket.center,
+                                    volume: bucket.upVolume,
+                                    intensity: (bucket.upVolume / totalVol) * bucket.relVol,
+                                    side: 'BID'
+                                });
+                            }
+                            // Down Volume (Red/Ask)
+                            if (bucket.downVolume > 0) {
+                                overlays.liquidityMap.push({
+                                    id: `vp-${anno.id}-${idx}-down`,
+                                    price: bucket.center,
+                                    volume: bucket.downVolume,
+                                    intensity: (bucket.downVolume / totalVol) * bucket.relVol,
+                                    side: 'ASK'
+                                });
+                            }
+                        }
+                    });
+                }
+
+                // 2. Map Key Levels (POC, VAH, VAL)
+                if (anno.poc) {
+                    overlays.lines.push({
+                        id: `vp-poc-${anno.id}`,
+                        start: { time: lastCandleTime, price: anno.poc },
+                        end: { time: futureTime, price: anno.poc },
+                        color: '#ef4444', // Red for POC
+                        width: 2,
+                        dashed: false,
+                        label: 'POC'
+                    });
+
+                    overlays.labels.push({
+                        id: `vp-lbl-poc-${anno.id}`,
+                        x: futureTime,
+                        y: anno.poc,
+                        text: 'POC',
+                        color: '#ef4444',
+                        direction: 'left'
+                    });
+                }
+
+                if (anno.vah) {
+                    overlays.lines.push({
+                        id: `vp-vah-${anno.id}`,
+                        start: { time: lastCandleTime, price: anno.vah },
+                        end: { time: futureTime, price: anno.vah },
+                        color: '#3b82f6', // Blue
+                        width: 1,
+                        dashed: true
+                    });
+                }
+
+                if (anno.val) {
+                    overlays.lines.push({
+                        id: `vp-val-${anno.id}`,
+                        start: { time: lastCandleTime, price: anno.val },
+                        end: { time: futureTime, price: anno.val },
+                        color: '#3b82f6', // Blue
+                        width: 1,
+                        dashed: true
+                    });
+                }
             }
         });
 

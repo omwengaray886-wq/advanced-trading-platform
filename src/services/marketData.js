@@ -17,9 +17,8 @@ const INTERVAL_MAP = {
 const isDev = (typeof process !== 'undefined' && process.env.NODE_ENV === 'development') ||
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV);
 
-const BINANCE_REST_BASE = isDev
-    ? '/api/binance'
-    : 'https://api.binance.com/api/v3';
+// Always use proxy in browser/dev to avoid CORS and hide keys
+const BINANCE_REST_BASE = '/api/binance';
 
 /**
  * Map institutional symbols to exchange-specific symbols (Binance Spot)
@@ -72,9 +71,11 @@ export const mapSymbol = (symbol) => {
         'XAUUSDT': 'PAXGUSDT',
         'GOLD': 'PAXGUSDT',
 
-        // --- MACRO PROXIES ---
-        // 'DXY': 'EURUSDT', // Removed: Inverse correlation is not real data
-        // 'NAS100': 'BTCUSDT' // Removed: Correlation is not real data
+        // --- MACRO PROXIES (Mapped to liquid spot for structural context) ---
+        'DXY': 'EURUSDT', // DXY is inverse related to EURUSD
+        'SPXUSD': 'BTCUSDT', // BTC often acts as high-beta SPX proxy in spot contexts
+        'SPXUSDT': 'BTCUSDT',
+        'NASDAQ': 'BTCUSDT'
     };
 
     return registry[s] || s;
@@ -111,7 +112,12 @@ export class MarketDataService {
         try {
             const mappedSymbol = mapSymbol(symbol);
             const binanceInterval = INTERVAL_MAP[interval] || interval;
-            const res = await fetch(`${BINANCE_REST_BASE}/klines?symbol=${mappedSymbol}&interval=${binanceInterval}&limit=${limit}`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            const res = await fetch(`${BINANCE_REST_BASE}/klines?symbol=${mappedSymbol}&interval=${binanceInterval}&limit=${limit}`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
             if (!res.ok) throw new Error(`Binance API error: ${res.statusText}`);
             const data = await res.json();
             return data.map(d => ({
@@ -166,7 +172,12 @@ export class MarketDataService {
     async fetchOrderBook(symbol, limit = 20) {
         try {
             const mappedSymbol = mapSymbol(symbol);
-            const res = await fetch(`${BINANCE_REST_BASE}/depth?symbol=${mappedSymbol}&limit=${limit}`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            const res = await fetch(`${BINANCE_REST_BASE}/depth?symbol=${mappedSymbol}&limit=${limit}`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
             if (!res.ok) throw new Error(`Binance Depth API error: ${res.statusText}`);
             const data = await res.json();
             return {
@@ -185,8 +196,10 @@ export class MarketDataService {
         const mappedSymbol = mapSymbol(symbol).toLowerCase();
         const mappedInterval = INTERVAL_MAP[interval] || '1h';
 
-        if (this.ws && this.activeSymbol === mappedSymbol && this.activeInterval === mappedInterval && this.isConnected) {
-            return;
+        if (this.ws && this.activeSymbol === mappedSymbol && this.activeInterval === mappedInterval) {
+            if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+                return;
+            }
         }
 
         this.disconnect();
@@ -244,15 +257,18 @@ export class MarketDataService {
                 this.notifyHealth();
 
                 if (!this.isClosing) {
-                    const delay = Math.min(this.maxReconnectDelay, this.minReconnectDelay * Math.pow(2, this.reconnectAttempts));
+                    // Exponential backoff with jitter
+                    const baseDelay = Math.min(this.maxReconnectDelay, this.minReconnectDelay * Math.pow(2, this.reconnectAttempts));
+                    const jitter = Math.random() * 1000; // Add random jitter to prevent thundering herd
+                    const delay = baseDelay + jitter;
 
-                    if (this.reconnectAttempts > 3) {
-                        console.warn(`WebSocket unstable. Switching to POLLING mode for ${this.activeSymbol}`);
+                    if (this.reconnectAttempts >= 5) {
+                        console.warn(`[WS] WebSocket unstable after 5 attempts. Switching to POLLING mode for ${this.activeSymbol}`);
                         this.startPolling(); // Fallback to polling
                         return; // Stop WS retries
                     }
 
-                    console.log(`Disconnected. Reconnecting in ${delay}ms... (Attempt ${this.reconnectAttempts + 1})`);
+                    console.log(`[WS] Disconnected from ${streamName}. Reconnecting in ${Math.round(delay / 1000)}s... (Attempt ${this.reconnectAttempts + 1}/5)`);
 
                     setTimeout(() => {
                         if (!this.isClosing && (!this.ws || this.ws.readyState === WebSocket.CLOSED)) {
@@ -305,10 +321,18 @@ export class MarketDataService {
         const mappedSymbol = mapSymbol(symbol).toLowerCase();
 
         // If already connected to this symbol, just return a fake "unsubscribe"
-        // In a real app we'd broadcast to multiple callbacks
         if (this.depthWS.has(mappedSymbol)) {
-            console.log(`Using existing Depth stream for ${mappedSymbol}`);
-            return () => { };
+            const existing = this.depthWS.get(mappedSymbol);
+            if (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING) {
+                console.log(`Using existing Depth stream for ${mappedSymbol}`);
+                return () => { };
+            }
+        }
+
+        // Clean up any failed or closed connection for this symbol
+        if (this.depthWS.has(mappedSymbol)) {
+            this.depthWS.get(mappedSymbol).close();
+            this.depthWS.delete(mappedSymbol);
         }
 
         try {
@@ -377,10 +401,18 @@ export class MarketDataService {
             this.ws = null;
         }
 
-        // Also clear depth streams on global disconnect if needed
+        // Also clear depth streams on global disconnect
         this.depthWS.forEach((ws, symbol) => {
-            ws.onclose = null;
-            ws.close();
+            try {
+                ws.onclose = null;
+                ws.onerror = null;
+                ws.onmessage = null;
+                if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                    ws.close();
+                }
+            } catch (e) {
+                console.warn(`Error closing depth WS for ${symbol}:`, e.message);
+            }
         });
         this.depthWS.clear();
 

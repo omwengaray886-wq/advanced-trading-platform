@@ -45,10 +45,15 @@ export class StrategyPerformanceTracker {
      */
     static async getStrategyPerformance(strategyName, marketRegime = null, lookbackDays = 30) {
         try {
+            if (!strategyName) {
+                console.warn('[StrategyPerformanceTracker] Missing strategyName in getStrategyPerformance');
+                return { strategyName: 'UNKNOWN', marketRegime, sampleSize: 0, winRate: 0.5, weightMultiplier: 1.0, confidence: 'INVALID_INPUT' };
+            }
+
             const cutoffTime = Date.now() - (lookbackDays * 24 * 60 * 60 * 1000);
             const outcomesRef = collection(db, 'strategyOutcomes');
 
-            let q = query(
+            const q = query(
                 outcomesRef,
                 where('strategyName', '==', strategyName),
                 where('timestamp', '>=', cutoffTime),
@@ -166,6 +171,11 @@ export class StrategyPerformanceTracker {
      */
     static async getStrategyTrend(strategyName, lookbackLimit = 20) {
         try {
+            if (!strategyName) {
+                console.warn('[StrategyPerformanceTracker] Missing strategyName in getStrategyTrend');
+                return { trend: 'UNKNOWN', recentWinRate: 0.5, momentum: 'NEUTRAL' };
+            }
+
             const outcomesRef = collection(db, 'strategyOutcomes');
             const q = query(
                 outcomesRef,

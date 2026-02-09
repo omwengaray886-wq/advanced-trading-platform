@@ -26,16 +26,20 @@ export class DirectionalConfidenceGate {
             volumeConfirmation: this.checkVolumeDirection(setup.direction, candles),
             liquiditySweepClear: this.checkNoActiveSweep(setup.direction, marketState, candles),
             breakoutAuthenticity: this.checkBreakoutQuality(setup, candles, marketState),
-            priceActionConsistency: this.checkPriceAction(setup.direction, candles)
+            priceActionConsistency: this.checkPriceAction(setup.direction, candles),
+            marketObligation: this.checkMarketObligation(setup.direction, marketState),
+            marketCycle: this.checkAMDCycle(setup.direction, marketState)
         };
 
         // Calculate weighted confidence
         const weights = {
-            multiTimeframeAlignment: 0.30,
-            volumeConfirmation: 0.25,
-            liquiditySweepClear: 0.20,
-            breakoutAuthenticity: 0.15,
-            priceActionConsistency: 0.10
+            multiTimeframeAlignment: 0.20,
+            volumeConfirmation: 0.20,
+            liquiditySweepClear: 0.15,
+            breakoutAuthenticity: 0.10,
+            priceActionConsistency: 0.05,
+            marketObligation: 0.20,
+            marketCycle: 0.10
         };
 
         let confidence = 0;
@@ -351,5 +355,82 @@ export class DirectionalConfidenceGate {
         }
 
         return { passed, score, reason, details: { dojiCount } };
+    }
+
+    /**
+     * Check if direction aligns with a primary market magnet
+     */
+    static checkMarketObligation(direction, marketState) {
+        const magnet = marketState.primaryMagnet || marketState.obligations?.primaryObligation;
+        if (!magnet) return { passed: true, score: 0.5, reason: 'No significant market obligation' };
+
+        const currentPrice = marketState.currentPrice;
+        const magnetDirection = magnet.price > currentPrice ? 'LONG' : 'SHORT';
+        const normalizedDirection = direction === 'BULLISH' ? 'LONG' : direction === 'BEARISH' ? 'SHORT' : direction;
+
+        if (magnetDirection === normalizedDirection) {
+            return {
+                passed: true,
+                score: Math.max(0.7, magnet.urgency / 100),
+                reason: `Aligned with major magnet: ${magnet.type} (${magnet.urgency} urgency)`
+            };
+        } else if (magnet.urgency > 70) {
+            return {
+                passed: false,
+                score: 0.2,
+                reason: `Conflicting magnet: Market needs to take ${magnet.type} at ${magnet.price}`
+            };
+        }
+
+        return { passed: true, score: 0.5, reason: 'Neutral magnet influence' };
+    }
+
+    /**
+     * Check if direction aligns with institutional AMD cycle
+     */
+    static checkAMDCycle(direction, marketState) {
+        const cycle = marketState.marketCycle;
+        if (!cycle || cycle.phase === 'UNKNOWN') {
+            return { passed: true, score: 0.5, reason: 'Neutral market cycle' };
+        }
+
+        const normalizedDirection = direction === 'BULLISH' ? 'LONG' : direction === 'BEARISH' ? 'SHORT' : direction;
+
+        if (cycle.phase === 'MANIPULATION') {
+            // High risk of Judas Swing (Fakeout)
+            const isJudasDirection = cycle.direction === normalizedDirection;
+            if (isJudasDirection) {
+                return {
+                    passed: false,
+                    score: 0.2,
+                    reason: 'Likely Manipulation / Judas Swing detected'
+                };
+            } else {
+                return {
+                    passed: true,
+                    score: 0.8,
+                    reason: 'Fading suspected manipulation'
+                };
+            }
+        }
+
+        if (cycle.phase === 'ACCUMULATION') {
+            return {
+                passed: true,
+                score: 0.4,
+                reason: 'Premature entry: Accumulation phase usually requires expansion'
+            };
+        }
+
+        if (cycle.phase === 'DISTRIBUTION') {
+            const isTrendAligned = cycle.direction === normalizedDirection;
+            return {
+                passed: isTrendAligned,
+                score: isTrendAligned ? 0.9 : 0.1,
+                reason: isTrendAligned ? 'Riding institutional distribution' : 'Trading against institutional distribution'
+            };
+        }
+
+        return { passed: true, score: 0.5, reason: 'Cycle in transition' };
     }
 }

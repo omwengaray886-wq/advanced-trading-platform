@@ -1,5 +1,6 @@
 import { marketData } from './marketData.js';
 import { DivergenceMarker } from '../models/annotations/DivergenceMarker.js';
+import { normalizeDirection, isInversePair } from '../utils/normalization.js';
 
 /**
  * SMC Divergence Engine (Renamed from DivergenceEngine)
@@ -255,32 +256,7 @@ export class SMTDivergenceEngine {
     }
 
     static isInversePair(a, b) {
-        // Normalize
-        const pairA = a.replace('/', '').toUpperCase();
-        const pairB = b.replace('/', '').toUpperCase();
-
-        // 1. Compare against DXY
-        if (pairB === 'DXY') {
-            // If Base is USD (e.g. USDJPY), it moves WITH DXY -> Not Inverse
-            if (pairA.startsWith('USD') && !pairA.includes('USDT') && !pairA.includes('USDC')) return false;
-
-            // If Quote is USD (e.g. EURUSD, GBPUSD, XAUUSD), it moves AGAINST DXY -> Inverse
-            // (Assuming standard forex pairs where non-USD is base)
-            return true;
-        }
-
-        // 2. Compare against Inverse Pairs directly (e.g. EURUSD vs USDCHF)
-        if (pairA === 'EURUSD' || pairA === 'GBPUSD' || pairA === 'AUDUSD' || pairA === 'NZDUSD') {
-            if (pairB === 'USDCHF' || pairB === 'USDCAD' || pairB === 'USDJPY') return true;
-        }
-
-        // 3. Compare DXY against others
-        if (pairA === 'DXY') {
-            if (pairB.startsWith('USD') && !pairB.includes('USDT')) return false; // DXY vs USDJPY -> Correlated
-            return true; // DXY vs EURUSD -> Inverse
-        }
-
-        return false;
+        return isInversePair(a, b);
     }
 
     // Basic local swing detection if not provided (Legacy/Backup)

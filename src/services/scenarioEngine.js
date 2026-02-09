@@ -13,6 +13,18 @@ export class ScenarioEngine {
      * @returns {Object} - Primary and Alternate scenarios
      */
     /**
+     * Helper to normalize directional strings
+     * @private
+     */
+    static _normalizeDirection(d) {
+        if (!d) return 'NEUTRAL';
+        const upper = d.toUpperCase();
+        if (upper === 'LONG' || upper === 'BULLISH' || upper === 'UP') return 'BULLISH';
+        if (upper === 'SHORT' || upper === 'BEARISH' || upper === 'DOWN') return 'BEARISH';
+        return 'NEUTRAL';
+    }
+
+    /**
      * Generate probabilistic scenarios
      */
     static generateScenarios(marketState, setups, fundamentals, performanceStats = null) {
@@ -32,7 +44,6 @@ export class ScenarioEngine {
             downProb = 0.20;
         } else if (marketState.obligations?.state === 'NO_OBLIGATION') {
             // New Layer 1: Obligation Gating
-            // If the market has no unfinished business, we do not predict direction.
             rangeProb = 0.8;
             upProb = 0.1;
             downProb = 0.1;
@@ -42,24 +53,21 @@ export class ScenarioEngine {
             const obligation = marketState.obligations?.primaryObligation;
 
             // Determine Bias Source: Obligation (Why) > Setup (How)
-            // If we have a strong obligation, it dictates the "True Intent"
             let biasDirection = 'NEUTRAL';
             let conviction = 50;
 
             if (primarySetup) {
-                biasDirection = primarySetup.direction === 'LONG' ? 'BULLISH' : 'BEARISH';
+                biasDirection = this._normalizeDirection(primarySetup.direction);
                 conviction = primarySetup.quantScore || 50;
             }
 
             // Layer 3: Intent vs Manipulation
-            // If Obligation contradicts Setup, we might have a Manipulation Phase
             if (obligation) {
-                const obligationDir = obligation.type.includes('BUY_SIDE') ? 'BULLISH' : 'BEARISH'; // Buy Side Liq is above -> Bullish Magnet
+                const obligationDir = obligation.price > marketState.currentPrice ? 'BULLISH' : 'BEARISH';
 
                 if (biasDirection !== 'NEUTRAL' && biasDirection !== obligationDir) {
                     // CONFLICT: Setup says Down, Magnet says Up (or vice versa)
                     // This is likely a "Judas Swing" / Manipulation
-                    // We stick to the Obligation (True Intent) but warn of manipulation
                 } else if (biasDirection === 'NEUTRAL') {
                     // No setup, but strong magnet -> Pure Intent prediction
                     biasDirection = obligationDir;
@@ -68,7 +76,7 @@ export class ScenarioEngine {
             }
 
             const isBullish = biasDirection === 'BULLISH';
-            const globalBias = marketState.mtf?.globalBias || 'NEUTRAL';
+            const globalBias = this._normalizeDirection(marketState.mtf?.globalBias);
 
             // Check trend alignment
             const isTrendAligned = globalBias === biasDirection;
@@ -94,7 +102,7 @@ export class ScenarioEngine {
 
             if (isBullish) {
                 upProb = baseProb;
-                downProb = 0.80 - baseProb; // Remainder goes to opposing
+                downProb = 0.80 - baseProb;
             } else {
                 downProb = baseProb;
                 upProb = 0.80 - baseProb;
@@ -103,14 +111,11 @@ export class ScenarioEngine {
             // Ensure Range probability is at least 20%
             rangeProb = 1.0 - (upProb + downProb);
 
-            // ... (News logic follows)
-
             // News Hazard Adjustment
             if (newsImpact > 0) {
-                // ... existing news logic ...
-                const newsBias = proximity.event.getDirectionalBias();
+                const newsBias = this._normalizeDirection(proximity.event.getDirectionalBias?.() || 'NEUTRAL');
                 if (newsBias !== 'NEUTRAL') {
-                    const isNewsAligned = (newsBias === 'BULLISH' && isBullish) || (newsBias === 'BEARISH' && !isBullish);
+                    const isNewsAligned = newsBias === biasDirection;
                     if (!isNewsAligned) {
                         if (isBullish) { upProb -= newsImpact; downProb += newsImpact; }
                         else { downProb -= newsImpact; upProb += newsImpact; }
@@ -126,17 +131,15 @@ export class ScenarioEngine {
             downProb = 0.15;
         }
 
-        // Layer 5: Confidence Calibration (Anti-Overconfidence)
-        // Cap probability at 75% to maintain long-term trust
+        // Layer 5: Confidence Calibration
         upProb = Math.min(upProb, 0.75);
         downProb = Math.min(downProb, 0.75);
 
-        // Reality Calibration (Phase 2 Upgrade)
-        // If the primary strategy has been underperforming, lower the confidence
+        // Reality Calibration
         if (performanceStats && primarySetup) {
             const stats = performanceStats[primarySetup.name];
             if (stats && stats.winRate < 0.45) {
-                // Penalize probability for failing strategies
+                const isBullish = this._normalizeDirection(primarySetup.direction) === 'BULLISH';
                 if (isBullish) upProb *= (stats.winRate / 0.45);
                 else downProb *= (stats.winRate / 0.45);
             }
@@ -144,7 +147,6 @@ export class ScenarioEngine {
 
         // Re-normalize range prob
         if (upProb + downProb > 0.85) {
-            // If both are high (rare), reduce them proportionally
             const factor = 0.85 / (upProb + downProb);
             upProb *= factor;
             downProb *= factor;
@@ -162,15 +164,15 @@ export class ScenarioEngine {
         ].sort((a, b) => b.probability - a.probability);
 
         // Layer 6: Prediction Expiry
-        const expiresAt = Date.now() + (marketState.timeframe === '1H' ? 3600000 : 14400000); // 1h or 4h expiry
+        const expiresAt = Date.now() + (marketState.timeframe === '1H' ? 3600000 : 14400000);
 
         const primary = {
             ...scenarios[0],
             type: scenarios[0].direction.toUpperCase(),
             bias: scenarios[0].direction === 'up' ? 'LONG' : scenarios[0].direction === 'down' ? 'SHORT' : 'NEUTRAL',
             label: isWaiting ? `WAITING: ${waitingCondition}` : `Primary: ${scenarios[0].label}`,
-            description: isWaiting ? 'Market is in a waiting state. Execution not recommended.' : `Highest probability path (${(scenarios[0].probability * 100).toFixed(0)}%) based on current ${marketState.phase}.`,
-            style: isWaiting ? 'DOTTED' : 'SOLID', // Waiting is always dotted
+            description: isWaiting ? 'Market is in a waiting state.' : `Highest probability path (${(scenarios[0].probability * 100).toFixed(0)}%) based on current ${marketState.phase}.`,
+            style: isWaiting ? 'DOTTED' : 'SOLID',
             isWaiting: isWaiting,
             expiresAt: expiresAt
         };
@@ -179,7 +181,7 @@ export class ScenarioEngine {
             ...scenarios[1],
             type: scenarios[1].direction.toUpperCase(),
             bias: scenarios[1].direction === 'up' ? 'LONG' : scenarios[1].direction === 'down' ? 'SHORT' : 'NEUTRAL',
-            label: `Secondary: ${scenarios[1].label}`, // Renamed from Alternate
+            label: `Secondary: ${scenarios[1].label}`,
             description: `Pivot path if ${scenarios[0].direction} structure fails.`,
             style: 'DASHED'
         };
@@ -188,10 +190,9 @@ export class ScenarioEngine {
         primary.isConfirmed = this.checkConfirmation(marketState, primary, setups);
         secondary.isConfirmed = this.checkConfirmation(marketState, secondary, setups);
 
-        // Update styles if not waiting
         if (!isWaiting) {
-            primary.style = primary.isConfirmed ? 'SOLID' : 'DASHED'; // Primary Solid if confirmed
-            secondary.style = 'DOTTED'; // Secondary always Dotted/Dashed
+            primary.style = primary.isConfirmed ? 'SOLID' : 'DASHED';
+            secondary.style = 'DOTTED';
         }
 
         return { primary, secondary, alternate: secondary, all: scenarios, isWaiting, waitingCondition };
@@ -201,39 +202,33 @@ export class ScenarioEngine {
      * Detect if market is in a "Waiting" state
      */
     static detectWaitingCondition(marketState, fundamentals) {
-        // 1. News Waiting
-        if (fundamentals?.proximityAnalysis?.isImminent) {
-            return "NEWS PENDING";
-        }
-        // 2. Low Volatility / Chop
-        if (marketState.volatility === 'LOW' && marketState.regime === 'RANGING') {
-            return "LOW VOLATILITY";
-        }
-        // 3. No Setup / Low Confidence
-        // Passed via marketState if updated previously, or inferred here
+        if (fundamentals?.proximityAnalysis?.isImminent) return "NEWS PENDING";
+        if (marketState.volatility === 'LOW' && marketState.regime === 'RANGING') return "LOW VOLATILITY";
         return null;
     }
 
     /**
-     * Check if a scenario is confirmed by recent price action & Deep Intelligence (Phase 5)
+     * Check if a scenario is confirmed by recent price action
      */
     static checkConfirmation(marketState, scenario, setups = []) {
-        if (scenario.bias === 'NEUTRAL') return true;
+        if (!scenario.bias || scenario.bias === 'NEUTRAL') return true;
 
-        const isBullish = scenario.bias === 'LONG';
-        const primarySetup = setups.find(s => s.direction === scenario.bias);
+        const normalizedBias = this._normalizeDirection(scenario.bias);
+        const isBullish = normalizedBias === 'BULLISH';
 
-        // 1. Bayesian Confidence Check (Mandatory for SOLID arrow)
+        const primarySetup = setups.find(s => this._normalizeDirection(s.direction) === normalizedBias);
+
+        // 1. Bayesian Confidence Check
         const bayesianProb = primarySetup?.bayesianStats?.probability || 0;
         const hasBayesianEdge = bayesianProb >= 0.70;
 
-        // 2. Multi-Timeframe (Fractal) Handshake
-        const htfBias = marketState.mtf?.globalBias || 'NEUTRAL';
-        const hasMTFAlignment = htfBias === (isBullish ? 'BULLISH' : 'BEARISH');
+        // 2. Multi-Timeframe Handshake
+        const htfBias = this._normalizeDirection(marketState.mtf?.globalBias);
+        const hasMTFAlignment = htfBias === normalizedBias;
 
-        // 3. Technical Confirmations (Retest/Sweep)
+        // 3. Technical Confirmations
         const hasRetest = (marketState.retests || []).some(r =>
-            r.direction === (isBullish ? 'BULLISH' : 'BEARISH')
+            this._normalizeDirection(r.direction) === normalizedBias
         );
 
         const hasSweep = marketState.liquiditySweep && (
@@ -242,10 +237,8 @@ export class ScenarioEngine {
         );
 
         // 4. Order Flow Alignment
-        const orderFlowAligned = marketState.orderFlow?.bias === (isBullish ? 'BULLISH' : 'BEARISH');
+        const orderFlowAligned = this._normalizeDirection(marketState.orderFlow?.bias) === normalizedBias;
 
-        // STICK 100% ACCURACY REQUIREMENT:
-        // Must have Bayesian Edge AND (MTF Alignment OR strong Price Action confirmation)
         return hasBayesianEdge && (hasMTFAlignment || orderFlowAligned || hasRetest || hasSweep);
     }
 
@@ -255,7 +248,7 @@ export class ScenarioEngine {
     static getVisualScenarios(scenarios, currentPrice, annotations = [], volProfile = null, setups = [], orderBook = null) {
         const visual = [];
         const primarySetup = setups[0];
-        const secondarySetup = setups[1];
+        const secondarySetup = setups.length > 1 ? setups[1] : null;
 
         if (scenarios.primary) {
             visual.push({
@@ -287,37 +280,27 @@ export class ScenarioEngine {
 
     /**
      * Generate multi-point trajectory
-     * [Current -> Pullback/Pivot -> Target]
      */
     static generatePathway(currentPrice, scenario, annotations, volProfile, setup, orderBook) {
         const points = [{ price: currentPrice, type: 'START', timeOffset: 0 }];
-        const isBullish = scenario.bias === 'LONG';
+        const normalizedBias = this._normalizeDirection(scenario.bias);
+        const isBullish = normalizedBias === 'BULLISH';
 
-        // 1. Find Pivot/Pullback point (e.g. Order Block or POC)
         let pivotPrice = null;
 
-        if (scenario.bias !== 'NEUTRAL') {
-            // Method A: Use Specific Setup Entry (Most Accurate)
-            if (setup && setup.entryZone && setup.direction === scenario.bias) {
+        if (normalizedBias !== 'NEUTRAL') {
+            if (setup && setup.entryZone && this._normalizeDirection(setup.direction) === normalizedBias) {
                 pivotPrice = setup.entryZone.optimal;
-            }
-            // Method B: Fallback to Confluence/POC/OB
-            else {
-                // Priority 1: Confluence Zone
+            } else {
                 const confluence = annotations.find(a => a.type === 'CONFLUENCE_ZONE');
                 if (confluence) {
                     pivotPrice = (confluence.coordinates.top + confluence.coordinates.bottom) / 2;
-                }
-                // Priority 2: Institutional POC
-                else if (volProfile) {
-                    // If price is far from POC, expect test of POC
+                } else if (volProfile) {
                     if (Math.abs(currentPrice - volProfile.poc) / currentPrice > 0.005) {
                         pivotPrice = volProfile.poc;
                     }
-                }
-                // Priority 3: Order Block
-                else {
-                    const ob = annotations.find(a => a.type === 'ORDER_BLOCK' && (isBullish ? a.direction === 'BULLISH' : a.direction === 'BEARISH'));
+                } else {
+                    const ob = annotations.find(a => a.type === 'ORDER_BLOCK' && this._normalizeDirection(a.direction) === normalizedBias);
                     if (ob) pivotPrice = (ob.coordinates.top + ob.coordinates.bottom) / 2;
                 }
             }
@@ -327,8 +310,6 @@ export class ScenarioEngine {
             points.push({ price: pivotPrice, type: 'PIVOT', label: 'Entry', barsOffset: 5 });
         }
 
-
-        // 2. Target Point (Refined by Liquidity Attraction in Phase 48)
         let target = setup?.targets?.[0]?.price || (isBullish ? currentPrice * 1.02 : currentPrice * 0.98);
 
         if (orderBook) {
@@ -338,7 +319,7 @@ export class ScenarioEngine {
 
             if (biggestWall) {
                 const wallDist = Math.abs(biggestWall.price - currentPrice) / currentPrice;
-                if (wallDist < 0.03) { // Gravitate if within 3%
+                if (wallDist < 0.03) {
                     target = biggestWall.price;
                 }
             }

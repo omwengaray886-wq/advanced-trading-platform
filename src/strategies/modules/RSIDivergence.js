@@ -62,8 +62,12 @@ export class RSIDivergence extends StrategyBase {
                 { confidence: 0.80, note: 'RSI Bullish Divergence', timeframe: '1H' }
             ));
 
-            const risk = (lowestPrice.price - (lowestPrice.price * 0.995));
-            annotations.push(new TargetProjection(lowestPrice.price * 0.995, 'STOP_LOSS'));
+            // Dynamic ATR-based Stop Loss (Institutional standard)
+            const atr = marketState.atr || (lowestPrice.price * 0.005);
+            const stopLoss = lowestPrice.price - (atr * 1.5);
+            const risk = lowestPrice.price - stopLoss;
+
+            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
             annotations.push(new TargetProjection(lowestPrice.price + (risk * 3), 'TARGET_1', { riskReward: 3.0 }));
         }
 
@@ -89,8 +93,12 @@ export class RSIDivergence extends StrategyBase {
                 { confidence: 0.80, note: 'RSI Bearish Divergence', timeframe: '1H' }
             ));
 
-            const risk = ((highestPrice.price * 1.005) - highestPrice.price);
-            annotations.push(new TargetProjection(highestPrice.price * 1.005, 'STOP_LOSS'));
+            // Dynamic ATR-based Stop Loss (Institutional standard)
+            const atr = marketState.atr || (highestPrice.price * 0.005);
+            const stopLoss = highestPrice.price + (atr * 1.5);
+            const risk = stopLoss - highestPrice.price;
+
+            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
             annotations.push(new TargetProjection(highestPrice.price - (risk * 3), 'TARGET_1', { riskReward: 3.0 }));
         }
 

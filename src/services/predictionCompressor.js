@@ -80,6 +80,13 @@ export class PredictionCompressor {
                 regime: marketState.regime,
                 volatility: marketState.volatility,
                 trend: marketState.trend?.direction
+            },
+
+            // UI Metadata for PredictionBadge
+            meta: {
+                continuationProb: probabilities.continuation,
+                reversalProb: probabilities.reversal,
+                htfBias: marketState.mtf?.globalBias || 'NEUTRAL'
             }
         };
     }
@@ -402,6 +409,11 @@ export class PredictionCompressor {
             confidence -= pathClearance.penalty;
         }
 
+        // Phase 52: Trap Zone Penalty
+        if (marketState.trapZones && (marketState.trapZones.warning || marketState.trapZones.count > 0)) {
+            confidence -= 25; // Significant penalty for potential traps
+        }
+
         // Phase 71: Velocity Awareness (ATR/Momentum scaling)
         const velocity = marketState.velocity || 0;
         if (velocity > 1.2) confidence += 15; // High momentum support
@@ -633,6 +645,12 @@ export class PredictionCompressor {
             if (probabilities.reversal < 75) {
                 return false;
             }
+        }
+
+        // 3a. Suppress if in Trap Zone (Phase 52)
+        if (marketState.trapZones && marketState.trapZones.warning) {
+            // console.log(`[ACCURACY] Suppressing prediction due to Trap Zone: ${marketState.trapZones.warning}`);
+            return false;
         }
 
         // 3. Strategic Conflict Check: Market Magnet (Phase 59)

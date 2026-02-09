@@ -4,7 +4,7 @@ import { correlationEngine } from './correlationEngine.js';
  * Portfolio Risk Service (Phase 40)
  * Aggregates risk across multiple assets and implements dynamic drawdown protection.
  */
-class PortfolioRiskService {
+export class PortfolioRiskService {
     constructor() {
         this.openPositions = []; // In-memory cache of open trades
         this.accountHistory = []; // Needed for drawdown calculation

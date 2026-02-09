@@ -57,46 +57,52 @@ export class MicroStructureEngine {
      * @param {Array} liquidityPools - Known liquidity zones
      * @returns {Object|null} Sweep signal
      */
-    static detectMicroSweep(candles, liquidityPools) {
+    static detectMicroSweep(candles, liquidityPools, marketState = null) {
         if (!candles || candles.length < 3) return null;
         if (!liquidityPools || liquidityPools.length === 0) return null;
 
         const lastCandle = candles[candles.length - 1];
-        const prevCandle = candles[candles.length - 2];
+
+        // Step 1: Dynamic ATR-Based Thresholds (Phase 4 Perfection)
+        // Use marketState ATR if available, otherwise calculate Micro ATR
+        const atr = marketState?.atr ||
+            (candles.slice(-14).reduce((sum, c) => sum + (c.high - c.low), 0) / 14);
+
+        const threshold = atr * 1.5;
 
         // Check if last candle swept a liquidity pool
         for (const pool of liquidityPools) {
             // Bullish sweep: Wick down into liquidity, then close higher
             if (lastCandle.low <= pool.price && lastCandle.close > pool.price) {
-                const wickPercent = ((lastCandle.close - lastCandle.low) / lastCandle.low) * 100;
+                const wickSize = lastCandle.close - lastCandle.low;
 
-                // Require significant wick (>0.3% for crypto, >0.1% for forex)
-                if (wickPercent > 0.3) {
+                // Threshold check: Reject noisy minor wicks
+                if (wickSize > threshold) {
                     return {
                         type: 'BULLISH_SWEEP',
                         pool,
-                        entry: pool.price + (lastCandle.high - pool.price) * 0.3, // 30% retracement
-                        stopLoss: pool.price * 0.997, // 0.3% below
-                        target: lastCandle.high + (lastCandle.high - pool.price) * 0.5,
-                        wickPercent,
-                        confidence: Math.min(wickPercent * 20, 80) // Scale to 0-80
+                        entry: lastCandle.close,
+                        stopLoss: lastCandle.low - (atr * 0.1),
+                        target: lastCandle.close + (wickSize * 2.0), // 2R target based on rejection magnitude
+                        wickSize,
+                        confidence: Math.min((wickSize / threshold) * 20 + 60, 95)
                     };
                 }
             }
 
             // Bearish sweep: Wick up into liquidity, then close lower
             if (lastCandle.high >= pool.price && lastCandle.close < pool.price) {
-                const wickPercent = ((lastCandle.high - lastCandle.close) / lastCandle.close) * 100;
+                const wickSize = lastCandle.high - lastCandle.close;
 
-                if (wickPercent > 0.3) {
+                if (wickSize > threshold) {
                     return {
                         type: 'BEARISH_SWEEP',
                         pool,
-                        entry: pool.price - (pool.price - lastCandle.low) * 0.3,
-                        stopLoss: pool.price * 1.003,
-                        target: lastCandle.low - (pool.price - lastCandle.low) * 0.5,
-                        wickPercent,
-                        confidence: Math.min(wickPercent * 20, 80)
+                        entry: lastCandle.close,
+                        stopLoss: lastCandle.high + (atr * 0.1),
+                        target: lastCandle.close - (wickSize * 2.0),
+                        wickSize,
+                        confidence: Math.min((wickSize / threshold) * 20 + 60, 95)
                     };
                 }
             }
@@ -119,37 +125,53 @@ export class MicroStructureEngine {
         const lastCandle = candles[candles.length - 1];
         const currentPrice = lastCandle.close;
 
-        // Calculate micro ATR (last 10 candles)
-        let microATR = 0;
-        for (let i = candles.length - 10; i < candles.length; i++) {
-            microATR += candles[i].high - candles[i].low;
-        }
-        microATR /= 10;
-
+        // Calculate micro ATR
+        const microATR = marketState?.atr || (candles.slice(-10).reduce((sum, c) => sum + (c.high - c.low), 0) / 10);
         const direction = imbalance.signal.direction;
 
-        // Define ultra-tight range (0.1-0.2% for crypto)
-        const entryOffset = microATR * 0.3;
-        const stopOffset = microATR * 0.5; // 0.5x ATR stop
-        const targetOffset = microATR * 1.2; // 1.2x ATR target (2.4:1 R:R)
+        // Step 2: Target Sync with Order Book Clusters (Phase 4 Perfection)
+        let target = direction === 'BULLISH' ? currentPrice + (microATR * 2) : currentPrice - (microATR * 2);
+        let clusterSynced = false;
+
+        // If we have OrderBook walls, use them as institutional magnets for the scalp target
+        const depth = marketState.orderBookDepth;
+        if (depth && depth.walls) {
+            // Find resistance walls for LONGs, support walls for SHORTs
+            const relevantWalls = depth.walls.filter(w =>
+                direction === 'BULLISH' ? w.side === 'SELL' : w.side === 'BUY'
+            ).sort((a, b) =>
+                direction === 'BULLISH' ? a.price - b.price : b.price - a.price
+            );
+
+            if (relevantWalls.length > 0) {
+                // Find closest significant wall
+                const closestWall = relevantWalls[0];
+                const wallDist = Math.abs(closestWall.price - currentPrice) / currentPrice;
+
+                // If wall is within a reasonable scalping distance (1% max), sync target
+                if (wallDist < 0.01) {
+                    target = closestWall.price;
+                    clusterSynced = true;
+                }
+            }
+        }
 
         const setup = {
             type: 'MICRO_SCALP',
-            direction,
-            entry: direction === 'BULLISH' ? currentPrice - entryOffset : currentPrice + entryOffset,
-            stopLoss: direction === 'BULLISH' ? currentPrice - stopOffset : currentPrice + stopOffset,
-            target: direction === 'BULLISH' ? currentPrice + targetOffset : currentPrice - targetOffset,
+            direction: direction === 'BULLISH' ? 'LONG' : 'SHORT',
+            entry: currentPrice,
+            stopLoss: direction === 'BULLISH' ? currentPrice - (microATR * 0.6) : currentPrice + (microATR * 0.6),
+            target,
             confidence: imbalance.signal.strength * 100,
             microATR,
             orderFlowStrength: imbalance.signal.description,
-            timeframe: '1m'
+            timeframe: '1m',
+            isClusterSynced: clusterSynced
         };
 
-        // Add session boost if in killzone
-        if (marketState.session?.killzone) {
-            setup.confidence += 15;
-            setup.sessionBoost = true;
-        }
+        // Add session + cycle boost
+        if (marketState.session?.killzone) setup.confidence += 10;
+        if (marketState.amdCycle?.phase === 'DISTRIBUTION') setup.confidence += 10;
 
         return setup;
     }
