@@ -133,6 +133,7 @@ export class EdgeScoringEngine {
         }
 
         // 6. Cross-Asset Consensus (Macro Alignment)
+        const correlation = marketState.macroSentiment;
         if (correlation && correlation.bias !== 'NEUTRAL' && correlation.bias !== 'SELF') {
             const correlationBias = normalizeDirection(correlation.bias);
             const isInverse = isInversePair(symbol, 'DXY'); // Simplified for common benchmark
