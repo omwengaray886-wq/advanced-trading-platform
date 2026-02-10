@@ -170,29 +170,29 @@ Your objective is to generate a **High-Fidelity Execution Narrative** for ${anal
 - **News Hazard**: ${analysis.marketState.news_risk || 'LOW'}. Technical Validity: ${analysis.marketState.technical_validity || 'NORMAL'}.
 - **Institutional Alpha (Phase 6 & 7)**: 
     - Macro Sentiment (COT): ${analysis.marketState.macroSentiment?.bias} (${analysis.marketState.macroSentiment?.reason})
+    - Commodity Correlation: ${analysis.marketState.commodityCorr?.direction} from ${analysis.marketState.commodityCorr?.influencer} (Score: ${analysis.marketState.commodityCorr?.score})
     - Dark Pools: ${analysis.marketState.darkPools?.length > 0 ? `Detected ${analysis.marketState.darkPools.length} significant absorption walls.` : 'None detected.'}
-    - Volatility Regime: ${analysis.marketState.volatility?.regime} (ATR Corridor: ${analysis.marketState.volatility?.corridor?.upper?.toFixed(4)} and ${analysis.marketState.volatility?.corridor?.lower?.toFixed(4)})
-    - Order Book Depth: ${analysis.marketState.orderBookDepth?.pressure} (${analysis.marketState.orderBookDepth?.summary})
-    - Basket Divergence: ${analysis.marketState.basketArbitrage ? `${analysis.marketState.basketArbitrage.signal} (Divergence: ${analysis.marketState.basketArbitrage.divergence.toFixed(2)}% vs ${analysis.marketState.basketArbitrage.basket})` : 'Stable correlation.'}
-- **Drawing Confluence**: ${analysis.marketState.relevantGap ? 'FVG Alignment detected.' : ''} ${analysis.annotations.find(a => a.type === 'FIBONACCI') ? 'Institutional Fibonacci OTE anchored.' : ''} ${analysis.annotations.find(a => a.type === 'TRENDLINE' && a.metadata.isLiquidityTrap) ? 'Retail Trendline Trap identified.' : ''}
+    - Volatility Regime: ${analysis.marketState.volatility?.regime}
+    - Portfolio Stress (VaR): ${analysis.stressMetrics?.var?.totalVaR?.toFixed(2) || 'N/A'} (${analysis.stressMetrics?.var?.varPct?.toFixed(1) || '0'}%)
+    - Basket Divergence: ${analysis.marketState.basketArbitrage ? `${analysis.marketState.basketArbitrage.signal} (Divergence: ${analysis.marketState.basketArbitrage.divergence.toFixed(2)}%)` : 'Stable.'}
 
 ### MANDATORY NARRATIVE REQUIREMENTS (WHY, NOT WHAT):
-1.  **Institutional Theme**: Explain the *Institutional Intent*. Are they accumulating, distributing, or trapping retail? link this to ${analysis.marketState.phase}.
-2.  **The "Magnet"**: Identify the *Draw on Liquidity*. SPECIFICALLY, where are the resting orders? (e.g., "Scanning for stops below ${analysis.marketState.scenarios?.all?.find(s => s.direction === 'down')?.target || 'previous low'}").
-3.  **Execution Logic**: Why THIS specific entry? specificy confluence (e.g., "Entry at ${analysis.selectedStrategy?.entry || 'price'} aligns with 0.618 Fib + 1H Order Block").
-4.  **Hard Invalidation**: The exact price/condition where the setup is dead. "If price closes below [Level], market structure shifts bearish."
-5.  **Multi-Scenario Analysis**: Briefly address the Bear/Bull alternative if the primary bias fails.
+1.  **Institutional Theme**: Explain the *Institutional Intent*. Accumulation, distribution, or trapping? link to ${analysis.marketState.phase}.
+2.  **The "Magnet"**: Identify the *Draw on Liquidity*. Where are the resting orders?
+3.  **Macro & Portfolio Context**: How do COT and Commodity correlations validate or invalidate the technical setup? What is the impact on portfolio VaR?
+4.  **Execution Logic**: Why THIS entry?
+5.  **Hard Invalidation**: The exact price where the thesis is dead.
 
 ### RETURN FORMAT (JSON ONLY):
 {
-  "htfBias": "Deep institutional context (Weekly/Daily order flow)",
-  "strategySelected": "Why this specific strategy (e.g. ${analysis.selectedStrategy?.name}) is deployed",
-  "whyLongExists": "Bullish Confluences (Liquidity Sweep + BOS + OTE). Leave empty if bearish.",
-  "whyShortExists": "Bearish Confluences (Liquidity Sweep + BOS + OTE). Leave empty if bullish.",
-  "entryLogic": "Technical breakdown of Entry/Target/Stop levels & R:R justification",
+  "htfBias": "Deep institutional context",
+  "macroContext": "Synthesis of COT, Commodity Correlations, and Macro Bias",
+  "portfolioImpact": "Interpretation of VaR and Portfolio Stress for this setup",
+  "strategySelected": "Why this specific strategy is deployed",
+  "entryLogic": "Technical breakdown of Entry/Target/Stop levels",
   "riskManagement": "Position sizing & Portfolio Risk Warnings",
-  "invalidationConditions": "Hard Invalidation Point: The exact price/condition where the setup fails.",
-  "alternativeScenarios": "The logical pivot if primary fails (Hedging view)",
+  "invalidationConditions": "Hard Invalidation Point",
+  "alternativeScenarios": "The logical pivot if primary fails",
   "fundamentals": "Impact of news/macro on technical validity"
 }
 `;

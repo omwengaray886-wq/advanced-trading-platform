@@ -53,9 +53,13 @@ export class StrategyPerformanceTracker {
             const cutoffTime = Date.now() - (lookbackDays * 24 * 60 * 60 * 1000);
             const outcomesRef = collection(db, 'strategyOutcomes');
 
+            const cleanStrategyName = (typeof strategyName === 'object' && strategyName !== null)
+                ? (strategyName.constructor.name || 'Unknown')
+                : String(strategyName);
+
             const q = query(
                 outcomesRef,
-                where('strategyName', '==', strategyName),
+                where('strategyName', '==', cleanStrategyName),
                 where('timestamp', '>=', cutoffTime),
                 orderBy('timestamp', 'desc'),
                 limit(100)
@@ -176,10 +180,14 @@ export class StrategyPerformanceTracker {
                 return { trend: 'UNKNOWN', recentWinRate: 0.5, momentum: 'NEUTRAL' };
             }
 
+            const cleanStrategyName = (typeof strategyName === 'object' && strategyName !== null)
+                ? (strategyName.constructor.name || 'Unknown')
+                : String(strategyName);
+
             const outcomesRef = collection(db, 'strategyOutcomes');
             const q = query(
                 outcomesRef,
-                where('strategyName', '==', strategyName),
+                where('strategyName', '==', cleanStrategyName),
                 orderBy('timestamp', 'desc'),
                 limit(lookbackLimit)
             );

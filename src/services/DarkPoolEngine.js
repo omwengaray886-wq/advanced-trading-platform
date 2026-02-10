@@ -44,6 +44,59 @@ export class DarkPoolEngine {
     }
 
     /**
+     * Detect Iceberg Orders (Hidden Liquidity)
+     * Looks for price levels that absorb significant volume without allowing price to pass.
+     * @param {Array} candles - Price data
+     * @param {Object} orderBook - Snapshot of current Order Book (optional)
+     */
+    static detectIcebergs(candles, orderBook = null) {
+        if (!candles || candles.length < 20) return [];
+
+        const icebergs = [];
+        const recentCandles = candles.slice(-20);
+
+        // Group by price levels (rounding to nearest pip/tick)
+        const levels = new Map();
+
+        recentCandles.forEach(c => {
+            // Check for wicks that touched a level multiple times
+            // Logic: High volume on a candle with a large wick = rejection/absorption at that wick level
+
+            const isBullish = c.close > c.open;
+            const wickLevel = isBullish ? c.low : c.high; // Identifying the 'defense' level
+
+            // Rounding for grouping (approx 0.01% precision)
+            const key = Number(wickLevel.toPrecision(6));
+
+            if (!levels.has(key)) levels.set(key, { volume: 0, touches: 0, price: wickLevel, type: isBullish ? 'BID' : 'ASK' });
+
+            const levelData = levels.get(key);
+            levelData.volume += c.volume;
+            levelData.touches += 1;
+        });
+
+        // Filter for "Iceberg" signature:
+        // 1. Multiple touches (>= 3)
+        // 2. High aggregated volume (relative to avg)
+
+        const avgVol = recentCandles.reduce((s, c) => s + c.volume, 0) / recentCandles.length;
+
+        for (const [key, data] of levels.entries()) {
+            if (data.touches >= 3 && data.volume > avgVol * 5) {
+                icebergs.push({
+                    price: data.price,
+                    type: data.type === 'BID' ? 'BUY_ICEBERG' : 'SELL_ICEBERG',
+                    volume: data.volume,
+                    strength: (data.volume / avgVol).toFixed(1) + 'x',
+                    confidence: 'HIGH'
+                });
+            }
+        }
+
+        return icebergs;
+    }
+
+    /**
      * Find price zones with abnormal consolidation (price pegging)
      */
     static _findConsolidationZones(candles) {

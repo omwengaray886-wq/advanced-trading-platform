@@ -28,6 +28,11 @@ import { GartleyPattern } from './modules/GartleyPattern.js';
 import { VolumeSpikeExhaustion } from './modules/VolumeSpikeExhaustion.js';
 import { WyckoffAccumulation } from './modules/WyckoffAccumulation.js';
 import { WyckoffDistribution } from './modules/WyckoffDistribution.js';
+import { OrderBlockFlip } from './modules/OrderBlockFlip.js';
+import { StopRunAccumulation } from './modules/StopRunAccumulation.js';
+import { ImbalanceExploitation } from './modules/ImbalanceExploitation.js';
+import { SessionBreakout } from './modules/SessionBreakout.js';
+import { MarketProfileStrategy } from './modules/MarketProfileStrategy.js';
 
 export const STRATEGY_CATEGORIES = {
     MARKET_STRUCTURE: 'Market Structure',
@@ -37,7 +42,8 @@ export const STRATEGY_CATEGORIES = {
     RANGE: 'Range & Mean Reversion',
     ADVANCED: 'Hybrid & Advanced',
     INDICATORS: 'Indicator Based',
-    HARMONICS: 'Harmonic Patterns'
+    HARMONICS: 'Harmonic Patterns',
+    PROFILE: 'Volume & Profile' // New Category
 };
 
 export class StrategyRegistry {
@@ -55,6 +61,13 @@ export class StrategyRegistry {
             { category: STRATEGY_CATEGORIES.SMC_ICT, instance: new OptimalTradeEntry() },
             { category: STRATEGY_CATEGORIES.SMC_ICT, instance: new QuasimodoReversal() },
             { category: STRATEGY_CATEGORIES.SMC_ICT, instance: new SupplyDemandFlip() },
+            // NEW STRATEGIES
+            { category: STRATEGY_CATEGORIES.SMC_ICT, instance: new OrderBlockFlip() },
+            { category: STRATEGY_CATEGORIES.LIQUIDITY, instance: new StopRunAccumulation() },
+            { category: STRATEGY_CATEGORIES.SMC_ICT, instance: new ImbalanceExploitation() },
+            { category: STRATEGY_CATEGORIES.SESSIONS, instance: new SessionBreakout() },
+            { category: STRATEGY_CATEGORIES.PROFILE, instance: new MarketProfileStrategy() }, // Use new category
+
             { category: STRATEGY_CATEGORIES.LIQUIDITY, instance: new LiquiditySweep() },
             { category: STRATEGY_CATEGORIES.SESSIONS, instance: new AsianRangeBreakout() },
             { category: STRATEGY_CATEGORIES.SESSIONS, instance: new LondonFakeout() },

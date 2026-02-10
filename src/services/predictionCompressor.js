@@ -208,26 +208,15 @@ export class PredictionCompressor {
                 return htfBias;
             }
 
-            // If we have a recent CHoCH, trust the LTF structural shift
+            // If we have a recent CHoCH, trust the LTF structural shift if aligned with HTF
             if (recentCHoCH && recentCHoCH.age < 15) {
                 const chochDirection = recentCHoCH.direction === 'BULLISH' ? 'BULLISH' : 'BEARISH';
-                return chochDirection;
+                if (htfBias === 'NEUTRAL' || chochDirection === htfBias) {
+                    return chochDirection;
+                }
             }
 
-            // If HTF is very strong and LTF is weak, trust HTF
-            const htfStrength = marketState.mtf?.context?.confidence || 0;
-            const ltfStrength = marketState.confidence || 0;
-
-            if (htfStrength > 0.8 && ltfStrength < 0.5) {
-                return htfBias;
-            }
-
-            // If LTF is very strong and HTF is weak, trust LTF
-            if (ltfStrength > 0.8 && htfStrength < 0.5) {
-                return trend;
-            }
-
-            // Otherwise, wait for clarity
+            // Otherwise, strictly WAIT for HTF alignment in 100% precision mode
             return 'WAIT_CONFLICT';
         }
 
@@ -641,10 +630,9 @@ export class PredictionCompressor {
         const ltfBias = marketState.trend?.direction || 'NEUTRAL';
 
         if (htfBias !== 'NEUTRAL' && ltfBias !== 'NEUTRAL' && htfBias !== ltfBias) {
-            // Only allow if we have a VERY strong reversal confirmation (Prob > 75%)
-            if (probabilities.reversal < 75) {
-                return false;
-            }
+            // STRICT PRECISION: In Phase 73, we kill all conflicting signals regardless of reversal prob
+            // unless there is a massive Market Obligation (handled in Step 3 below).
+            return false;
         }
 
         // 3a. Suppress if in Trap Zone (Phase 52)
@@ -677,11 +665,12 @@ export class PredictionCompressor {
         // Phase 52 Upgrade: Obligation Gating
         const isObligated = marketState.obligations?.state === 'OBLIGATED';
 
-        // ACCURACY UPGRADE: Increased thresholds for "Free Roaming" (No Magnet/Obligation)
-        // If we are just trend following without a clear "Need" to move, require 70% confidence.
-        const minThreshold = isObligated ? 45 : 70;
+        // ACCURACY UPGRADE (Phase 73): Increased thresholds for higher precision
+        // If we are just trend following without a clear "Need" to move, require 80% confidence.
+        const minThreshold = isObligated ? 60 : 80;
 
         if (maxProb < minThreshold) {
+            // console.log(`[PRECISION] Suppressing low-prob prediction: ${maxProb}% < ${minThreshold}% threshold`);
             return false;
         }
 

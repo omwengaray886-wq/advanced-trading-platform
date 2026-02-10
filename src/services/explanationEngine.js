@@ -35,6 +35,9 @@ export class ExplanationEngine {
         explanation.sections.professionalTruth = this.buildProfessionalTruth(analysis, mode);
         explanation.sections.riskManagement = this.buildRiskManagement(analysis, mode);
         explanation.sections.edgeAnalysis = this.buildEdgeAnalysis(analysis, mode);
+        explanation.sections.macroContext = this.buildMacroContext(analysis, mode);
+        explanation.sections.portfolioImpact = this.buildPortfolioImpact(analysis, mode);
+        explanation.sections.bayesianNarrative = this.buildBayesianNarrative(analysis, mode);
         explanation.sections.selfCritique = this.buildSelfCritique(analysis, mode);
 
         // ... legacy / supporting sections ...
@@ -342,6 +345,17 @@ export class ExplanationEngine {
         messages.push({ role: 'assistant', section: 'entryLogic', content: '🎯 **4. Entry Confirmation Logic**\n\n' + explanation.sections.entryLogic });
         messages.push({ role: 'assistant', section: 'invalidationConditions', content: '⚠️ **5. Invalidation (The "Idea Kill" Level)**\n\n' + explanation.sections.invalidationConditions });
         messages.push({ role: 'assistant', section: 'targets', content: '🏁 **6. Target Objectives**\n\n' + explanation.sections.targets });
+
+        if (explanation.sections.macroContext) {
+            messages.push({ role: 'assistant', section: 'macroContext', content: '🌐 **Macro Context (COT & Correlation)**\n\n' + explanation.sections.macroContext });
+        }
+        if (explanation.sections.portfolioImpact) {
+            messages.push({ role: 'assistant', section: 'portfolioImpact', content: '💼 **Portfolio & Stress Impact**\n\n' + explanation.sections.portfolioImpact });
+        }
+        if (explanation.sections.bayesianNarrative) {
+            messages.push({ role: 'assistant', section: 'bayesianNarrative', content: '📊 **Bayesian Strategy Reliability**\n\n' + explanation.sections.bayesianNarrative });
+        }
+
         messages.push({ role: 'assistant', section: 'professionalTruth', content: '🧠 **7. Professional Truth & Responsibility**\n\n' + explanation.sections.professionalTruth });
 
         return messages;
@@ -601,6 +615,84 @@ export class ExplanationEngine {
         }
 
         return null;
+    }
+
+    /**
+     * Build Macro Context (Phase 70)
+     */
+    buildMacroContext(analysis, mode = 'ADVANCED') {
+        const state = analysis.marketState;
+        const cot = state.cot;
+        const commodityCorr = state.commodityCorr;
+        const macroCorr = state.macroCorrelation;
+
+        if (!cot && !commodityCorr && !macroCorr) return null;
+
+        let msg = '';
+        if (cot) {
+            msg += `**COT Positioning:** High Institutional ${cot.bias} conviction (${cot.reason}). `;
+        }
+
+        if (commodityCorr && commodityCorr.score > 0.6) {
+            msg += `**Commodity Correlation:** Strong ${commodityCorr.direction} pressure from ${commodityCorr.influencer}. `;
+        }
+
+        if (macroCorr && macroCorr.status !== 'NEUTRAL') {
+            msg += `**Macro Bias:** ${macroCorr.status} (${macroCorr.bias} focus). `;
+        }
+
+        return msg || 'Equilibrium across macro drivers.';
+    }
+
+    /**
+     * Build Portfolio Impact (Phase 70)
+     */
+    buildPortfolioImpact(analysis, mode = 'ADVANCED') {
+        const stress = analysis.stressMetrics;
+        const health = analysis.portfolioHealth;
+
+        if (!stress && !health) return null;
+
+        let msg = '';
+        if (stress?.var) {
+            msg += `**Portfolio VaR:** ${stress.var.totalVaR.toFixed(2)} (${stress.var.varPct.toFixed(1)}%). `;
+        }
+
+        if (health?.isConcentrated) {
+            msg += `⚠️ **CONCENTRATION RISK:** ${health.reason}. `;
+        }
+
+        if (stress?.shocks?.flashCrash) {
+            const shock = stress.shocks.flashCrash;
+            msg += `**Stress Test:** In a Flash Crash (-5%), portfolio drawdown estimated at ${shock.estimatedDrawdown.toFixed(2)}. `;
+        }
+
+        return msg || 'No significant portfolio-level hazards detected.';
+    }
+
+    /**
+     * Build Bayesian Narrative (Phase 70)
+     */
+    buildBayesianNarrative(analysis, mode = 'ADVANCED') {
+        const setup = analysis.setups?.[0];
+        const bayes = setup?.bayesianStats;
+
+        if (!bayes) return null;
+
+        const reliability = (bayes.posterior * 100).toFixed(1);
+        const prior = (bayes.prior * 100).toFixed(1);
+        const shift = ((bayes.posterior - bayes.prior) * 100).toFixed(1);
+
+        let msg = `The **${setup.strategy}** has a **${reliability}%** probability of success in the current ${analysis.marketState.regime} regime. `;
+        msg += `Compared to its baseline accuracy of ${prior}%, we see a **${shift > 0 ? '+' : ''}${shift}%** contextual edge shift. `;
+
+        if (bayes.isSuppressed) {
+            msg += `⚠️ **ALERT:** Strategy is currently below its optimal performance threshold and is being suppressed in automated execution.`;
+        } else if (bayes.credibility === 'PREMIUM') {
+            msg += `✅ This is currently a **Premium-Grade** institutional setup.`;
+        }
+
+        return msg;
     }
 
     /**

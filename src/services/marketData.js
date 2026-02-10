@@ -58,8 +58,11 @@ export const mapSymbol = (symbol) => {
         'GBPUSDT': 'GBPUSDT',
         'AUDUSD': 'AUDUSDT',
         'AUDUSDT': 'AUDUSDT',
-        'NZDUSD': 'AUDUSDT', // NZDUSDT often has low liquidity or API issues, proxy with AUD
+        'NZDUSD': 'AUDUSDT',
         'NZDUSDT': 'AUDUSDT',
+        'USDCAD': 'USDTBRL',
+        'USDCHF': 'USDTBRL',
+        'USDJPY': 'USDTJPY',
         'USDTRY': 'USDTTRY',
         'USDZAR': 'USDTZAR',
         'USDMXN': 'USDTMXN',
@@ -290,177 +293,155 @@ export class MarketDataService {
         this.isConnected = false;
         this.notifyHealth();
     }
-                this.isConnected = false;
-this.notifyHealth();
+
+
+    startPolling() {
+        if (this.pollingInterval) return;
+        console.log('Starting polling fallback...');
+
+        // Poll every 1 minute
+        this.pollingInterval = setInterval(async () => {
+            if (this.isClosing) return;
+            try {
+                // Fetch just the last few candles effectively
+                const data = await this.fetchHistory(this.activeSymbol, this.activeInterval, 5);
+                if (data && data.length > 0) {
+                    const lastCandle = data[data.length - 1];
+                    this.notify(lastCandle);
+                    this.isConnected = true; // Pretend we are connected for UI
+                    this.latency = 200; // Fake latency
+                    this.notifyHealth();
+                }
+            } catch (e) {
+                console.warn('Polling failed:', e.message);
+            }
+        }, 60000);
+    }
+
+    stopPolling() {
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+        }
+    }
+
+    /**
+     * Subscribe to Live Depth Stream with pooled connections
+     */
+    subscribeToDepth(symbol, callback) {
+        const mappedSymbol = mapSymbol(symbol).toLowerCase();
+
+        // If already connected to this symbol, just return a fake "unsubscribe"
+        if (this.depthWS.has(mappedSymbol)) {
+            const existing = this.depthWS.get(mappedSymbol);
+            if (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING) {
+                console.log(`Using existing Depth stream for ${mappedSymbol}`);
+                return () => { };
+            }
+        }
+
+        // Clean up any failed or closed connection for this symbol
+        if (this.depthWS.has(mappedSymbol)) {
+            this.depthWS.get(mappedSymbol).close();
+            this.depthWS.delete(mappedSymbol);
+        }
+
+        try {
+            const streamUrl = `${BINANCE_WS_BASE}/${mappedSymbol}@depth20@100ms`;
+            const ws = new WebSocket(streamUrl);
+            this.depthWS.set(mappedSymbol, ws);
+
+            ws.onopen = () => console.log(`Connected to Depth Stream: ${mappedSymbol}`);
+
+            ws.onmessage = (event) => {
+                if (this.isClosing || this.pendingClose) return;
+                const data = JSON.parse(event.data);
+                if (data.bids && data.asks) {
+                    const formatted = {
+                        bids: data.bids.map(b => ({ price: parseFloat(b[0]), quantity: parseFloat(b[1]) })),
+                        asks: data.asks.map(a => ({ price: parseFloat(a[0]), quantity: parseFloat(a[1]) })),
+                        lastUpdateId: data.lastUpdateId
+                    };
+                    callback(formatted);
+                }
             };
 
-this.ws.onclose = () => {
-    this.isConnected = false;
-    this.notifyHealth();
+            ws.onerror = (err) => {
+                if (this.isClosing || this.pendingClose) return;
+                console.error(`Depth WS Error (${mappedSymbol}):`, err);
+            };
 
-    if (!this.isClosing) {
-        // Exponential backoff with jitter
-        const baseDelay = Math.min(this.maxReconnectDelay, this.minReconnectDelay * Math.pow(2, this.reconnectAttempts));
-        const jitter = Math.random() * 1000; // Add random jitter to prevent thundering herd
-        const delay = baseDelay + jitter;
+            return () => {
+                // Remove listeners immediately to prevent any further processing
+                ws.onopen = null;
+                ws.onmessage = null;
+                ws.onerror = null;
 
-        if (this.reconnectAttempts >= 5) {
-            console.warn(`[WS] WebSocket unstable after 5 attempts. Switching to POLLING mode for ${this.activeSymbol}`);
-            this.startPolling(); // Fallback to polling
-            return; // Stop WS retries
-        }
-
-        console.log(`[WS] Disconnected from ${streamName}. Reconnecting in ${Math.round(delay / 1000)}s... (Attempt ${this.reconnectAttempts + 1}/5)`);
-
-        setTimeout(() => {
-            if (!this.isClosing && (!this.ws || this.ws.readyState === WebSocket.CLOSED)) {
-                this.reconnectAttempts++;
-                this.connect(this.activeSymbol, this.activeInterval);
-            }
-        }, delay);
-    }
-};
+                if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                    try {
+                        ws.close();
+                    } catch (e) {
+                        console.warn(`Error closing depth WS for ${mappedSymbol}:`, e.message);
+                    }
+                }
+                this.depthWS.delete(mappedSymbol);
+            };
         } catch (e) {
-    console.error("Failed to initiate WebSocket connection", e);
-    this.startPolling();
-}
-    }
-
-startPolling() {
-    if (this.pollingInterval) return;
-    console.log('Starting polling fallback...');
-
-    // Poll every 1 minute
-    this.pollingInterval = setInterval(async () => {
-        if (this.isClosing) return;
-        try {
-            // Fetch just the last few candles effectively
-            const data = await this.fetchHistory(this.activeSymbol, this.activeInterval, 5);
-            if (data && data.length > 0) {
-                const lastCandle = data[data.length - 1];
-                this.notify(lastCandle);
-                this.isConnected = true; // Pretend we are connected for UI
-                this.latency = 200; // Fake latency
-                this.notifyHealth();
-            }
-        } catch (e) {
-            console.warn('Polling failed:', e.message);
-        }
-    }, 60000);
-}
-
-stopPolling() {
-    if (this.pollingInterval) {
-        clearInterval(this.pollingInterval);
-        this.pollingInterval = null;
-    }
-}
-
-/**
- * Subscribe to Live Depth Stream with pooled connections
- */
-subscribeToDepth(symbol, callback) {
-    const mappedSymbol = mapSymbol(symbol).toLowerCase();
-
-    // If already connected to this symbol, just return a fake "unsubscribe"
-    if (this.depthWS.has(mappedSymbol)) {
-        const existing = this.depthWS.get(mappedSymbol);
-        if (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING) {
-            console.log(`Using existing Depth stream for ${mappedSymbol}`);
+            console.error("Depth WS failed", e);
             return () => { };
         }
     }
 
-    // Clean up any failed or closed connection for this symbol
-    if (this.depthWS.has(mappedSymbol)) {
-        this.depthWS.get(mappedSymbol).close();
-        this.depthWS.delete(mappedSymbol);
+    subscribe(callback) {
+        this.subscribers.add(callback);
+        return () => this.subscribers.delete(callback);
     }
 
-    try {
-        const streamUrl = `${BINANCE_WS_BASE}/${mappedSymbol}@depth20@100ms`;
-        const ws = new WebSocket(streamUrl);
-        this.depthWS.set(mappedSymbol, ws);
-
-        ws.onopen = () => console.log(`Connected to Depth Stream: ${mappedSymbol}`);
-
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.bids && data.asks) {
-                const formatted = {
-                    bids: data.bids.map(b => ({ price: parseFloat(b[0]), quantity: parseFloat(b[1]) })),
-                    asks: data.asks.map(a => ({ price: parseFloat(a[0]), quantity: parseFloat(a[1]) })),
-                    lastUpdateId: data.lastUpdateId
-                };
-                callback(formatted);
-            }
-        };
-
-        ws.onerror = (err) => console.error(`Depth WS Error (${mappedSymbol}):`, err);
-
-        return () => {
-            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-                ws.onclose = null; // Prevent recursion if any
-                ws.close();
-            }
-            this.depthWS.delete(mappedSymbol);
-        };
-    } catch (e) {
-        console.error("Depth WS failed", e);
-        return () => { };
+    subscribeHealth(callback) {
+        this.healthSubscribers.add(callback);
+        callback({ isConnected: this.isConnected, latency: this.latency });
+        return () => this.healthSubscribers.delete(callback);
     }
-}
 
-subscribe(callback) {
-    this.subscribers.add(callback);
-    return () => this.subscribers.delete(callback);
-}
+    notify(data) {
+        this.subscribers.forEach(callback => callback(data));
+    }
 
-subscribeHealth(callback) {
-    this.healthSubscribers.add(callback);
-    callback({ isConnected: this.isConnected, latency: this.latency });
-    return () => this.healthSubscribers.delete(callback);
-}
+    notifyHealth() {
+        const stats = { isConnected: this.isConnected, latency: this.latency };
+        this.healthSubscribers.forEach(callback => callback(stats));
+    }
 
-notify(data) {
-    this.subscribers.forEach(callback => callback(data));
-}
-
-notifyHealth() {
-    const stats = { isConnected: this.isConnected, latency: this.latency };
-    this.healthSubscribers.forEach(callback => callback(stats));
-}
-
-disconnect() {
-    this.isClosing = true;
-    if (this.ws) {
-        this.ws.onclose = null;
-        this.ws.onerror = null;
-        this.ws.onmessage = null;
-        if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
-            this.ws.close();
+    disconnect() {
+        this.isClosing = true;
+        if (this.ws) {
+            this.ws.onclose = null;
+            this.ws.onerror = null;
+            this.ws.onmessage = null;
+            if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+                this.ws.close();
+            }
+            this.ws = null;
         }
-        this.ws = null;
-    }
 
-    // Also clear depth streams on global disconnect
-    this.depthWS.forEach((ws, symbol) => {
-        try {
-            ws.onclose = null;
-            ws.onerror = null;
-            ws.onmessage = null;
-            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-                ws.close();
+        // Also clear depth streams on global disconnect
+        this.depthWS.forEach((ws, symbol) => {
+            try {
+                ws.onclose = null;
+                ws.onerror = null;
+                ws.onmessage = null;
+                if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                    ws.close();
+                }
+            } catch (e) {
+                console.warn(`Error closing depth WS for ${symbol}:`, e.message);
             }
-        } catch (e) {
-            console.warn(`Error closing depth WS for ${symbol}:`, e.message);
-        }
-    });
-    this.depthWS.clear();
+        });
+        this.depthWS.clear();
 
-    this.isConnected = false;
-    this.notifyHealth();
-}
+        this.isConnected = false;
+        this.notifyHealth();
+    }
 }
 
 export const marketData = new MarketDataService();

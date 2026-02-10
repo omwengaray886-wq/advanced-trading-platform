@@ -31,15 +31,15 @@ export class DirectionalConfidenceGate {
             marketCycle: this.checkAMDCycle(setup.direction, marketState)
         };
 
-        // Calculate weighted confidence
+        // Calculate weighted confidence (Phase 73 Upgrade)
         const weights = {
-            multiTimeframeAlignment: 0.20,
-            volumeConfirmation: 0.20,
+            multiTimeframeAlignment: 0.35, // Increased from 0.20
+            volumeConfirmation: 0.15,      // Decreased from 0.20
             liquiditySweepClear: 0.15,
-            breakoutAuthenticity: 0.10,
+            breakoutAuthenticity: 0.05,    // Decreased from 0.10
             priceActionConsistency: 0.05,
             marketObligation: 0.20,
-            marketCycle: 0.10
+            marketCycle: 0.05              // Decreased from 0.10
         };
 
         let confidence = 0;
@@ -52,7 +52,19 @@ export class DirectionalConfidenceGate {
             }
         }
 
-        const isValid = confidence >= 0.5; // Require 50%+ confidence
+        const isValid = confidence >= 0.65; // Increased from 0.5 for Phase 73
+
+        // Phase 73: Stagnation Filter
+        // If price velocity is near-zero, the market is dead and directional arrows are unreliable.
+        const velocity = marketState.velocity || 0;
+        if (velocity < 0.3) {
+            return {
+                isValid: false,
+                confidence: Math.min(confidence, 0.3),
+                failedChecks: [...failedChecks, 'Market Stagnation: Price velocity too low for reliable direction'],
+                checkDetails: { ...checks, stagnation: { passed: false, score: 0.1, reason: 'Velocity < 0.3' } }
+            };
+        }
 
         return {
             isValid,
@@ -95,10 +107,10 @@ export class DirectionalConfidenceGate {
             let score = alignmentRatio;
             let reason = `Multi-TF alignment: ${aligned}/${trends.length} timeframes agree`;
 
-            if (alignmentRatio < 0.5) {
+            if (alignmentRatio < 0.75) { // Increased from 0.5 for Phase 73
                 passed = false;
-                reason = `Multi-TF conflict: Only ${aligned}/${trends.length} timeframes support ${normalizedDirection}`;
-                score *= 0.5; // Heavy penalty
+                reason = `Multi-TF conflict: Only ${aligned}/${trends.length} timeframes support ${normalizedDirection}. 75% alignment required for 100% precision target.`;
+                score *= 0.4; // Heavier penalty for conflict
             }
 
             return { passed, score, reason, details: { aligned, total: trends.length } };

@@ -227,6 +227,56 @@ export class CorrelationEngine {
         const last = prices[prices.length - 1];
         return (last - first) / first;
     }
+
+    /**
+     * Analyze Event Risk (Macro)
+     * Checks for high-impact news events that could disrupt correlation or increase volatility.
+     * @param {Object} newsService - Reference to news service
+     */
+    async analyzeEventRisk(newsService) {
+        try {
+            // Get upcoming high impact events for next 24h
+            const shocks = await newsService.getUpcomingShocks(24);
+            const highImpact = shocks.filter(s => s.impact === 'HIGH' || s.impact === 'CRITICAL');
+
+            if (highImpact.length === 0) {
+                return { score: 0, level: 'LOW', warning: null };
+            }
+
+            // Calculate Risk Score (0-100)
+            // Closer event = Higher risk
+            const now = Date.now();
+            let maxRisk = 0;
+            let closestEvent = null;
+
+            highImpact.forEach(event => {
+                const timeUntil = event.timestamp - now;
+                const hoursUntil = timeUntil / (1000 * 60 * 60);
+
+                let risk = 0;
+                if (hoursUntil < 1) risk = 100; // Imminent
+                else if (hoursUntil < 4) risk = 80;
+                else if (hoursUntil < 12) risk = 50;
+                else risk = 20;
+
+                if (risk > maxRisk) {
+                    maxRisk = risk;
+                    closestEvent = event;
+                }
+            });
+
+            return {
+                score: maxRisk,
+                level: maxRisk > 75 ? 'CRITICAL' : maxRisk > 40 ? 'HIGH' : 'MODERATE',
+                warning: closestEvent ? `Upcoming ${closestEvent.title} in ${(closestEvent.timestamp - now) / 3600000 | 0}h` : null,
+                closestEvent
+            };
+
+        } catch (error) {
+            console.error('Event risk analysis failed:', error);
+            return { score: 0, level: 'UNKNOWN', warning: null };
+        }
+    }
 }
 
 export const correlationEngine = new CorrelationEngine();

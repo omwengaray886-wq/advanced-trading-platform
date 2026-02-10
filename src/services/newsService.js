@@ -1,29 +1,27 @@
 import { EconomicEvent } from '../models/EconomicEvent.js';
 
-const CRYPTOPANIC_API_URL = 'https://cryptopanic.com/api/v1/posts/';
-const FMP_CALENDAR_URL = 'https://financialmodelingprep.com/api/v3/economic_calendar';
+const CRYPTOPANIC_PROXY = '/api/news/cryptopanic';
+const CALENDAR_PROXY = '/api/news/calendar';
 
 export class NewsService {
     constructor() {
         this.cache = new Map();
-        this.apiKey = typeof process !== 'undefined' ? process.env.VITE_CRYPTOPANIC_KEY : '';
-        this.fmpKey = typeof process !== 'undefined' ? process.env.VITE_FMP_KEY : '';
     }
 
     /**
      * Get news events for a symbol and timeframe
      */
     async fetchRealNews(symbol) {
-        if (!this.apiKey) {
-            console.warn("CryptoPanic API Key missing. Returning fallback.");
-            return [];
-        }
-
         try {
-            const asset = symbol.split('USDT')[0].split('USD')[0];
-            const res = await fetch(`${CRYPTOPANIC_API_URL}?auth_token=${this.apiKey}&currencies=${asset}&kind=news`);
-            const data = await res.json();
+            const asset = symbol.replace(/USDT|USD|\//g, '').toUpperCase();
+            const res = await fetch(`${CRYPTOPANIC_PROXY}?currencies=${asset}&kind=news`);
 
+            if (!res.ok) {
+                if (res.status === 503) console.warn("[NEWS] CryptoPanic proxy disabled (no key)");
+                return [];
+            }
+
+            const data = await res.json();
             return (data.results || []).map(n => ({
                 id: n.id,
                 time: Math.floor(new Date(n.published_at).getTime() / 1000),
@@ -43,23 +41,27 @@ export class NewsService {
      * Get Economic Calendar events (FinancialModelingPrep)
      */
     async fetchEconomicCalendar(startTime, endTime) {
-        if (!this.fmpKey) {
-            return [
-                new EconomicEvent({
-                    timestamp: Math.floor(Date.now() / 1000) + 3600,
-                    type: 'FOMC (Simulated)',
-                    impact: 'HIGH',
-                    asset: 'USD',
-                    bias: 'NEUTRAL',
-                    description: 'Simulated High Impact Event'
-                })
-            ];
-        }
-
         try {
-            const res = await fetch(`${FMP_CALENDAR_URL}?from=${startTime}&to=${endTime}&apikey=${this.fmpKey}`);
-            const data = await res.json();
+            const res = await fetch(`${CALENDAR_PROXY}?from=${startTime}&to=${endTime}`);
 
+            if (!res.ok) {
+                if (res.status === 503) {
+                    // Fallback to simulated event if key is missing
+                    return [
+                        new EconomicEvent({
+                            timestamp: Math.floor(Date.now() / 1000) + 3600,
+                            type: 'FOMC (Simulated)',
+                            impact: 'HIGH',
+                            asset: 'USD',
+                            bias: 'NEUTRAL',
+                            description: 'Simulated High Impact Event'
+                        })
+                    ];
+                }
+                return [];
+            }
+
+            const data = await res.json();
             return data.map(e => new EconomicEvent({
                 timestamp: Math.floor(new Date(e.date).getTime() / 1000),
                 type: e.event,
@@ -69,9 +71,11 @@ export class NewsService {
                 forecast: e.estimate,
                 previous: e.previous,
                 status: e.actual ? 'RELEASED' : 'PENDING',
-                bias: 'NEUTRAL'
+                bias: 'NEUTRAL',
+                volatilityExpected: e.impact.toUpperCase() === 'HIGH' ? 'HIGH' : 'MEDIUM'
             }));
         } catch (e) {
+            console.error("[NEWS] Calendar fetch failed:", e);
             return [];
         }
     }

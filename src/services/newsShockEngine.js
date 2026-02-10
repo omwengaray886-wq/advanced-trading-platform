@@ -21,17 +21,17 @@ class NewsShockEngine {
 
         for (const event of relevant) {
             const phase = event.getPhase();
-            const proximity = event.getProximity(); // in hours
+            const proximity = event.getProximity();
 
-            // Critical window: 30 mins before, 1 hour after
-            if (proximity <= 0.5 && proximity >= -1) {
+            // Critical window: 30 mins before, 1 hour after or imminent
+            if (event.isImminent() || (proximity <= 0.5 && proximity >= -1)) {
                 return {
                     event: event.type,
                     impact: event.impact,
                     phase: phase,
                     proximity: proximity,
-                    severity: proximity <= 0.25 ? 'HIGH' : 'MEDIUM',
-                    message: proximity > 0 ?
+                    severity: (event.isImminent() || proximity <= 0.25) ? 'HIGH' : 'MEDIUM',
+                    message: !event.isReleased() ?
                         `${event.type} in ${Math.round(proximity * 60)} mins` :
                         `${event.type} Released (High Volatility)`
                 };

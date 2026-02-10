@@ -271,11 +271,58 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                             </div>
                         ))}
                     </div>
-                    {marketState.heatmap.walls.length === 0 && (
-                        <p style={{ fontSize: '11px', color: 'var(--color-text-secondary)', margin: 0, fontStyle: 'italic' }}>
-                            Normal liquidity distribution. No major walls detected.
-                        </p>
-                    )}
+                </div>
+            )}
+
+            {/* Macro & Portfolio Intelligence [NEW - Phase 70] */}
+            {(explanation.sections.macroContext || explanation.sections.portfolioImpact || explanation.sections.bayesianNarrative) && (
+                <div style={{
+                    background: 'linear-gradient(135deg, rgba(55, 65, 81, 0.4) 0%, rgba(17, 24, 39, 0.6) 100%)',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--color-accent-secondary)',
+                    position: 'relative',
+                    overflow: 'hidden'
+                }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: 'var(--color-accent-secondary)' }} />
+                    <h3 style={{ fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                        <Shield size={14} color="var(--color-accent-secondary)" />
+                        Institutional Intelligence Hub
+                    </h3>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {explanation.sections.macroContext && (
+                            <div>
+                                <div style={{ fontSize: '9px', fontWeight: 'bold', color: 'var(--color-text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Macro Context</div>
+                                <p style={{ fontSize: '11px', color: 'var(--color-text-primary)', margin: 0, lineHeight: '1.4' }}>
+                                    {explanation.sections.macroContext}
+                                </p>
+                            </div>
+                        )}
+
+                        {explanation.sections.bayesianNarrative && (
+                            <div>
+                                <div style={{ fontSize: '9px', fontWeight: 'bold', color: 'var(--color-text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Strategy Reliability</div>
+                                <p style={{ fontSize: '11px', color: 'var(--color-text-primary)', margin: 0, lineHeight: '1.4' }}>
+                                    {explanation.sections.bayesianNarrative}
+                                </p>
+                            </div>
+                        )}
+
+                        {explanation.sections.portfolioImpact && (
+                            <div style={{
+                                marginTop: '4px',
+                                padding: '8px',
+                                background: 'rgba(0,0,0,0.2)',
+                                borderRadius: '4px'
+                            }}>
+                                <div style={{ fontSize: '9px', fontWeight: 'bold', color: 'var(--color-warning)', marginBottom: '4px', textTransform: 'uppercase' }}>Portfolio Stress Impact</div>
+                                <p style={{ fontSize: '11px', color: 'white', margin: 0, lineHeight: '1.4', fontStyle: 'italic' }}>
+                                    {explanation.sections.portfolioImpact}
+                                </p>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 

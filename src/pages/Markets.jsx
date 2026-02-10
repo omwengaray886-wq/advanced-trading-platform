@@ -554,8 +554,13 @@ export default function Markets() {
         console.log('[Markets.jsx] Source Annotations:', sourceAnnotations.map(a => ({ type: a.type, id: a.id })));
         console.log('[Markets.jsx] Active Setup Annotations:', activeSetup?.annotations?.map(a => ({ type: a.type, id: a.id })));
 
+        // 6. Pass marketState to AnnotationMapper for Phase 2 Visuals (Icebergs, Tape, Risk)
         const overlays = {
-            ...AnnotationMapper.mapToOverlays(sourceAnnotations, { lastCandleTime: lastTime, timeframe }),
+            ...AnnotationMapper.mapToOverlays(sourceAnnotations, {
+                lastCandleTime: lastTime,
+                timeframe,
+                marketState: analysis.marketState // CRITICAL: Pass full market state
+            }),
             liquidityMap: [
                 ...(analysis.liquidityMap || []),
                 ...(indicators.liquidityHeatmap ? getLiquidityHeatmap(chartData) : [])

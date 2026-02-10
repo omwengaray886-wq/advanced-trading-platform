@@ -119,13 +119,18 @@ async function getNewsSentiment(symbol) {
 
         data.articles.forEach(article => {
             const text = (article.title + ' ' + (article.description || '')).toLowerCase();
+            const words = text.split(/\s+/);
 
-            bullishKeywords.forEach(word => {
-                if (text.includes(word)) sentimentScore += 1;
-            });
+            words.forEach((word, i) => {
+                const prevWord = i > 0 ? words[i - 1] : '';
+                const isNegated = ['not', 'no', 'never', 'none', 'neither', 'nor', 'dont', 'without'].includes(prevWord);
 
-            bearishKeywords.forEach(word => {
-                if (text.includes(word)) sentimentScore -= 1;
+                if (bullishKeywords.includes(word)) {
+                    sentimentScore += isNegated ? -1 : 1;
+                }
+                if (bearishKeywords.includes(word)) {
+                    sentimentScore += isNegated ? 1 : -1;
+                }
             });
         });
 

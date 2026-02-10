@@ -25,13 +25,9 @@ export class EconomicEvent {
         return `EVT-${timestamp}-${random}`;
     }
 
-    /**
-     * Get proximity to event in hours
-     * @param {number} currentTime - Current timestamp
-     * @returns {number} - Hours until event
-     */
-    getProximity(currentTime = Date.now()) {
-        return (this.timestamp - currentTime) / (1000 * 60 * 60);
+    getProximity(currentTimeMs = Date.now()) {
+        const eventTimeMs = this.timestamp > 1e11 ? this.timestamp : this.timestamp * 1000;
+        return (eventTimeMs - currentTimeMs) / (1000 * 60 * 60);
     }
 
     /**
@@ -50,6 +46,21 @@ export class EconomicEvent {
     isJustReleased() {
         const proximity = this.getProximity();
         return proximity < 0 && proximity >= -4;
+    }
+
+    /**
+     * Check if event is released
+     */
+    isReleased() {
+        return this.status === 'RELEASED' || this.getProximity() <= 0;
+    }
+
+    /**
+     * Check if event is imminent (within 1 hour)
+     */
+    isImminent() {
+        const proximity = this.getProximity();
+        return proximity > 0 && proximity <= 1;
     }
 
     /**

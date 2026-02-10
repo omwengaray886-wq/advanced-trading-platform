@@ -10,8 +10,18 @@ import { detectSwingPoints, filterSignificantSwings } from '../analysis/swingPoi
 import { detectMarketStructure, detectBOS, detectCHOCH, getCurrentTrend, checkFractalAlignment } from '../analysis/structureDetection.js';
 import { detectMarketRegime } from '../analysis/marketRegime.js';
 import { detectLiquidityPools } from '../analysis/liquidityHunter.js';
+import {
+    calculateOBV,
+    calculateMFI,
+    calculateCMF,
+    calculateAnchoredVWAP,
+    calculateADX,
+    calculateIchimoku,
+    calculateStochastic
+} from '../analysis/indicators.js';
 import { StrategySelector } from '../strategies/StrategySelector.js';
 import { AMDEngine } from './AMDEngine.js';
+import { WyckoffEngine } from './WyckoffEngine.js';
 import { StrategyPerformanceTracker } from './StrategyPerformanceTracker.js';
 import { PatternLearningEngine } from './PatternLearningEngine.js';
 import { ScenarioEngine } from './scenarioEngine.js';
@@ -55,6 +65,8 @@ import { NewsShock } from '../models/annotations/NewsShock.js';
 import { ZoneMapper } from './zoneMapper.js';
 import { ZoneConfidenceScorer } from './zoneConfidenceScorer.js';
 import { newsShockEngine } from './newsShockEngine.js';
+import { TapeReadingEngine } from './TapeReadingEngine.js'; // Phase 2
+import { TradeManagementEngine } from './TradeManagementEngine.js'; // Phase 2
 
 // Phase 51: Persistent Cooldown Tracker
 const _cooldowns = new Map();
@@ -87,16 +99,20 @@ import { liveOrderBookStore } from './LiveOrderBookStore.js';
 
 // Phase 6: Autonomous Alpha Integration
 import { SentimentEngine } from './SentimentEngine.js';
+import { TargetProjection } from '../models/annotations/TargetProjection.js';
 import { DarkPoolEngine } from './DarkPoolEngine.js';
 import { VolatilityEngine } from './VolatilityEngine.js';
 import { OrderBookEngine } from './OrderBookEngine.js';
 import { BasketArbitrageEngine } from './BasketArbitrageEngine.js';
 import { ExecutionEngine } from './ExecutionEngine.js';
 import { AlphaTracker, alphaTracker } from './AlphaTracker.js';
+console.log('AlphaTracker singleton initialized with methods:', Object.getOwnPropertyNames(AlphaTracker.prototype));
 import { AlphaLeakDetector } from './AlphaLeakDetector.js';
 import { FundamentalAnalyzer } from './fundamentalAnalyzer.js';
 import { CorrelationEngine } from './correlationEngine.js';
 import { EdgeScoringEngine } from './edgeScoringEngine.js';
+import { COTDataService } from './COTDataService.js';
+import { CommodityCorrelationEngine } from './CommodityCorrelationEngine.js';
 
 // Logic Integration: Advanced Analysis Engines
 import { CorrelationClusterEngine } from './CorrelationClusterEngine.js';
@@ -260,6 +276,14 @@ export class AnalysisOrchestrator {
                 marketState.liquiditySweep.absorptionNote = orderFlow.absorption.note;
             }
 
+            // Phase 2: Iceberg Detection (DarkPoolEngine Upgrade)
+            const icebergs = DarkPoolEngine.detectIcebergs(candles);
+            marketState.icebergs = icebergs;
+
+            // Phase 2: Tape Reading (Tick Aggressiveness)
+            const tapeAnalysis = TapeReadingEngine.analyzeTape(candles);
+            marketState.tape = tapeAnalysis;
+
             // Push to global annotations for visualization
             if (techDivergences && techDivergences.length > 0) {
                 // Add to baseAnnotations so they appear on chart
@@ -306,14 +330,19 @@ export class AnalysisOrchestrator {
 
             // Step 3.2: Analyze Correlations (Macro Bias)
             let macroCorrelation = { status: 'NEUTRAL', bias: 0 };
+            let eventRisk = { score: 0 };
+
             if (!isLight) {
                 try {
                     macroCorrelation = await this.correlationEngine.getCorrelationBias(symbol, assetClass);
+                    // Phase 2: Event Risk Integration
+                    eventRisk = await this.correlationEngine.analyzeEventRisk(newsService);
                 } catch (corrError) {
                     console.warn(`[Analysis] Correlation Engine failed for ${symbol}:`, corrError.message);
                 }
             }
             marketState.macroCorrelation = macroCorrelation;
+            marketState.eventRisk = eventRisk;
 
             // Phase 3: Correlation Cluster Detection (Institutional Concentrated Risk)
             if (!isLight) {
@@ -502,6 +531,16 @@ export class AnalysisOrchestrator {
             marketState.lastCandle = lastCandle;
             marketState.velocity = this._calculateVelocity(candles, marketState.atr);
 
+            // Phase 80: Professional Indicator Layer (Integrated on Request)
+            marketState.indicators = {
+                obv: calculateOBV(candles),
+                mfi: calculateMFI(candles, 14),
+                cmf: calculateCMF(candles, 20),
+                adx: calculateADX(candles, 14),
+                ichimoku: calculateIchimoku(candles),
+                vwap: calculateAnchoredVWAP(candles, 0) // Session start anchor ideally, defaulting to start
+            };
+
             // Phase 48: Volume Profile Analysis (VPVR)
             try {
                 // Calculate Session Profiles (Day/Session based)
@@ -575,16 +614,40 @@ export class AnalysisOrchestrator {
             const amdCycle = AMDEngine.detectCycle(candles, marketState.session);
             marketState.amdCycle = amdCycle;
 
+            // Step 4.2.1: Wyckoff Phases (Phase 4 - Enhanced Accumulation/Distribution)
+            const wyckoffPhase = WyckoffEngine.detectPhase(candles, marketState);
+            marketState.wyckoffPhase = wyckoffPhase;
+
+            // Step 4.3: Pattern Learning (Fractal Recognition)
+            // Finds similar historical patterns to boost confidence
+            const fractalPatterns = this.learningEngine.findSimilarPatterns(candles);
+            marketState.patterns = fractalPatterns;
+
+            // Step 4.4: Stochastic Oscillator (Phase 4 - Momentum)
+            const stochastic = calculateStochastic(candles, 14, 3);
+            marketState.stochastic = stochastic;
+
             // Adjust fundamental alignment based on news shock (Phase 39)
             if (activeShock && activeShock.severity === 'HIGH') {
                 fundamentals.suitabilityPenalty = 0.4; // 40% reduction for AI setups
             }
 
             // Phase 7: Autonomous Alpha Learning (Reliability & Leaks)
-            const alphaStats = alphaTracker.getReliability();
+            const alphaStats = (typeof alphaTracker.getReliability === 'function')
+                ? alphaTracker.getReliability()
+                : alphaTracker.getAllStats();
             const alphaLeaks = AlphaLeakDetector.detectLeaks(marketState.regime, alphaStats);
             marketState.alphaMetrics = alphaStats;
             marketState.alphaLeaks = alphaLeaks;
+
+            // Phase 5: Cross-Asset & Macro Intelligence
+            // COT (Commitment of Traders) positioning
+            const cotData = COTDataService.getPositioning(symbol, marketState);
+            marketState.cot = cotData;
+
+            // Commodity Correlations
+            const commodityCorr = await CommodityCorrelationEngine.analyze(symbol, candles, marketState);
+            marketState.commodityCorr = commodityCorr;
 
             // Step 5: Select setup candidates (Multi-directional)
             const performanceWeights = await StrategyPerformanceTracker.getAllStrategyWeights(marketState.regime);
@@ -614,6 +677,14 @@ export class AnalysisOrchestrator {
                 const direction = selection.long.includes(c) ? 'LONG' : 'SHORT';
 
                 try {
+                    // Phase 3: Alpha Leak Guard
+                    // If this strategy is leaking alpha in the current regime, skip it
+                    const leak = marketState.alphaLeaks?.find(l => l.engine === c.strategy.name);
+                    if (leak && leak.severity === 'HIGH') {
+                        // console.log(`Skipped ${c.strategy.name} due to High Severity Alpha Leak in ${marketState.regime}`);
+                        return null;
+                    }
+
                     // 1. Generate annotations & extract risk
                     const annotations = c.strategy.generateAnnotations(candles, marketState, direction);
                     const riskParams = this.extractRiskParameters(annotations);
@@ -663,6 +734,14 @@ export class AnalysisOrchestrator {
                     );
 
                     let quantScore = edgeAnalysis.score * 10;
+
+                    // Phase 3: Pattern Verification Boost
+                    if (marketState.patterns && marketState.patterns.prediction === direction) {
+                        // Boost score if historical patterns align with this direction
+                        const boost = marketState.patterns.confidence * 20; // Max +20 points
+                        quantScore += boost;
+                        c.rationale += ` + Fractal Confirmation (${(marketState.patterns.confidence * 100).toFixed(0)}%)`;
+                    }
 
                     // Volatility-Adjusted Targets
                     if (marketState.volatility && riskParams.targets?.length > 0) {
@@ -736,6 +815,7 @@ export class AnalysisOrchestrator {
                         bayesianStats,
                         quantScore: finalQuantScore,
                         suitability: finalSuitability,
+                        timeframe: marketState.timeframe || timeframe, // Ensure timeframe is available for profile optimization
                         fractalHandshake,
                         capitalScore,
                         capitalTag,
@@ -765,6 +845,58 @@ export class AnalysisOrchestrator {
                     id: String.fromCharCode(65 + idx),
                     name: `Setup ${String.fromCharCode(65 + idx)}: ${s.strategy.name}`
                 }));
+
+            // Phase 2 Upgrade: Inject Trade Management & Risk Visuals
+            setups.forEach(s => {
+                // 1. Dynamic Risk Calculation
+                const riskAdvice = TradeManagementEngine.calculateDynamicRisk(
+                    { equity: accountSize, riskPerTrade: 0.01 }, // Default 1% risk
+                    s.entryZone?.optimal,
+                    s.stopLoss,
+                    {
+                        confidence: s.suitability,
+                        volatility: marketState.volatility?.percentile, // Assuming percentile exists or use ATR
+                        eventRisk: marketState.eventRisk
+                    }
+                );
+
+                if (riskAdvice) {
+                    s.riskAdvice = riskAdvice;
+                    if (riskAdvice.warning) s.warnings = [...(s.warnings || []), riskAdvice.warning];
+                }
+
+                // 2. Smart Trailing Stop
+                const trailing = TradeManagementEngine.getTrailingStopAdvice(candles, s.direction, s.stopLoss);
+                s.trailingStop = trailing;
+
+                // 3. Create TargetProjection Annotations for Chart
+                // Stop Loss
+                s.annotations.push(new TargetProjection(
+                    s.stopLoss,
+                    'STOP_LOSS',
+                    {
+                        label: `SL (${trailing ? 'Trailing' : 'Fixed'})`,
+                        color: '#ef4444',
+                        timeframe
+                    }
+                ));
+
+                // Targets
+                if (s.targets && s.targets.length > 0) {
+                    s.targets.forEach((t, i) => {
+                        s.annotations.push(new TargetProjection(
+                            t.price,
+                            `TARGET_${i + 1}`,
+                            {
+                                label: `TP ${i + 1} (${t.riskReward.toFixed(1)}R)`,
+                                color: '#10b981',
+                                probability: t.probability || 0.5,
+                                timeframe
+                            }
+                        ));
+                    });
+                }
+            });
 
             // Phase 40: Optimize for Trader Profile
             this.optimizeForProfile(setups, marketState.profile);
@@ -802,9 +934,8 @@ export class AnalysisOrchestrator {
 
 
             const srLevels = SRDetector.detectLevels(candles, significantSwings);
-            const startTime = (candles && candles.length > 0) ? candles[0].time : Date.now() / 1000 - 86400;
-            const endTime = lastCandle ? lastCandle.time + 86400 : Date.now() / 1000 + 86400;
-            const events = newsService.getEvents(symbol, startTime, endTime);
+            // Use pre-fetched calendarEvents instead of legacy empty getEvents()
+            const events = calendarEvents || [];
 
             // 1. Supply & Demand Zones
             // Using a simplified detection or reusing fvgs as a proxy for supply/demand
@@ -1028,6 +1159,18 @@ export class AnalysisOrchestrator {
                 }));
             }
 
+            // Forex proxies for Binance Spot (as Binance Spot doesn't have direct Forex pairs)
+            const forexBinanceProxies = {
+                'USDJPY': 'USDTJPY',
+                'USDCHF': 'USDCAD', // Use USDCAD as a general USD flow proxy for CHF if missing
+                'USDCAD': 'USDTBRL', // Binance has USDTBRL, proxy for general CAD-like commodity flow
+                'USDTRY': 'USDTTRY',
+                'USDZAR': 'USDTZAR',
+                'USDMXN': 'USDTMXN',
+                'USDBRL': 'USDTBRL',
+                'USDRUB': 'USDTRUB',
+            };
+
             if (marketState.nPOCs) {
                 marketState.nPOCs.forEach(npoc => {
                     baseAnnotations.push(new InstitutionalLevel(
@@ -1065,7 +1208,7 @@ export class AnalysisOrchestrator {
                     return false;
                 }
 
-                const minScore = 30; // Relaxed threshold for broader visibility
+                const minScore = 55; // Increased from 30 for Phase 73 "100% Precision" target
                 if (s.quantScore < minScore) {
                     // console.log(`Dropped ${s.name} due to low conviction (${s.quantScore})`);
                     return false;
@@ -1089,9 +1232,9 @@ export class AnalysisOrchestrator {
                 };
             }));
 
-            // Filter out low-confidence setups (< 40% confidence)
+            // Filter out low-confidence setups (< 55% confidence for Phase 73)
             const preFilterCount = setups.length;
-            setups = setups.filter(s => s.directionalConfidence >= 0.4);
+            setups = setups.filter(s => s.directionalConfidence >= 0.55);
 
             if (setups.length < preFilterCount) {
                 console.log(`[CONFIDENCE GATE] Filtered ${preFilterCount - setups.length} low-confidence setups`);
@@ -1246,10 +1389,8 @@ export class AnalysisOrchestrator {
                         { forecast: shock.forecast, previous: shock.previous }
                     );
 
-                    // Attach to primary setup for visibility in ExplanationPanel
-                    if (setups[0]) {
-                        setups[0].annotations = [...(setups[0].annotations || []), shockAnno];
-                    }
+                    // Add to global annotations for chart visibility
+                    baseAnnotations.push(shockAnno);
                 });
             }
 
@@ -1480,14 +1621,14 @@ export class AnalysisOrchestrator {
             // Swing Logic: Boost HTF alignments, Penalize Scalps
             if (profile === 'SWING') {
                 if (s.strategy === 'SCALPER_ENGINE') s.suitability *= 0.5;
-                if (['Order Block', 'Supply/Demand', 'Smart Money Concepts'].some(n => s.strategy.includes(n))) {
+                if (s.strategy && ['Order Block', 'Supply/Demand', 'Smart Money Concepts'].some(n => s.strategy.includes(n))) {
                     s.suitability *= 1.2;
                 }
             }
             // Scalper Logic: Boost Scalps, Penalize Slow setups
             else if (profile === 'SCALPER') {
                 if (s.strategy === 'SCALPER_ENGINE') s.suitability *= 1.5;
-                if (['4h', '1d', '1w'].includes(s.timeframe.toLowerCase())) s.suitability *= 0.6;
+                if (s.timeframe && ['4h', '1d', '1w'].includes(s.timeframe.toLowerCase())) s.suitability *= 0.6;
             }
         });
 
@@ -1732,6 +1873,7 @@ export class AnalysisOrchestrator {
             '1d': '#FFA500', // Orange
             '1w': '#FF0000'  // Red
         };
+        if (!tf) return '#808080';
         return colors[tf.toLowerCase()] || '#808080';
     }
 
@@ -1840,6 +1982,7 @@ export class AnalysisOrchestrator {
      * Maps the current 'Entry' timeframe to its 'Context' (Truth) timeframe.
      */
     determineContextTimeframes(currentTF) {
+        if (!currentTF) return { profile: 'DAY', contextTF: '4h', entryTF: '1h' };
         const tf = currentTF.toLowerCase();
 
         let profile = 'DAY'; // Default

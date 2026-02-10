@@ -118,7 +118,7 @@ export class AnnotationMapper {
                 'ENTRY_ZONE', 'SUPPLY_DEMAND_ZONE', 'CONSOLIDATION_ZONE',
                 'ORDER_BLOCK', 'FAIR_VALUE_GAP', 'LIQUIDITY_ZONE', 'LIQUIDITY_SWEEP_ZONE',
                 'STRUCTURE_ZONE', 'CONFLUENCE_ZONE', 'PREMIUM_DISCOUNT_ZONE', 'CHOCH_ZONE', 'FVG', 'TRAP_ZONE',
-                'DARK_POOL', 'VOLATILITY_CORRIDOR', 'ORDER_BOOK_WALL'
+                'DARK_POOL', 'VOLATILITY_CORRIDOR', 'ORDER_BOOK_WALL', 'NEWS_IMPACT_ZONE'
             ].includes(anno.type)) {
 
                 const startTime = coords.startTime || coords.time || (lastCandleTime - (interval * 10));
@@ -262,12 +262,12 @@ export class AnnotationMapper {
             else if (anno.type === 'NEWS_SHOCK') {
                 overlays.shocks.push({
                     id: anno.id,
-                    time: coords.time,
+                    time: coords.time || anno.timestamp,
                     impact: anno.impact,
-                    label: `${anno.impact} IMPACT: ${anno.title}`,
+                    label: `${anno.impact} IMPACT: ${anno.eventTitle || anno.title}`,
                     color: anno.impact === 'HIGH' ? '#ef4444' : '#f59e0b',
-                    isImminent: anno.isImminent ? anno.isImminent() : false,
-                    corridor: anno.metadata.corridor
+                    isImminent: (typeof anno.isImminent === 'function') ? anno.isImminent() : false,
+                    corridor: anno.volatilityCorridor || anno.metadata?.corridor
                 });
             }
 
@@ -387,7 +387,90 @@ export class AnnotationMapper {
                     });
                 }
             }
+
+            // 10. Target Projections (SL/TP)
+            else if (anno.type === 'TARGET_PROJECTION') {
+                const label = anno.metadata?.label || (anno.getLabel ? anno.getLabel() : 'Target');
+                const color = anno.metadata?.color || anno.color || '#3b82f6';
+
+                overlays.lines.push({
+                    id: anno.id,
+                    start: { time: lastCandleTime, price: anno.coordinates.price },
+                    end: { time: futureTime, price: anno.coordinates.price },
+                    color: color,
+                    width: 2,
+                    dashed: anno.projectionType === 'STOP_LOSS',
+                    label: label
+                });
+
+                overlays.labels.push({
+                    id: `lbl-${anno.id}`,
+                    x: futureTime,
+                    y: anno.coordinates.price,
+                    text: label,
+                    color: color,
+                    direction: 'left',
+                    style: { left: futureTime, top: anno.coordinates.price }
+                });
+            }
         });
+
+        // 9. Phase 2 Features: Icebergs & Tape (from marketState)
+        if (context.marketState) {
+            // A. Icebergs (Hidden Liquidity)
+            if (context.marketState.icebergs && Array.isArray(context.marketState.icebergs)) {
+                context.marketState.icebergs.forEach((iceberg, idx) => {
+                    // Visual Line
+                    overlays.lines.push({
+                        id: `iceberg-${idx}`,
+                        start: { time: lastCandleTime - (interval * 50), price: iceberg.price },
+                        end: { time: futureTime, price: iceberg.price },
+                        color: '#3b82f6', // Institutional Blue
+                        width: 2,
+                        dashed: true,
+                        opacity: 0.8
+                    });
+
+                    // Label at the end
+                    overlays.labels.push({
+                        id: `lbl-iceberg-${idx}`,
+                        x: futureTime - (interval * 2),
+                        y: iceberg.price,
+                        text: `🧊 ICEBERG (${iceberg.volume})`,
+                        color: '#3b82f6',
+                        direction: 'left',
+                        style: { left: futureTime, top: iceberg.price }
+                    });
+                });
+            }
+
+            // B. Tape Aggressiveness (HUD Label)
+            if (context.marketState.tape && context.marketState.tape.isIgnition) {
+                overlays.labels.push({
+                    id: 'tape-ignition',
+                    x: lastCandleTime,
+                    y: context.marketState.candles ? context.marketState.candles[context.marketState.candles.length - 1].high : 0,
+                    text: '🚀 MOMENTUM IGNITION',
+                    subtext: `Accel: ${context.marketState.tape.acceleration.toFixed(1)}x`,
+                    color: '#f59e0b', // Amber/Orange
+                    direction: 'up'
+                });
+            }
+
+            // C. Event Risk (Macro Shocks)
+            if (context.marketState.eventRisk && context.marketState.eventRisk.closestEvent) {
+                const event = context.marketState.eventRisk.closestEvent;
+                overlays.shocks.push({
+                    id: `event-${event.timestamp}`,
+                    time: event.timestamp / 1000,
+                    impact: event.impact,
+                    label: `📅 ${event.title} (${context.marketState.eventRisk.level})`,
+                    color: event.impact === 'CRITICAL' || context.marketState.eventRisk.score > 75 ? '#ef4444' : '#f59e0b',
+                    isImminent: (event.timestamp - Date.now()) < 3600000, // < 1 hour
+                    corridor: null
+                });
+            }
+        }
 
         return overlays;
     }

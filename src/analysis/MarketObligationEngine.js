@@ -84,7 +84,7 @@ export class MarketObligationEngine {
         const primaryObligation = obligations.length > 0 ? obligations[0] : null;
 
         // Strict Threshold: Market is only "OBLIGATED" if there's a highly compelling target
-        const state = primaryObligation && primaryObligation.urgency > 70 ? 'OBLIGATED' : 'FREE_ROAMING';
+        const state = primaryObligation && primaryObligation.urgency > 80 ? 'OBLIGATED' : 'FREE_ROAMING';
 
         return {
             obligations,
@@ -107,9 +107,21 @@ export class MarketObligationEngine {
         else if (distPercent > 5.0) score -= 20;  // Too far
 
         // 2. Engineering (Equal Highs/Lows are engineered inducements)
-        // HUGE WEIGHT: These are institutional traps
+        // CRITICAL WEIGHT: These are primary institutional targets
         if (pool.isEqualHighs || pool.isEqualLows) {
-            score += 35;
+            score += 45; // Boosted from 35 for Phase 73
+        }
+
+        // 2.2 Symmetry Detection (Phase 73 Upgrade)
+        // If a sweep has occurred on the opposite side, this side becomes a magnetized target.
+        const lastSweep = marketState.liquiditySweep;
+        if (lastSweep) {
+            const isOppositeSide = (lastSweep.side === 'ABOVE' && pool.type === 'SELL_SIDE') ||
+                (lastSweep.side === 'BELOW' && pool.type === 'BUY_SIDE');
+            if (isOppositeSide) {
+                // If top was swept, bottom is a 'Market Obligation' to maintain symmetry
+                score += 30;
+            }
         }
 
         // 2.5 Time Pressure (Aging)

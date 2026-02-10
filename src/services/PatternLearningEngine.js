@@ -1,93 +1,121 @@
 /**
  * Pattern Learning Engine
- * Tracks the outcome of technical patterns and adapts detection thresholds
- * based on regime and historical win rate.
+ * 
+ * Uses fractal recognition (k-Nearest Neighbors) to find historical price actions
+ * that resemble the current market structure.
+ * 
+ * If the current setup matches a historical "winning" pattern, confidence is boosted.
  */
-import { db } from '../lib/firebase.js';
-import { collection, addDoc, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
-
 export class PatternLearningEngine {
     constructor() {
-        this.collectionName = 'pattern_outcomes';
-        this.baseThresholds = {
-            ORDER_BLOCK: { volumeRatio: 1.5, bodyPercent: 0.6 },
-            FVG: { minGapSize: 0.001, displacement: 1.2 },
-            BREAKER: { sweepRequirement: true, displacement: 1.5 }
+        this.memorySize = 1000; // Look back limit
+        this.patternLength = 16; // Number of candles to match
+    }
+
+    /**
+     * Find similar historical patterns
+     * @param {Array} candles - Full history
+     * @returns {Object} Match stats
+     */
+    findSimilarPatterns(candles) {
+        if (candles.length < this.memorySize) return null;
+
+        const currentPattern = this._normalize(candles.slice(-this.patternLength));
+        const history = candles.slice(0, candles.length - this.patternLength); // Exclude current
+
+        let matches = [];
+
+        // Sliding window search
+        // We skip every 4 candles for speed (stride)
+        for (let i = 0; i < history.length - this.patternLength; i += 4) {
+            const candidate = this._normalize(history.slice(i, i + this.patternLength));
+            const similarity = this._correlation(currentPattern, candidate);
+
+            if (similarity > 0.85) { // High correlation threshold
+                matches.push({
+                    index: i,
+                    similarity,
+                    outcome: this._assessOutcome(history, i + this.patternLength)
+                });
+            }
+        }
+
+        if (matches.length === 0) return null;
+
+        // Aggregate results
+        const bullishOutcomes = matches.filter(m => m.outcome > 0).length;
+        const bearishOutcomes = matches.filter(m => m.outcome < 0).length;
+        const total = matches.length;
+
+        // Determine predictive bias
+        let prediction = 'NEUTRAL';
+        let confidence = 0;
+
+        if (bullishOutcomes / total > 0.65) {
+            prediction = 'BULLISH';
+            confidence = bullishOutcomes / total;
+        } else if (bearishOutcomes / total > 0.65) {
+            prediction = 'BEARISH';
+            confidence = bearishOutcomes / total;
+        }
+
+        return {
+            matchCount: total,
+            prediction,
+            confidence,
+            bestMatch: matches.sort((a, b) => b.similarity - a.similarity)[0]
         };
     }
 
     /**
-     * Track a pattern outcome
+     * Normalize geometric pattern to 0-1 scale (or % change)
+     * so that absolute price doesn't matter, only shape.
      */
-    async trackOutcome(patternId, type, result, metadata = {}) {
-        try {
-            await addDoc(collection(db, this.collectionName), {
-                patternId,
-                type,
-                result, // 'WIN', 'LOSS', 'INVALIDATED'
-                timestamp: Date.now(),
-                regime: metadata.regime || 'UNKNOWN',
-                symbol: metadata.symbol,
-                timeframe: metadata.timeframe,
-                context: metadata.context || {}
-            });
-        } catch (error) {
-            console.error('[LearningEngine] Failed to track outcome:', error);
-        }
+    _normalize(segment) {
+        const min = Math.min(...segment.map(c => c.low));
+        const max = Math.max(...segment.map(c => c.high));
+        const range = max - min || 1;
+
+        return segment.map(c => (c.close - min) / range);
     }
 
     /**
-     * Calculate adaptive thresholds based on historical performance
+     * Pearson correlation coefficient (simplified)
      */
-    async getAdaptiveThresholds(type, regime, timeframe) {
-        try {
-            const q = query(
-                collection(db, this.collectionName),
-                where('type', '==', type),
-                where('regime', '==', regime),
-                where('timeframe', '==', timeframe),
-                orderBy('timestamp', 'desc'),
-                limit(50)
-            );
+    _correlation(a, b) {
+        const n = a.length;
+        let sum1 = 0, sum2 = 0, sum1Sq = 0, sum2Sq = 0, pSum = 0;
 
-            const snapshot = await getDocs(q);
-            const outcomes = snapshot.docs.map(doc => doc.data());
-
-            if (outcomes.length < 10) return this.baseThresholds[type] || {};
-
-            const winRate = outcomes.filter(o => o.result === 'WIN').length / outcomes.length;
-
-            // Adjust thresholds based on win rate
-            // If win rate is low, tighten thresholds (require higher quality)
-            // If win rate is high, we can be slightly more permissive
-            const adjustment = winRate < 0.4 ? 1.2 : winRate > 0.6 ? 0.9 : 1.0;
-
-            const base = this.baseThresholds[type] || {};
-            const adaptive = {};
-
-            Object.keys(base).forEach(key => {
-                if (typeof base[key] === 'number') {
-                    adaptive[key] = base[key] * adjustment;
-                } else {
-                    adaptive[key] = base[key];
-                }
-            });
-
-            return adaptive;
-        } catch (error) {
-            console.warn(`[LearningEngine] Error calculating adaptive thresholds for ${type}:`, error);
-            return this.baseThresholds[type] || {};
+        for (let i = 0; i < n; i++) {
+            sum1 += a[i];
+            sum2 += b[i];
+            sum1Sq += a[i] * a[i];
+            sum2Sq += b[i] * b[i];
+            pSum += a[i] * b[i];
         }
+
+        const num = pSum - (sum1 * sum2 / n);
+        const den = Math.sqrt((sum1Sq - sum1 * sum1 / n) * (sum2Sq - sum2 * sum2 / n));
+
+        if (den === 0) return 0;
+        return num / den;
     }
 
     /**
-     * Static helper for quick assessment without historical DB call
+     * Check what happened AFTER the pattern
+     * Returns +1 for bullish move, -1 for bearish, 0 for chop
      */
-    static getVolatilityAdjustedThreshold(baseValue, volatility) {
-        // Higher volatility requires stricter thresholds to avoid noise
-        const volMultiplier = 1 + (volatility * 2);
-        return baseValue * volMultiplier;
+    _assessOutcome(FullHistory, endIndex) {
+        // Look ahead 10 candles
+        if (endIndex + 10 >= FullHistory.length) return 0;
+
+        const startPrice = FullHistory[endIndex].close;
+        const future = FullHistory.slice(endIndex + 1, endIndex + 10);
+        const maxHigh = Math.max(...future.map(c => c.high));
+        const minLow = Math.min(...future.map(c => c.low));
+
+        if (maxHigh > startPrice * 1.01) return 1; // 1% gain
+        if (minLow < startPrice * 0.99) return -1; // 1% loss
+        return 0;
     }
 }
-
-export const patternLearningEngine = new PatternLearningEngine();

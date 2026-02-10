@@ -36,7 +36,10 @@ export class Explanation {
             invalidationConditions: '',
             alternativeScenarios: '',
             fundamentals: '',
-            institutionalFactors: ''
+            institutionalFactors: '',
+            macroContext: '',
+            portfolioImpact: '',
+            bayesianNarrative: ''
         };
     }
 

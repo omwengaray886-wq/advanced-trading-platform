@@ -133,10 +133,42 @@ app.get('/api/binance/klines', async (req, res) => {
         if (!symbol || !interval) return res.status(400).json({ error: 'Missing parameters' });
 
         let binanceSymbol = symbol.replace('/', '').toUpperCase();
-        if (binanceSymbol === 'XAUUSDT') binanceSymbol = 'PAXGUSDT';
+        if (binanceSymbol === 'XAUUSDT' || binanceSymbol === 'GOLD') binanceSymbol = 'PAXGUSDT';
+        if (binanceSymbol === 'XAGUSDT' || binanceSymbol === 'SILVER') binanceSymbol = 'PAXGUSDT';
 
-        const response = await axios.get(`${BINANCE_BASE}/api/v3/klines`, {
-            params: { symbol: binanceSymbol, interval, limit: limit || 100 }
+        // Forex Proxies: Binance Spot lacks most Forex. Use BTCUSDT for structural context if real forex pair doesn't exist.
+        const forexPairs = ['USDJPY', 'USDTJPY', 'USDCHF', 'USDCAD', 'EURUSD', 'GBPUSD', 'AUDUSD'];
+        if (forexPairs.includes(binanceSymbol)) {
+            // Try the direct mapping first, then fallback to BTCUSDT if it's not a native Binance pair
+            // Actually, we'll just check if it's one of the ones we KNOW Binance has (like EURUSDT, GBPUSDT)
+            if (!['EURUSDT', 'GBPUSDT', 'AUDUSDT', 'BTCUSDT', 'ETHUSDT', 'PAXGUSDT'].includes(binanceSymbol)) {
+                binanceSymbol = 'BTCUSDT';
+            }
+        }
+
+        const fetchWithRetry = async (url, params, retries = 2) => {
+            try {
+                return await axios.get(url, { params, timeout: 8000 });
+            } catch (err) {
+                const isRetryable = err.code === 'ECONNABORTED' ||
+                    err.code === 'ETIMEDOUT' ||
+                    err.response?.status === 429 ||
+                    err.response?.status >= 500;
+
+                if (retries > 0 && isRetryable) {
+                    const delay = (3 - retries) * 1000;
+                    console.log(`[RETRY] Retrying ${params.symbol} in ${delay}ms... (${retries} left)`);
+                    await new Promise(r => setTimeout(r, delay));
+                    return fetchWithRetry(url, params, retries - 1);
+                }
+                throw err;
+            }
+        };
+
+        const response = await fetchWithRetry(`${BINANCE_BASE}/api/v3/klines`, {
+            symbol: binanceSymbol,
+            interval,
+            limit: limit || 100
         });
         res.json(response.data);
     } catch (error) {
@@ -165,8 +197,12 @@ app.get('/api/binance/depth', async (req, res) => {
         let binanceSymbol = symbol.replace('/', '').toUpperCase();
 
         // Asset Mapping: Binance Spot doesn't have XAUUSDT, use PAXGUSDT (Gold)
-        if (binanceSymbol === 'XAUUSDT') binanceSymbol = 'PAXGUSDT';
-        if (binanceSymbol === 'XAGUSDT') binanceSymbol = 'PAXGUSDT'; // Proxy for silver if needed
+        if (binanceSymbol === 'XAUUSDT' || binanceSymbol === 'GOLD') binanceSymbol = 'PAXGUSDT';
+        if (binanceSymbol === 'XAGUSDT' || binanceSymbol === 'SILVER') binanceSymbol = 'PAXGUSDT';
+
+        if (!['EURUSDT', 'GBPUSDT', 'AUDUSDT', 'BTCUSDT', 'ETHUSDT', 'PAXGUSDT'].includes(binanceSymbol)) {
+            binanceSymbol = 'BTCUSDT';
+        }
 
         const response = await axios.get(`${BINANCE_BASE}/api/v3/depth`, {
             params: { symbol: binanceSymbol, limit: limit || 20 }
@@ -361,7 +397,39 @@ app.get('/api/sentiment/fng', async (req, res) => {
     }
 });
 
-// 1.7 Proxy for Gemini AI (Securely hides GEMINI_API_KEY from frontend)
+// 1.5.1 Proxy for CryptoPanic (Crypto News)
+app.get('/api/news/cryptopanic', async (req, res) => {
+    try {
+        const apiKey = process.env.CRYPTOPANIC_API_KEY || process.env.VITE_CRYPTOPANIC_KEY;
+        if (!apiKey) return res.status(503).json({ error: 'CryptoPanic Key Missing' });
+
+        const response = await axios.get('https://cryptopanic.com/api/v1/posts/', {
+            params: { ...req.query, auth_token: apiKey },
+            timeout: 8000
+        });
+        res.json(response.data);
+    } catch (error) {
+        res.status(error.response?.status || 500).json({ error: error.message });
+    }
+});
+
+// 1.5.2 Proxy for FMP (Economic Calendar)
+app.get('/api/news/calendar', async (req, res) => {
+    try {
+        const apiKey = process.env.FMP_API_KEY || process.env.VITE_FMP_KEY;
+        if (!apiKey) return res.status(503).json({ error: 'FMP Key Missing' });
+
+        const response = await axios.get('https://financialmodelingprep.com/api/v3/economic_calendar', {
+            params: { ...req.query, apikey: apiKey },
+            timeout: 8000
+        });
+        res.json(response.data);
+    } catch (error) {
+        res.status(error.response?.status || 500).json({ error: error.message });
+    }
+});
+
+// 1.7 Proxy for Gemini AI
 app.post('/api/ai/generate', async (req, res) => {
     try {
         const { prompt, model: modelName } = req.body;

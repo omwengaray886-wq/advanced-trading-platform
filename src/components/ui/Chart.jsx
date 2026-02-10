@@ -651,6 +651,55 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                     </React.Fragment>
                 ))}
 
+                {/* Scenario Path Projections (Phase 12 Restoration) */}
+                <svg
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        zIndex: 1,
+                        pointerEvents: 'none',
+                        overflow: 'visible'
+                    }}
+                >
+                    {overlayItems.paths.map((path, pIdx) => (
+                        <g key={path.id || pIdx}>
+                            {path.mappedPoints.map((pt, i) => {
+                                if (i === 0) return null;
+                                const prev = path.mappedPoints[i - 1];
+                                const isLong = path.direction === 'LONG';
+                                const color = isLong ? '#10b981' : (path.direction === 'SHORT' ? '#ef4444' : '#64748b');
+
+                                return (
+                                    <line
+                                        key={`${pIdx}-${i}`}
+                                        x1={prev.x}
+                                        y1={prev.y}
+                                        x2={pt.x}
+                                        y2={pt.y}
+                                        stroke={color}
+                                        strokeWidth="2"
+                                        strokeDasharray={path.style === 'DASHED' ? '5,5' : 'none'}
+                                        opacity={0.6}
+                                    />
+                                );
+                            })}
+                            {/* Path Entry/Target Dots */}
+                            {path.mappedPoints.map((pt, i) => (
+                                <circle
+                                    key={`dot-${pIdx}-${i}`}
+                                    cx={pt.x}
+                                    cy={pt.y}
+                                    r="3"
+                                    fill={path.direction === 'LONG' ? '#10b981' : (path.direction === 'SHORT' ? '#ef4444' : '#64748b')}
+                                />
+                            ))}
+                        </g>
+                    ))}
+                </svg>
+
                 {/* Institutional Liquidity Heatmap (Phase 59) */}
                 <div style={{
                     position: 'absolute',

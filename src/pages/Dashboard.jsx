@@ -120,9 +120,10 @@ export default function Dashboard() {
 
     // UseToast moved to top
 
-    const mapAnnotationsToOverlays = (annotations, liquidityMap = []) => {
+    const mapAnnotationsToOverlays = (annotations, liquidityMap = [], marketState = null) => {
         const lastCandleTime = chartData && chartData.length > 0 ? chartData[chartData.length - 1].time : Date.now() / 1000;
-        const overlays = AnnotationMapper.mapToOverlays(annotations, { lastCandleTime, timeframe: '1h' });
+        // Pass marketState in context
+        const overlays = AnnotationMapper.mapToOverlays(annotations, { lastCandleTime, timeframe: '1h', marketState });
 
         return {
             ...overlays,
@@ -158,7 +159,7 @@ export default function Dashboard() {
                     });
 
                     if (partial.annotations) {
-                        const visualOverlays = mapAnnotationsToOverlays(partial.annotations, partial.liquidityMap);
+                        const visualOverlays = mapAnnotationsToOverlays(partial.annotations, partial.liquidityMap, partial.marketState);
                         setOverlays(visualOverlays);
                     }
 
@@ -184,7 +185,7 @@ export default function Dashboard() {
             });
 
             if (newSetup.annotations) {
-                const visualOverlays = mapAnnotationsToOverlays(newSetup.annotations, newSetup.liquidityMap);
+                const visualOverlays = mapAnnotationsToOverlays(newSetup.annotations, newSetup.liquidityMap, newSetup.marketState);
                 setOverlays(visualOverlays);
             }
 
@@ -368,7 +369,7 @@ export default function Dashboard() {
                         <div key={setup.id} onClick={() => {
                             // On click, allow visualizing this setup's annotations if available
                             if (setup.annotations) {
-                                setOverlays(mapAnnotationsToOverlays(setup.annotations));
+                                setOverlays(mapAnnotationsToOverlays(setup.annotations, setup.liquidityMap, setup.marketState));
                             }
                         }} style={{ cursor: 'pointer' }}>
                             <TradeSetupCard setup={setup} />

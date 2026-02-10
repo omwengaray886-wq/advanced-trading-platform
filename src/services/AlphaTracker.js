@@ -1,105 +1,115 @@
 /**
- * Alpha Tracker (Phase 8)
+ * Alpha Tracker
  * 
- * Quantifies the performance of each analytical engine by correlating 
- * signal presence with trade outcomes.
+ * Monitors the real-time performance of strategies and engines.
+ * Logs trade outcomes (simulated or real) to calculate Win Rate, EV, and Reliability.
+ * Feeding this data into AlphaLeakDetector allows the system to self-heal.
  */
 export class AlphaTracker {
     constructor() {
-        this.history = []; // Array of attributed trade results
-    }
-
-    trackHistory(attribution) {
-        if (!attribution) return;
-        this.history.push(attribution);
-        if (this.history.length > 100) this.history.shift(); // Keep last 100 attribution points
-    }
-
-    getReliability() {
-        return AlphaTracker.calculateReliability(this.history);
+        // In-memory log for the session. 
+        // In production, this would sync with a database (Firestore/Postgres).
+        this.tradeLog = [];
+        this.engineStats = {};
     }
 
     /**
-     * Attribute a trade result to active analytical engines
-     * @param {Object} trade - { symbol, strategy, result (PnL), marketState }
+     * Log a trade outcome
+     * @param {string} date - ISO timestamp
+     * @param {string} strategyId - e.g., 'FVG_Reversal' or 'OrderBlock'
+     * @param {string} result - 'WIN', 'LOSS', 'BE'
+     * @param {number} rMultiple - Realized R-Multiple (e.g., +2.5 or -1.0)
+     * @param {Object} context - Market regime data (e.g., 'TRENDING', 'CHOPPY')
      */
-    static attributeTrade(trade) {
-        if (!trade.marketState) return null;
-
-        const ms = trade.marketState;
-        const attribution = {
-            id: Date.now(),
-            symbol: trade.symbol,
-            pnl: trade.pnl,
-            outcome: trade.pnl > 0 ? 'WIN' : 'LOSS',
-            activeEngines: []
+    logTrade(date, strategyId, result, rMultiple, context = {}) {
+        const trade = {
+            id: Date.now().toString(),
+            date,
+            strategyId,
+            result,
+            rMultiple,
+            context
         };
 
-        // 1. Tag Classic Context Engines
-        if (ms.macroSentiment?.bias) attribution.activeEngines.push('SENTIMENT');
-        if (ms.darkPools?.length > 0) attribution.activeEngines.push('DARK_POOL');
-        if (ms.orderBookDepth?.pressure !== 'NEUTRAL') attribution.activeEngines.push('ORDER_BOOK');
-        if (ms.volatility?.regime) attribution.activeEngines.push('VOLATILITY');
-        if (ms.smtDivergence) attribution.activeEngines.push('SMT');
-        if (ms.relevantGap) attribution.activeEngines.push('FVG');
-        if (ms.liquiditySweep) attribution.activeEngines.push('LIQUIDITY_SWEEP');
+        this.tradeLog.push(trade);
+        this._updateStats(strategyId, trade);
 
-        // 2. Tag Phase 7 Institutional & Scalping Engines
-        if (ms.obligations?.primaryObligation) attribution.activeEngines.push('MARKET_OBLIGATION');
-        if (ms.amdCycle?.phase) attribution.activeEngines.push('AMD_CYCLE');
-        if (ms.roadmap?.scenarios?.length > 0) attribution.activeEngines.push('PATH_PROJECTION');
-        if (ms.basketArbitrage?.divergence !== 0) attribution.activeEngines.push('BASKET_ARBITRAGE');
-        if (ms.domStats?.isLive && ms.orderBookDepth?.imbalance !== 0) attribution.activeEngines.push('LIVE_DOM');
-        if (ms.clusters?.length > 0) attribution.activeEngines.push('CORRELATION_CLUSTER');
-
-        return attribution;
+        return trade;
     }
 
     /**
-     * Calculate Reliability Scores for all engines
-     * @param {Array} attributedHistory - List of results from attributeTrade
-     * @returns {Object} { engineId: { winRate, impactScore, sampleSize } }
+     * Get performance stats for a specific strategy/engine
+     * @param {string} strategyId 
      */
-    static calculateReliability(attributedHistory) {
-        if (!attributedHistory || attributedHistory.length === 0) return {};
+    getStats(strategyId) {
+        return this.engineStats[strategyId] || {
+            wins: 0,
+            losses: 0,
+            winRate: 0,
+            ev: 0,
+            streak: 0,
+            status: 'NEW' // NEW, PERFORMING, DEGRADING, FAILED
+        };
+    }
 
-        const stats = {};
-        const engines = [
-            'SENTIMENT', 'DARK_POOL', 'ORDER_BOOK', 'VOLATILITY',
-            'SMT', 'FVG', 'LIQUIDITY_SWEEP',
-            'MARKET_OBLIGATION', 'AMD_CYCLE', 'PATH_PROJECTION',
-            'BASKET_ARBITRAGE', 'LIVE_DOM', 'CORRELATION_CLUSTER'
-        ];
+    /**
+     * Get all stats (Alias for orchestrator compatibility)
+     */
+    getReliability() {
+        return this.engineStats;
+    }
 
-        engines.forEach(engine => {
-            const engineTrades = attributedHistory.filter(t => t.activeEngines.includes(engine));
-            if (engineTrades.length === 0) return;
+    /**
+     * Get all stats
+     */
+    getAllStats() {
+        return this.engineStats;
+    }
 
-            const wins = engineTrades.filter(t => t.outcome === 'WIN').length;
-            const winRate = wins / engineTrades.length;
-
-            // Impact Score = WinRate * log10(SampleSize + 1) - normalized
-            const impactScore = winRate * (1 + Math.log10(engineTrades.length));
-
-            stats[engine] = {
-                winRate: parseFloat((winRate * 100).toFixed(1)),
-                sampleSize: engineTrades.length,
-                impactScore: parseFloat(impactScore.toFixed(2)),
-                status: winRate >= 0.7 ? 'INSTITUTIONAL' : winRate > 0.55 ? 'HIGH_ALPHA' : winRate > 0.4 ? 'STABLE' : 'DEGRADING'
+    /**
+     * Update running statistics for an engine
+     */
+    _updateStats(id, trade) {
+        if (!this.engineStats[id]) {
+            this.engineStats[id] = {
+                totalTrades: 0,
+                wins: 0,
+                losses: 0,
+                winRate: 0,
+                totalR: 0,
+                ev: 0,
+                streak: 0,
+                status: 'NEW'
             };
-        });
+        }
 
-        return stats;
-    }
+        const stats = this.engineStats[id];
+        stats.totalTrades++;
+        stats.totalR += trade.rMultiple;
 
-    /**
-     * Identify "Alpha Decay" in specific engines
-     */
-    static detectDecay(stats) {
-        return Object.entries(stats)
-            .filter(([_, data]) => data.status === 'DEGRADING' && data.sampleSize > 5)
-            .map(([engine]) => engine);
+        if (trade.result === 'WIN') {
+            stats.wins++;
+            stats.streak = stats.streak > 0 ? stats.streak + 1 : 1;
+        } else if (trade.result === 'LOSS') {
+            stats.losses++;
+            stats.streak = stats.streak < 0 ? stats.streak - 1 : -1;
+        }
+
+        stats.winRate = stats.wins / stats.totalTrades;
+        stats.ev = stats.totalR / stats.totalTrades;
+
+        // Determine Status based on recent performance
+        if (stats.totalTrades > 5) {
+            if (stats.streak <= -3 || stats.winRate < 0.3) {
+                stats.status = 'DEGRADING';
+            } else if (stats.winRate > 0.5 && stats.ev > 0.5) {
+                stats.status = 'PERFORMING';
+            } else {
+                stats.status = 'STABLE';
+            }
+        }
     }
 }
 
+// Singleton instance
 export const alphaTracker = new AlphaTracker();

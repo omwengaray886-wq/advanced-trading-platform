@@ -8,6 +8,9 @@
 import { db } from '../lib/firebase.js';
 import { collection, doc, setDoc, query, where, getDocs, updateDoc, limit, orderBy } from 'firebase/firestore';
 
+const statsCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 export class PredictionTracker {
     /**
      * Track a new prediction
@@ -112,6 +115,12 @@ export class PredictionTracker {
      * Get performance stats for a symbol
      */
     static async getStats(symbol) {
+        // Phase 55: Robustness - Use caching to prevent Firestore rate limiting and analysis lag
+        const cached = statsCache.get(symbol);
+        if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+            return cached.data;
+        }
+
         try {
             const q = query(
                 collection(db, 'predictionHistory'),
@@ -154,7 +163,7 @@ export class PredictionTracker {
                 };
             });
 
-            return {
+            const stats = {
                 accuracy: Math.round(accuracy),
                 total: completed.length,
                 hits,
@@ -164,6 +173,9 @@ export class PredictionTracker {
                 strategyPerformance, // NEW: Granular stats for Bayesian Engine
                 recentHistory: trades.slice(0, 20) // For the "Audit Receipt" table
             };
+
+            statsCache.set(symbol, { data: stats, timestamp: Date.now() });
+            return stats;
         } catch (e) {
             console.error('[PredictionTracker] Error getting stats:', e);
             return null;
