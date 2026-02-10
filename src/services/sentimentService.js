@@ -92,7 +92,7 @@ export async function analyzeSentiment(symbol) {
 async function getNewsSentiment(symbol) {
     try {
         const query = encodeURIComponent(`${symbol} cryptocurrency OR ${symbol} forex`);
-        const url = `/api/news/everything?q=${query}&sortBy=publishedAt&language=en&pageSize=20`;
+        const url = `/api/news/v2/everything?q=${query}&sortBy=publishedAt&language=en&pageSize=20`;
 
         const response = await fetch(url, {
             headers: { 'Accept': 'application/json' }

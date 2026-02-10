@@ -1498,19 +1498,25 @@ export class AnalysisOrchestrator {
             // SKIPPED in Light Mode (Firebase Query)
             if (!isLight) {
                 try {
-                    const statsTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Stats fetch timed out')), 1000));
+                    PredictionTracker.warmCache(symbol);
+                    // timeout to avoid analysis lag
+                    const statsTimeout = new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Bayesian stats fetch timed out')), 2500)
+                    );
                     const stats = await Promise.race([
                         PredictionTracker.getStats(symbol),
                         statsTimeout
                     ]);
 
-                    if (stats && stats.last10?.[0] === 'FAIL' && stats.last10?.[1] === 'FAIL') {
-                        _cooldowns.set(symbol, {
-                            expiresAt: Date.now() + 4 * 60 * 60 * 1000, // 4h cooldown
-                            reason: 'Recent double invalidation'
-                        });
+                    if (stats) {
+                        metrics.bayesian = {
+                            accuracy: stats.accuracy,
+                            total: stats.total,
+                            credibility: this._calculateCredibility(stats)
+                        };
                     }
-                } catch (e) {
+                }
+                catch (e) {
                     // console.warn('[Analysis] Cooldown check skipped');
                 }
             }
@@ -1621,14 +1627,14 @@ export class AnalysisOrchestrator {
             // Swing Logic: Boost HTF alignments, Penalize Scalps
             if (profile === 'SWING') {
                 if (s.strategy === 'SCALPER_ENGINE') s.suitability *= 0.5;
-                if (s.strategy && ['Order Block', 'Supply/Demand', 'Smart Money Concepts'].some(n => s.strategy.includes(n))) {
+                if (typeof s.strategy === 'string' && ['Order Block', 'Supply/Demand', 'Smart Money Concepts'].some(n => s.strategy.includes(n))) {
                     s.suitability *= 1.2;
                 }
             }
             // Scalper Logic: Boost Scalps, Penalize Slow setups
             else if (profile === 'SCALPER') {
                 if (s.strategy === 'SCALPER_ENGINE') s.suitability *= 1.5;
-                if (s.timeframe && ['4h', '1d', '1w'].includes(s.timeframe.toLowerCase())) s.suitability *= 0.6;
+                if (typeof s.timeframe === 'string' && ['4h', '1d', '1w'].includes(s.timeframe.toLowerCase())) s.suitability *= 0.6;
             }
         });
 

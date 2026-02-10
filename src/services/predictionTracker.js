@@ -181,4 +181,13 @@ export class PredictionTracker {
             return null;
         }
     }
+
+    /**
+     * Warm the cache for a symbol (Phase 74)
+     */
+    static async warmCache(symbol) {
+        if (!symbol || statsCache.has(symbol)) return;
+        console.log(`[PredictionTracker] Warming cache for ${symbol}...`);
+        this.getStats(symbol).catch(() => { }); // Fire and forget
+    }
 }

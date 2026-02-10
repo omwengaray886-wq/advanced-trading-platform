@@ -292,8 +292,8 @@ app.use('/api/coingecko', async (req, res) => {
 
 
 // 1.3 Proxy for NewsAPI
-app.use('/api/news', async (req, res) => {
-    const cacheKey = `news_${JSON.stringify(req.query)}`;
+app.use('/api/news/v2', async (req, res) => {
+    const cacheKey = `news_v2_${JSON.stringify(req.query)}`;
     const cached = cache.coingecko.get(cacheKey); // Reuse coingecko map for generic caching
 
     if (cached && (Date.now() - cached.timestamp < 1800000)) { // 30m TTL for news (increased from 15m)
@@ -443,9 +443,22 @@ app.post('/api/ai/generate', async (req, res) => {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: modelName || 'gemini-flash-latest' });
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
+        const fetchWithRetry = async (retries = 1) => {
+            try {
+                const result = await model.generateContent(prompt);
+                const response = await result.response;
+                return response.text();
+            } catch (err) {
+                if (retries > 0 && (err.message?.includes('500') || err.message?.includes('overloaded'))) {
+                    console.log(`[AI RETRY] Gemini overloaded, retrying...`);
+                    await new Promise(r => setTimeout(r, 1000));
+                    return fetchWithRetry(retries - 1);
+                }
+                throw err;
+            }
+        };
+
+        const text = await fetchWithRetry();
 
         if (!text) {
             throw new Error('Empty response from Gemini');
