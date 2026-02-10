@@ -28,7 +28,8 @@ export class DirectionalConfidenceGate {
             breakoutAuthenticity: this.checkBreakoutQuality(setup, candles, marketState),
             priceActionConsistency: this.checkPriceAction(setup.direction, candles),
             marketObligation: this.checkMarketObligation(setup.direction, marketState),
-            marketCycle: this.checkAMDCycle(setup.direction, marketState)
+            marketCycle: this.checkAMDCycle(setup.direction, marketState),
+            momentumAlignment: this.checkMomentumAlignment(setup.direction, marketState)
         };
 
         // Calculate weighted confidence (Phase 73 Upgrade)
@@ -38,8 +39,9 @@ export class DirectionalConfidenceGate {
             liquiditySweepClear: 0.15,
             breakoutAuthenticity: 0.05,    // Decreased from 0.10
             priceActionConsistency: 0.05,
-            marketObligation: 0.20,
-            marketCycle: 0.05              // Decreased from 0.10
+            marketObligation: 0.15,        // Decreased from 0.20
+            marketCycle: 0.05,
+            momentumAlignment: 0.15       // New factor (Phase 76)
         };
 
         let confidence = 0;
@@ -434,5 +436,46 @@ export class DirectionalConfidenceGate {
         }
 
         return { passed: true, score: 0.5, reason: 'Cycle in transition' };
+    }
+
+    /**
+     * Check if direction is supported by momentum cluster (RSI/Stochastic/MACD)
+     */
+    static checkMomentumAlignment(direction, marketState) {
+        const { indicators, stochastic } = marketState;
+        const normalizedDirection = direction === 'BULLISH' ? 'LONG' : direction === 'BEARISH' ? 'SHORT' : direction;
+
+        let score = 0.5;
+        let reasons = [];
+
+        // 1. Stochastic Check
+        if (stochastic && stochastic.signals) {
+            const signal = stochastic.signals[stochastic.signals.length - 1];
+            if (signal) {
+                const signalDir = (signal.type === 'BULLISH_CROSS' || signal.type === 'OVERSOLD') ? 'LONG' : 'SHORT';
+                if (signalDir === normalizedDirection) score += 0.2;
+                else score -= 0.1;
+                reasons.push(`Stochastic: ${signal.type}`);
+            }
+        }
+
+        // 2. RSI Check
+        const rsi = indicators?.rsi;
+        if (rsi && rsi.length > 0) {
+            const lastRSI = rsi[rsi.length - 1];
+            if (normalizedDirection === 'LONG' && lastRSI < 40) score += 0.1;
+            if (normalizedDirection === 'SHORT' && lastRSI > 60) score += 0.1;
+
+            // Extreme overextension penalty
+            if (normalizedDirection === 'LONG' && lastRSI > 75) score -= 0.3;
+            if (normalizedDirection === 'SHORT' && lastRSI < 25) score -= 0.3;
+        }
+
+        score = Math.max(0, Math.min(1, score));
+        return {
+            passed: score >= 0.5,
+            score,
+            reason: reasons.length > 0 ? `Momentum: ${reasons.join(', ')}` : 'Neutral momentum'
+        };
     }
 }

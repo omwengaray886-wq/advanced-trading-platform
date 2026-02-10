@@ -17,7 +17,9 @@ import {
     calculateAnchoredVWAP,
     calculateADX,
     calculateIchimoku,
-    calculateStochastic
+    calculateStochastic,
+    calculateRSI,
+    calculateMACD
 } from '../analysis/indicators.js';
 import { StrategySelector } from '../strategies/StrategySelector.js';
 import { AMDEngine } from './AMDEngine.js';
@@ -623,9 +625,13 @@ export class AnalysisOrchestrator {
             const fractalPatterns = this.learningEngine.findSimilarPatterns(candles);
             marketState.patterns = fractalPatterns;
 
-            // Step 4.4: Stochastic Oscillator (Phase 4 - Momentum)
+            // Step 4.4: Momentum Cluster Indicators (Phase 76)
             const stochastic = calculateStochastic(candles, 14, 3);
+            const rsi = calculateRSI(candles, 14);
+            const macd = calculateMACD(candles, 12, 26, 9);
+
             marketState.stochastic = stochastic;
+            marketState.indicators = { ...marketState.indicators, rsi, macd };
 
             // Adjust fundamental alignment based on news shock (Phase 39)
             if (activeShock && activeShock.severity === 'HIGH') {
@@ -1501,7 +1507,7 @@ export class AnalysisOrchestrator {
                     PredictionTracker.warmCache(symbol);
                     // timeout to avoid analysis lag
                     const statsTimeout = new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error('Bayesian stats fetch timed out')), 2500)
+                        setTimeout(() => reject(new Error('Bayesian stats fetch timed out')), 5000)
                     );
                     const stats = await Promise.race([
                         PredictionTracker.getStats(symbol),

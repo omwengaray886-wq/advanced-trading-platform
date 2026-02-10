@@ -55,6 +55,10 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
         }
 
         const getSafePoint = (time, price) => {
+            // Safety Check: Ensure inputs are valid
+            if (time === null || time === undefined || isNaN(time) || !isFinite(time)) return { x: null, y: null };
+            if (price === null || price === undefined || isNaN(price) || !isFinite(price)) return { x: null, y: null };
+
             let x = timeScale.timeToCoordinate(time);
             let y = seriesRef.current.priceToCoordinate(price);
 
@@ -81,8 +85,8 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
             if (x1 === null) x1 = zone.x1 < firstCandleTime ? -100 : width + 100;
             if (x2 === null) x2 = zone.x2 > lastCandleTime ? width + 500 : (zone.x1 < firstCandleTime ? -100 : 10000);
 
-            if (y1 === null || isNaN(y1)) y1 = -100;
-            if (y2 === null || isNaN(y2)) y2 = height + 100;
+            if (y1 === null || isNaN(y1) || !isFinite(y1)) y1 = -100;
+            if (y2 === null || isNaN(y2) || !isFinite(y2)) y2 = height + 100;
 
             const left = Math.min(x1, x2);
             const zoneWidth = Math.max(1, Math.abs(x2 - x1));
@@ -118,14 +122,14 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
 
         const newShocks = [];
         (overlays.shocks || []).forEach(shock => {
-            const px = getSafePoint(shock.time, 0).x;
+            const timeCoord = getSafePoint(shock.time, 0).x;
             const corridorX1 = shock.corridor ? getSafePoint(shock.corridor.start, 0).x : null;
             const corridorX2 = shock.corridor ? getSafePoint(shock.corridor.end, 0).x : null;
 
-            if (px !== null && isFinite(px)) {
+            if (timeCoord !== null && isFinite(timeCoord)) {
                 newShocks.push({
                     ...shock,
-                    left: px,
+                    left: timeCoord,
                     corridorStyle: corridorX1 !== null && corridorX2 !== null && isFinite(corridorX1) && isFinite(corridorX2) ? {
                         left: Math.min(corridorX1, corridorX2),
                         width: Math.abs(corridorX2 - corridorX1)
@@ -147,6 +151,7 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
 
         const newLines = [];
         (overlays.lines || []).forEach(line => {
+            if (!line.start || !line.end) return;
             const p1 = getSafePoint(line.start.time, line.start.price);
             const p2 = getSafePoint(line.end.time, line.end.price);
 
@@ -174,7 +179,9 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
 
         const newPaths = [];
         (overlays.paths || []).forEach(path => {
-            const mappedPoints = (path.points || []).map(p => {
+            if (!path.points || !Array.isArray(path.points)) return;
+            const mappedPoints = path.points.map(p => {
+                if (!p) return null;
                 const coord = getSafePoint(p.time, p.price);
                 if (coord.x !== null && coord.y !== null && isFinite(coord.x) && isFinite(coord.y)) {
                     return { x: coord.x, y: coord.y, label: p.label };
@@ -197,6 +204,7 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
             markers: newMarkers,
             paths: newPaths
         });
+
     }, [overlays, data]);
 
     // --- Keyboard Shortcuts ---

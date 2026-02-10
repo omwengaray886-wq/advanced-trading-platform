@@ -17,7 +17,9 @@ export class NewsService {
             const res = await fetch(`${CRYPTOPANIC_PROXY}?currencies=${asset}&kind=news`);
 
             if (!res.ok) {
-                if (res.status === 503) console.warn("[NEWS] CryptoPanic proxy disabled (no key)");
+                if (res.status === 503 || res.status === 429) {
+                    console.warn(`[NEWS] News proxy unavailable (${res.status}). Skipping real news.`);
+                }
                 return [];
             }
 
@@ -45,8 +47,9 @@ export class NewsService {
             const res = await fetch(`${CALENDAR_PROXY}?from=${startTime}&to=${endTime}`);
 
             if (!res.ok) {
-                if (res.status === 503) {
-                    // Fallback to simulated event if key is missing
+                if (res.status === 503 || res.status === 429) {
+                    console.warn(`[NEWS] Calendar proxy unavailable (${res.status}). Using simulated fallback.`);
+                    // Fallback to simulated event if key is missing or throttled
                     return [
                         new EconomicEvent({
                             timestamp: Math.floor(Date.now() / 1000) + 3600,

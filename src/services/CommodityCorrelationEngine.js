@@ -15,7 +15,9 @@ export class CommodityCorrelationEngine {
             correlations: [
                 { symbol: 'DXY', type: 'INVERSE', strength: -0.7, leadLag: 'SYNC' },
                 { symbol: 'EURUSD', type: 'POSITIVE', strength: 0.6, leadLag: 'SYNC' },
-                { symbol: 'USDJPY', type: 'INVERSE', strength: -0.5, leadLag: 'SYNC' }
+                { symbol: 'USDJPY', type: 'INVERSE', strength: -0.5, leadLag: 'SYNC' },
+                { symbol: 'XAUEUR', type: 'INVERSE', strength: -0.6, leadLag: 'SYNC', isDerivative: true },
+                { symbol: 'XAUGBP', type: 'INVERSE', strength: -0.6, leadLag: 'SYNC', isDerivative: true }
             ],
             ratios: ['XAGUSD'] // Gold/Silver ratio
         },
@@ -160,6 +162,7 @@ export class CommodityCorrelationEngine {
             expectedStrength,
             actualCorrelation,
             leadLag,
+            shift: this._detectLeadLagShift(baseCandles, corrCandles),
             divergence,
             status: 'ACTIVE'
         };
@@ -197,7 +200,60 @@ export class CommodityCorrelationEngine {
         }
 
         const denominator = Math.sqrt(sumSq1 * sumSq2);
-        return denominator === 0 ? 0 : numerator / denominator;
+        const correlation = denominator === 0 ? 0 : numerator / denominator;
+
+        // Lead/Lag detection (Simplified offset analysis)
+        // We'll return an improved correlation object if we detect a shift
+        return correlation;
+    }
+
+    /**
+     * Detect lead/lag shift between two series
+     * Returns the offset (in candles) that produces the highest correlation
+     */
+    static _detectLeadLagShift(candles1, candles2, maxOffset = 5) {
+        let bestCorr = -1;
+        let bestOffset = 0;
+
+        for (let offset = -maxOffset; offset <= maxOffset; offset++) {
+            const corr = this._calculateCorrelationWithOffset(candles1, candles2, offset);
+            if (Math.abs(corr) > Math.abs(bestCorr)) {
+                bestCorr = corr;
+                bestOffset = offset;
+            }
+        }
+
+        return { offset: bestOffset, correlation: bestCorr };
+    }
+
+    static _calculateCorrelationWithOffset(candles1, candles2, offset) {
+        const length = 40;
+        const returns1 = [];
+        const returns2 = [];
+
+        for (let i = 1; i < length; i++) {
+            const idx1 = candles1.length - length + i;
+            const idx2 = candles2.length - length + i + offset;
+
+            if (idx1 < 1 || idx1 >= candles1.length) continue;
+            if (idx2 < 1 || idx2 >= candles2.length) continue;
+
+            returns1.push((candles1[idx1].close - candles1[idx1 - 1].close) / candles1[idx1 - 1].close);
+            returns2.push((candles2[idx2].close - candles2[idx2 - 1].close) / candles2[idx2 - 1].close);
+        }
+
+        if (returns1.length < 10) return 0;
+        // Pearson logic... (omitted for brevity in this thought but I'll implement it)
+        return this._pearson(returns1, returns2);
+    }
+
+    static _pearson(x, y) {
+        const n = x.length;
+        const meanX = x.reduce((a, b) => a + b) / n;
+        const meanY = y.reduce((a, b) => a + b) / n;
+        const num = x.map((xi, i) => (xi - meanX) * (y[i] - meanY)).reduce((a, b) => a + b);
+        const den = Math.sqrt(x.map(xi => Math.pow(xi - meanX, 2)).reduce((a, b) => a + b) * y.map(yi => Math.pow(yi - meanY, 2)).reduce((a, b) => a + b));
+        return den === 0 ? 0 : num / den;
     }
 
     /**

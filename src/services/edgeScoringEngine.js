@@ -143,12 +143,15 @@ export class EdgeScoringEngine {
             let isAligned = macroBias === setupDir;
             if (isInverse) isAligned = (macroBias !== setupDir && macroBias !== 'NEUTRAL');
 
+            const isVolatile = marketState.regime === 'VOLATILE';
+            const weightMultiplier = isVolatile ? 2.0 : 1.0;
+
             if (isAligned) {
-                totalPoints += 15;
-                positives.push(`Macro Correlation alignment (${macroAlignment.bias}${isInverse ? ' - Inverse' : ''})`);
+                totalPoints += (15 * weightMultiplier);
+                positives.push(`Macro Correlation alignment (${macroAlignment.bias}${isInverse ? ' - Inverse' : ''})${isVolatile ? ' [CRITICAL IN VOLATILITY]' : ''}`);
             } else {
-                totalPoints -= 15;
-                risks.push(`Macro Conflict: Benchmark is ${macroAlignment.bias}${isInverse ? ' (Inverse)' : ''}`);
+                totalPoints -= (15 * weightMultiplier);
+                risks.push(`Macro Conflict: Benchmark is ${macroAlignment.bias}${isInverse ? ' (Inverse)' : ''}${isVolatile ? ' [HIGH RISK IN VOLATILITY]' : ''}`);
             }
         }
 
@@ -243,7 +246,15 @@ export class EdgeScoringEngine {
             }
         }
 
-        // 11. Crowd Sentiment Alignment
+        // 11. Momentum Cluster Alignment (Layer 4)
+        const momentumPoints = this.calculateMomentumCluster(setup.direction, marketState);
+        if (momentumPoints !== 0) {
+            totalPoints += momentumPoints;
+            if (momentumPoints > 0) positives.push(`Momentum Cluster Alignment (${momentumPoints > 15 ? 'PREMIUM' : 'STRONG'})`);
+            else risks.push(`Momentum Divergence/Overextension (${Math.abs(momentumPoints)}pt penalty)`);
+        }
+
+        // 12. Crowd Sentiment Alignment
         const sentiment = marketState.sentiment || marketState.macroSentiment;
 
         if (sentiment && sentiment.label !== 'NEUTRAL') {
@@ -279,6 +290,56 @@ export class EdgeScoringEngine {
                 risks
             }
         };
+    }
+
+    /**
+     * Calculate Momentum Cluster Score (Aggregate Layer 4 Indicators)
+     * @param {string} direction - LONG | SHORT
+     * @param {Object} marketState - Current market state
+     * @returns {number} Points (-20 to +25)
+     */
+    static calculateMomentumCluster(direction, marketState) {
+        const setupDir = normalizeDirection(direction);
+        let points = 0;
+
+        const { indicators, stochastic, rsi: marketRSI } = marketState;
+
+        // 1. Stochastic Alignment
+        if (stochastic && stochastic.signals) {
+            const lastSignal = stochastic.signals[stochastic.signals.length - 1];
+            if (lastSignal) {
+                if (setupDir === 'BULLISH' && (lastSignal.type === 'BULLISH_CROSS' || lastSignal.type === 'OVERSOLD')) {
+                    points += 10;
+                } else if (setupDir === 'BEARISH' && (lastSignal.type === 'BEARISH_CROSS' || lastSignal.type === 'OVERBOUGHT')) {
+                    points += 10;
+                }
+            }
+        }
+
+        // 2. RSI Alignment
+        const rsiValues = marketRSI || indicators?.rsi;
+        if (rsiValues && rsiValues.length > 0) {
+            const lastRSI = rsiValues[rsiValues.length - 1];
+            if (setupDir === 'BULLISH' && lastRSI < 40) points += 5; // Oversold area
+            if (setupDir === 'BEARISH' && lastRSI > 60) points += 5; // Overbought area
+
+            // Extreme Overextension Risk
+            if (setupDir === 'BULLISH' && lastRSI > 75) points -= 15;
+            if (setupDir === 'BEARISH' && lastRSI < 25) points -= 15;
+        }
+
+        // 3. MACD Alignment
+        const macd = indicators?.macd;
+        if (macd && macd.histogram) {
+            const hist = macd.histogram;
+            const currentHist = hist[hist.length - 1];
+            const prevHist = hist[hist.length - 2];
+
+            if (setupDir === 'BULLISH' && currentHist > prevHist && currentHist < 0) points += 10; // Rising under zero
+            if (setupDir === 'BEARISH' && currentHist < prevHist && currentHist > 0) points += 10; // Falling above zero
+        }
+
+        return points;
     }
 
     /**

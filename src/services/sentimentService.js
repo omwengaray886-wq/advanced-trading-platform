@@ -98,7 +98,10 @@ async function getNewsSentiment(symbol) {
             headers: { 'Accept': 'application/json' }
         });
 
-        if (response.status === 429) throw new Error('Throttled');
+        if (response.status === 429 || response.status === 503) {
+            console.warn(`[SENTIMENT] News proxy unavailable (${response.status}). Returning neutral.`);
+            return { score: 0, confidence: 0.1, source: 'NEWS_PROXY_UNAVAILABLE' };
+        }
 
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
@@ -240,7 +243,7 @@ async function getFearGreedIndex(symbol) {
             }
             throw new Error('Fear & Greed data format unexpected');
         } catch (error) {
-            console.warn('[SENTIMENT] Fear & Greed index fetch failed:', error.message);
+            console.warn(`[SENTIMENT] Fear & Greed index fetch failed (${error.message || 'Error'}). Using priors.`);
             return { score: 0, confidence: 0.3, source: 'FNG_FETCH_ERROR' };
         }
     }

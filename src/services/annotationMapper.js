@@ -273,14 +273,23 @@ export class AnnotationMapper {
 
             // 7. Scenario Paths
             else if (anno.type === 'SCENARIO_PATH') {
+                if (!anno.points || !Array.isArray(anno.points)) return;
+
                 const mappedPoints = anno.points.map((p, idx) => {
                     const barOffset = p.barsOffset !== undefined ? p.barsOffset : (p.timeOffset ? (p.timeOffset * 300 / interval) : idx * 5);
+                    const calculatedTime = lastCandleTime + (barOffset * interval);
+
+                    // Safety: Skip points with invalid time or price
+                    if (isNaN(calculatedTime) || isNaN(p.price)) return null;
+
                     return {
-                        time: lastCandleTime + (barOffset * interval),
+                        time: calculatedTime,
                         price: p.price,
                         label: p.label
                     };
-                });
+                }).filter(p => p !== null);
+
+                if (mappedPoints.length < 2) return; // Skip invalid paths
 
                 overlays.paths.push({
                     id: anno.id,
