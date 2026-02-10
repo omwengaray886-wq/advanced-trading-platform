@@ -20,9 +20,19 @@ export class MicroStructureEngine {
         const totalVolume = bidVolume + askVolume;
         const imbalanceRatio = bidVolume / totalVolume;
 
-        // Detect significant imbalance (>65% on one side)
+        // Calculate spread
+        const spreadPercent = orderBook.asks[0] && orderBook.bids[0]
+            ? ((orderBook.asks[0].price - orderBook.bids[0].price) / orderBook.bids[0].price) * 100
+            : 0;
+
+        // Spread Filter: Reject logic if spread > 0.1% (Scalping killer)
+        if (spreadPercent > 0.1) {
+            return { imbalanceRatio, signal: null, bidVolume, askVolume, spreadPercent, description: 'Spread too wide for scalping' };
+        }
+
+        // Detect significant imbalance (>70% on one side - Tightened from 65%)
         let signal = null;
-        if (imbalanceRatio > 0.65) {
+        if (imbalanceRatio > 0.70) {
             signal = {
                 direction: 'BULLISH',
                 strength: (imbalanceRatio - 0.5) * 2, // 0-1 scale
@@ -30,7 +40,7 @@ export class MicroStructureEngine {
                 askVolume,
                 description: `${(imbalanceRatio * 100).toFixed(0)}% bid pressure`
             };
-        } else if (imbalanceRatio < 0.35) {
+        } else if (imbalanceRatio < 0.30) {
             signal = {
                 direction: 'BEARISH',
                 strength: (0.5 - imbalanceRatio) * 2,
@@ -45,9 +55,7 @@ export class MicroStructureEngine {
             signal,
             bidVolume,
             askVolume,
-            spreadPercent: orderBook.asks[0] && orderBook.bids[0]
-                ? ((orderBook.asks[0].price - orderBook.bids[0].price) / orderBook.bids[0].price) * 100
-                : null
+            spreadPercent
         };
     }
 

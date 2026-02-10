@@ -11,15 +11,15 @@ export class AnnotationMapper {
      * @returns {Object} - { zones, labels, shocks, liquidityMap, divergences, lines, structureMarkers, paths }
      */
     static mapToOverlays(annotations, context = {}) {
-        const lastCandleTime = context.lastCandleTime || Date.now() / 1000;
-        const timeframe = context.timeframe || '1H';
+        const lastCandleTime = Math.floor(context.lastCandleTime || Date.now() / 1000);
+        const timeframe = context.timeframe || '1h';
 
         // Timeframe to seconds mapping
         const TF_INTERVALS = {
             '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400, '1w': 604800
         };
         const interval = TF_INTERVALS[timeframe.toLowerCase()] || 3600;
-        const futureTime = lastCandleTime + (interval * 20); // 20 bars projection default
+        const futureTime = Math.floor(lastCandleTime + (interval * 20)); // 20 bars projection default
 
         const overlays = {
             zones: [],
@@ -105,7 +105,18 @@ export class AnnotationMapper {
                     config.borderColor = '#f97316';
                     config.icon = '🧱';
                     break;
+                case 'INSTITUTIONAL_LEVEL':
+                    const isSupp = anno.levelType === 'SUPPORT' || anno.levelType === 'DEMAND';
+                    config.borderColor = isSupp ? '#10b981' : '#ef4444';
+                    config.icon = '🏛️';
+                    break;
+                case 'INVALIDATION_ZONE':
+                    config.background = 'rgba(239, 68, 68, 0.3)';
+                    config.borderColor = '#ef4444';
+                    config.icon = '🚫';
+                    break;
             }
+
             return config;
         };
 
@@ -118,8 +129,9 @@ export class AnnotationMapper {
                 'ENTRY_ZONE', 'SUPPLY_DEMAND_ZONE', 'CONSOLIDATION_ZONE',
                 'ORDER_BLOCK', 'FAIR_VALUE_GAP', 'LIQUIDITY_ZONE', 'LIQUIDITY_SWEEP_ZONE',
                 'STRUCTURE_ZONE', 'CONFLUENCE_ZONE', 'PREMIUM_DISCOUNT_ZONE', 'CHOCH_ZONE', 'FVG', 'TRAP_ZONE',
-                'DARK_POOL', 'VOLATILITY_CORRIDOR', 'ORDER_BOOK_WALL', 'NEWS_IMPACT_ZONE'
+                'DARK_POOL', 'VOLATILITY_CORRIDOR', 'ORDER_BOOK_WALL', 'NEWS_IMPACT_ZONE', 'INVALIDATION_ZONE'
             ].includes(anno.type)) {
+
 
                 const startTime = coords.startTime || coords.time || (lastCandleTime - (interval * 10));
 
@@ -138,8 +150,8 @@ export class AnnotationMapper {
 
                 overlays.zones.push({
                     id: anno.id,
-                    x1: startTime,
-                    x2: coords.endTime || futureTime,
+                    x1: Math.floor(startTime),
+                    x2: Math.floor(coords.endTime || futureTime),
                     y1: y1,
                     y2: y2,
                     color: visuals.background,
@@ -176,8 +188,8 @@ export class AnnotationMapper {
                 if (['BOS', 'CHOCH'].includes(anno.markerType)) {
                     overlays.lines.push({
                         id: anno.id,
-                        start: { time: coords.time, price: coords.price },
-                        end: { time: futureTime, price: coords.price },
+                        start: { time: Math.floor(coords.time), price: coords.price },
+                        end: { time: Math.floor(futureTime), price: coords.price },
                         color: visuals.borderColor,
                         width: 1,
                         dashed: true,
@@ -187,7 +199,7 @@ export class AnnotationMapper {
 
                 overlays.structureMarkers.push({
                     id: anno.id,
-                    time: coords.time,
+                    time: Math.floor(coords.time),
                     price: coords.price,
                     type: anno.markerType,
                     label: anno.markerType, // UI expects label
@@ -203,7 +215,7 @@ export class AnnotationMapper {
 
                 overlays.labels.push({
                     id: anno.id,
-                    x: lastCandleTime + (interval * 10), // 10 bars ahead
+                    x: Math.floor(lastCandleTime + (interval * 10)), // 10 bars ahead
                     y: coords.price,
                     text: isSL ? '🛑 STOP LOSS' : `🎯 TP ${anno.getTargetNumber ? anno.getTargetNumber() : ''}`,
                     color: color,
@@ -213,8 +225,8 @@ export class AnnotationMapper {
                 // Add horizontal line projection
                 overlays.lines.push({
                     id: `${anno.id}-line`,
-                    start: { time: lastCandleTime, price: coords.price },
-                    end: { time: futureTime, price: coords.price },
+                    start: { time: Math.floor(lastCandleTime), price: coords.price },
+                    end: { time: Math.floor(futureTime), price: coords.price },
                     color: color,
                     width: 1,
                     dashed: true
@@ -226,8 +238,8 @@ export class AnnotationMapper {
                 // Visual Line
                 overlays.lines.push({
                     id: anno.id || `magnet-${anno.price}`,
-                    start: { time: lastCandleTime - (interval * 50), price: anno.price },
-                    end: { time: futureTime, price: anno.price },
+                    start: { time: Math.floor(lastCandleTime - (interval * 50)), price: anno.price },
+                    end: { time: Math.floor(futureTime), price: anno.price },
                     color: anno.color,
                     width: anno.urgency > 70 ? 2 : 1,
                     dashed: true,
@@ -237,21 +249,35 @@ export class AnnotationMapper {
                 // Label at the end
                 overlays.labels.push({
                     id: `lbl-${anno.id || anno.price}`,
-                    x: futureTime - (interval * 2),
+                    x: Math.floor(futureTime - (interval * 2)),
                     y: anno.price,
                     text: anno.label,
                     color: anno.color,
                     direction: 'right',
-                    style: { left: futureTime, top: anno.price } // Fallback for some renderers
+                    style: { left: Math.floor(futureTime), top: anno.price } // Fallback for some renderers
                 });
             }
+
+            // 5.5 Institutional Levels
+            else if (anno.type === 'INSTITUTIONAL_LEVEL') {
+                overlays.lines.push({
+                    id: anno.id || `inst-${anno.coordinates.price}`,
+                    start: { time: Math.floor(lastCandleTime - (interval * 100)), price: anno.coordinates.price },
+                    end: { time: Math.floor(futureTime), price: anno.coordinates.price },
+                    color: visuals.borderColor,
+                    width: anno.isMajor ? 2 : 1,
+                    dashed: !anno.isMajor,
+                    label: anno.metadata?.label || (anno.getLabel ? anno.getLabel() : 'INST LEVEL')
+                });
+            }
+
 
 
             // 5. Divergences
             else if (anno.type === 'DIVERGENCE') {
                 overlays.divergences.push({
                     id: anno.id,
-                    time: coords.time,
+                    time: Math.floor(coords.time),
                     y: coords.price,
                     label: anno.metadata.label,
                     color: anno.metadata.direction === 'BULLISH' ? '#10b981' : '#ef4444'
@@ -262,7 +288,7 @@ export class AnnotationMapper {
             else if (anno.type === 'NEWS_SHOCK') {
                 overlays.shocks.push({
                     id: anno.id,
-                    time: coords.time || anno.timestamp,
+                    time: Math.floor(coords.time || anno.timestamp),
                     impact: anno.impact,
                     label: `${anno.impact} IMPACT: ${anno.eventTitle || anno.title}`,
                     color: anno.impact === 'HIGH' ? '#ef4444' : '#f59e0b',
@@ -277,7 +303,7 @@ export class AnnotationMapper {
 
                 const mappedPoints = anno.points.map((p, idx) => {
                     const barOffset = p.barsOffset !== undefined ? p.barsOffset : (p.timeOffset ? (p.timeOffset * 300 / interval) : idx * 5);
-                    const calculatedTime = lastCandleTime + (barOffset * interval);
+                    const calculatedTime = Math.floor(lastCandleTime + (barOffset * interval));
 
                     // Safety: Skip points with invalid time or price
                     if (isNaN(calculatedTime) || isNaN(p.price)) return null;
@@ -432,8 +458,8 @@ export class AnnotationMapper {
                     // Visual Line
                     overlays.lines.push({
                         id: `iceberg-${idx}`,
-                        start: { time: lastCandleTime - (interval * 50), price: iceberg.price },
-                        end: { time: futureTime, price: iceberg.price },
+                        start: { time: Math.floor(lastCandleTime - (interval * 50)), price: iceberg.price },
+                        end: { time: Math.floor(futureTime), price: iceberg.price },
                         color: '#3b82f6', // Institutional Blue
                         width: 2,
                         dashed: true,
@@ -443,12 +469,12 @@ export class AnnotationMapper {
                     // Label at the end
                     overlays.labels.push({
                         id: `lbl-iceberg-${idx}`,
-                        x: futureTime - (interval * 2),
+                        x: Math.floor(futureTime - (interval * 2)),
                         y: iceberg.price,
                         text: `🧊 ICEBERG (${iceberg.volume})`,
                         color: '#3b82f6',
                         direction: 'left',
-                        style: { left: futureTime, top: iceberg.price }
+                        style: { left: Math.floor(futureTime), top: iceberg.price }
                     });
                 });
             }
@@ -471,7 +497,7 @@ export class AnnotationMapper {
                 const event = context.marketState.eventRisk.closestEvent;
                 overlays.shocks.push({
                     id: `event-${event.timestamp}`,
-                    time: event.timestamp / 1000,
+                    time: Math.floor(event.timestamp / 1000),
                     impact: event.impact,
                     label: `📅 ${event.title} (${context.marketState.eventRisk.level})`,
                     color: event.impact === 'CRITICAL' || context.marketState.eventRisk.score > 75 ? '#ef4444' : '#f59e0b',

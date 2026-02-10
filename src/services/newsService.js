@@ -1,30 +1,42 @@
 import { EconomicEvent } from '../models/EconomicEvent.js';
 
-const CRYPTOPANIC_PROXY = '/api/news/cryptopanic';
-const CALENDAR_PROXY = '/api/news/calendar';
+const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
+const BACKEND_BASE = isNode ? 'http://localhost:3001' : '';
+const CRYPTOPANIC_PROXY = `${BACKEND_BASE}/api/news/cryptopanic`;
+const CALENDAR_PROXY = `${BACKEND_BASE}/api/news/calendar`;
 
 export class NewsService {
     constructor() {
         this.cache = new Map();
+        this.CACHE_TTL = 15 * 60 * 1000; // 15 minutes
     }
 
     /**
      * Get news events for a symbol and timeframe
      */
     async fetchRealNews(symbol) {
+        const asset = symbol.replace(/USDT|USD|\//g, '').toUpperCase();
+        const cacheKey = `news_${asset}`;
+        const cached = this.cache.get(cacheKey);
+
+        if (cached && (Date.now() - cached.timestamp < this.CACHE_TTL)) {
+            return cached.data;
+        }
+
         try {
-            const asset = symbol.replace(/USDT|USD|\//g, '').toUpperCase();
             const res = await fetch(`${CRYPTOPANIC_PROXY}?currencies=${asset}&kind=news`);
 
             if (!res.ok) {
-                if (res.status === 503 || res.status === 429) {
-                    console.warn(`[NEWS] News proxy unavailable (${res.status}). Skipping real news.`);
+                if (res.status === 429 && cached) {
+                    console.warn(`[NEWS] News proxy throttled (429). Returning last successful cache for ${asset}.`);
+                    return cached.data;
                 }
-                return [];
+                console.warn(`[NEWS] News proxy unavailable (${res.status}). Skipping real news.`);
+                return cached ? cached.data : [];
             }
 
             const data = await res.json();
-            return (data.results || []).map(n => ({
+            const results = (data.results || []).map(n => ({
                 id: n.id,
                 time: Math.floor(new Date(n.published_at).getTime() / 1000),
                 title: n.title,
@@ -33,9 +45,12 @@ export class NewsService {
                 sentiment: n.votes.positive > n.votes.negative ? 'BULLISH' : 'BEARISH',
                 url: n.url
             }));
+
+            this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
+            return results;
         } catch (e) {
             console.error("Failed to fetch news:", e);
-            return [];
+            return cached ? cached.data : [];
         }
     }
 
@@ -43,13 +58,24 @@ export class NewsService {
      * Get Economic Calendar events (FinancialModelingPrep)
      */
     async fetchEconomicCalendar(startTime, endTime) {
+        const cacheKey = `calendar_${startTime}_${endTime}`;
+        const cached = this.cache.get(cacheKey);
+
+        if (cached && (Date.now() - cached.timestamp < this.CACHE_TTL)) {
+            return cached.data;
+        }
+
         try {
             const res = await fetch(`${CALENDAR_PROXY}?from=${startTime}&to=${endTime}`);
 
             if (!res.ok) {
+                if (res.status === 429 && cached) {
+                    console.warn(`[NEWS] Calendar proxy throttled (429). Returning cached calendar.`);
+                    return cached.data;
+                }
+
                 if (res.status === 503 || res.status === 429) {
                     console.warn(`[NEWS] Calendar proxy unavailable (${res.status}). Using simulated fallback.`);
-                    // Fallback to simulated event if key is missing or throttled
                     return [
                         new EconomicEvent({
                             timestamp: Math.floor(Date.now() / 1000) + 3600,
@@ -61,11 +87,13 @@ export class NewsService {
                         })
                     ];
                 }
-                return [];
+                return cached ? cached.data : [];
             }
 
             const data = await res.json();
-            return data.map(e => new EconomicEvent({
+            if (!Array.isArray(data)) return cached ? cached.data : [];
+
+            const results = data.map(e => new EconomicEvent({
                 timestamp: Math.floor(new Date(e.date).getTime() / 1000),
                 type: e.event,
                 impact: e.impact.toUpperCase(),
@@ -77,9 +105,12 @@ export class NewsService {
                 bias: 'NEUTRAL',
                 volatilityExpected: e.impact.toUpperCase() === 'HIGH' ? 'HIGH' : 'MEDIUM'
             }));
+
+            this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
+            return results;
         } catch (e) {
             console.error("[NEWS] Calendar fetch failed:", e);
-            return [];
+            return cached ? cached.data : [];
         }
     }
 

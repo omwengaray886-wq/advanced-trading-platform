@@ -13,7 +13,8 @@ export default function FullscreenControls({
     activeDrawTool,
     onSelectDrawTool
 }) {
-    const timeframes = ['5m', '15m', '1H', '4H', 'D'];
+    const timeframes = ['1m', '5m', '15m', '30m', '1H', '2H', '4H', 'D', 'W'];
+
     const drawTools = [
         { id: 'trendline', label: 'Trendline', icon: TrendingUp },
         { id: 'horizontal', label: 'H-Line', icon: Minus },

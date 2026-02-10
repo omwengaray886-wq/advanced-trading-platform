@@ -66,75 +66,24 @@ export class ExplanationEngine {
     buildExecutiveNarrative(analysis, mode = 'ADVANCED') {
         const state = analysis.marketState;
         const trend = state.trend.direction;
-        const setup = analysis.setups?.[0];
         const bias = state.mtf?.globalBias || 'NEUTRAL';
-        const isMTFAligned = state.mtfBiasAligned;
-        const institutionalVol = state.volumeAnalysis?.isInstitutional;
-        const smtDir = state.smtDivergence?.direction;
-        const hasObligation = !!analysis.setups?.some(s => s.hasObligation);
+        const setup = analysis.setups?.[0];
 
-        // Phase 54: Bayesian Credibility Reference
-        const bayesianStats = setup?.bayesianStats;
-        const credibility = bayesianStats?.credibility || 'NEUTRAL';
-        const isSuppressed = bayesianStats?.isSuppressed || false;
+        let narrative = `Analysis indicates a **${trend}** institutional flow, currently aligned with the ${bias.toLowerCase()} higher-timeframe structure. `;
 
-        // Phase 54: Recent CHoCH Structure Break Detection
-        const recentChoch = state.structuralEvents?.slice(-3).find(e => e.markerType === 'CHOCH');
-        const chochMatch = recentChoch && ((recentChoch.metadata?.direction === 'BULLISH' && trend === 'BULLISH') ||
-            (recentChoch.metadata?.direction === 'BEARISH' && trend === 'BEARISH'));
-
-        let narrative = `The institutional narrative for ${analysis.symbol} is currently **${trend.toLowerCase()}** within a ${bias.toLowerCase()} structural context. `;
-
-        // Phase 54: Reference Bayesian Credibility
-        if (credibility === 'PREMIUM' && !isSuppressed) {
-            narrative += `This setup carries **PREMIUM Bayesian Credibility** (historical accuracy >70%), meaning the strategy has proven institutional-grade performance in this regime. `;
-        } else if (isSuppressed) {
-            narrative += `⚠️ Note: This strategy is currently **suppressed** by Bayesian historical underperformance—proceed with heightened caution. `;
-        }
-
-        // Phase 53: Reference CHoCH Structure Alignment
-        if (chochMatch) {
-            narrative += `Recent **CHoCH (Change of Character)** confirms that market structure has shifted ${trend.toLowerCase()}, validating the current bias. `;
-        }
-
-        if (isMTFAligned) {
-            narrative += `We have rare **Fractal Synchronicity**, where high-timeframe truth and local price action are fully synchronized. `;
-        }
-
-        if (smtDir) {
-            narrative += `The detection of a **${smtDir} SMT Divergence** indicates smart money is actively accumulating this move through inter-market manipulation. `;
-        } else if (institutionalVol) {
-            narrative += `VHF Order Flow analysis confirms high-magnitude institutional participation at current levels. `;
-        }
-
-        // Phase 52: Magnet Urgency Reference
-        if (hasObligation) {
-            const obligation = state.obligations?.magnets?.[0];
-            const urgency = obligation?.urgency || 0;
-            narrative += `The market currently carries an **Institutional Obligation** (Magnet at ${obligation?.price?.toFixed(5) || 'N/A'}, Urgency: ${urgency}%), making this a high-priority institutional target. `;
-        }
-
-        // Phase 56: Directional Confidence Display
-        const confidenceScore = setup?.directionalConfidence;
-        const confidenceChecks = setup?.confidenceChecks || [];
-
-        if (confidenceScore !== undefined) {
-            const confidenceLabel = confidenceScore >= 0.7 ? 'HIGH' : confidenceScore >= 0.5 ? 'MEDIUM' : 'LOW';
-            narrative += `\n\n**Directional Confidence: ${(confidenceScore * 100).toFixed(0)}%** (${confidenceLabel})`;
-
-            if (confidenceChecks.length > 0) {
-                narrative += `\n⚠️ **Validation Warnings**: ${confidenceChecks.join('; ')}. Consider waiting for stronger confirmation.`;
-            } else if (confidenceScore >= 0.7) {
-                narrative += ` - All directional validation checks passed.`;
-            }
-        }
-
-        // Add closing risk synthesis
-        if (state.executionHazards && state.executionHazards.length > 0) {
-            const hazard = state.executionHazards[0].label;
-            narrative += `\n\n⚠️ **Operational Caution**: While the technical truth is clear, we are monitoring for ${hazard.toLowerCase()}, which could induce high-frequency volatility before the expansion target is met.`;
+        if (state.mtfBiasAligned) {
+            narrative += `This creates a **High-Probability Fractal Sync**, meaning both local and higher-timeframe money flows are pushing in the same direction. `;
         } else {
-            narrative += ` Risk-to-reward parameters are optimally defined against structural invalidation.`;
+            narrative += `Note that we are trading against the higher-timeframe bias, so we require stricter entry confirmation. `;
+        }
+
+        if (state.smtDivergence) {
+            narrative += `Smart Money Divergence (SMT) is visible, suggesting institutional accumulation/distribution is active. `;
+        }
+
+        if (setup) {
+            const confidence = Math.round((setup.directionalConfidence || 0) * 100);
+            narrative += `\n\n**Strategy Focus:** We are tracking a **${setup.strategy}** setup with a **${confidence}%** algorithmic confidence score.`;
         }
 
         return narrative;
@@ -280,16 +229,13 @@ export class ExplanationEngine {
     buildEntryLogic(analysis, mode = 'ADVANCED') {
         if (!analysis.setups || analysis.setups.length === 0) return 'No entry logic available.';
         const setup = analysis.setups[0];
+        const entryPrice = setup.entryZone?.optimal?.toFixed(4) || 'N/A';
 
         if (mode === 'BEGINNER') {
-            return `Wait for the price to reach ${setup.entryZone?.optimal?.toFixed(5) || 'N/A'} before getting in. This is our "sweet spot" for joining the move.`;
+            return `**Action:** Monitor price action around **${entryPrice}**. If you see a strong move away from this level in our direction, that's your signal.`;
         }
 
-        const baseLogic = `EXECUTION SIGNAL: ${setup.direction} entry is valid based on ${setup.strategy} displacement. `;
-        const actionLogic = `The optimal entry point is ${setup.entryZone?.optimal?.toFixed(5) || 'N/A'}. `;
-        const confirmation = `This level is historically defended by institutional liquidity. An immediate limit order at the optimal entry or a "market sweep" into the zone is the high-conviction play here.`;
-
-        return baseLogic + actionLogic + confirmation;
+        return `**Execution Protocol:** Awaiting institutional displacement at **${entryPrice}**. \n1. **Limit Order**: Permissible if price tests the level with low volume.\n2. **Stop Order**: Use if awaiting a breakout confirmation above the zone.\n3. **Confirmation**: Look for 1m/5m structure shift (CHoCH) inside the zone.`;
     }
 
     /**
@@ -366,14 +312,13 @@ export class ExplanationEngine {
      */
     buildPsychology(analysis) {
         const regime = analysis.marketState.regime;
-        const trend = analysis.marketState.trend.direction;
 
         if (regime === 'TRENDING') {
-            return `Institutions are likely pushing price with strong momentum. Retail traders often try to pick tops/bottoms here and get stopped out. This ${trend.toLowerCase()} move reflects high institutional conviction.`;
+            return `**Mindset:** "the trend is your friend." Institutions are driving this move. Do not try to fight it by picking a top/bottom. Flow with the smart money.`;
         } else if (regime === 'RANGING') {
-            return 'Market is in a state of balance. Retail traders often get "chopped" (stopped out repeatedly) in the middle of this range. Professional interest is likely concentrated at the extremes.';
+            return `**Mindset:** "Buy low, sell high." The market is efficient right now. Avoid trading in the middle of the range where noise is highest. Wait for the extremes.`;
         }
-        return 'The market is transitioned, leading to professional indecision. Expect high volatility as whales reposition their portfolios.';
+        return `**Mindset:** "Patience pays." The market is deciding its next move. Preserving capital is better than forcing a trade in uncertain conditions.`;
     }
 
     /**
@@ -556,12 +501,7 @@ export class ExplanationEngine {
      */
     buildProfessionalTruth(analysis, mode) {
         const confidence = ((analysis.overallConfidence || 0) * 100).toFixed(0);
-
-        if (mode === 'BEGINNER') {
-            return `This analysis has a confidence level of **${confidence}%**. For small accounts, the key is consistency, not catching every move. Institutional signals work on all scales—treat your account like a mini hedge fund. Exercise patience: if the entry isn't hit, we simply wait for the next setup. Protecting your balance is your #1 job.`;
-        }
-
-        return `This mapping has an algorithmic confidence of **${confidence}%**. Institutional trading is a game of probabilities, not certainties. The system never "calls" a bottom or top; it identifies structural imbalances where risk can be strictly defined. Exercise professional patience: if the LTF confirmation is missing, the setup does not exist. Preserve your capital first, exploit the move second.`;
+        return `**System Confidence: ${confidence}%**\n\nRemember: We deal in probabilities, not certainties. This setup allows you to risk a small amount to potentially gain a much larger amount. If the market invalidates the setup, we accept the small loss as the "cost of doing business" and wait for the next high-probability opportunity.`;
     }
 
     /**

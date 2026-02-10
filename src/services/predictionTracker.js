@@ -1,33 +1,18 @@
-/**
- * Prediction Tracker (Phase 51)
- * 
- * Tracks the lifecycle of predictions from creation to outcome evaluation.
- * Persists data to Firestore for auditable "receipts".
- */
-
-import { db } from '../lib/firebase.js';
-import { collection, doc, setDoc, query, where, getDocs, updateDoc, limit, orderBy } from 'firebase/firestore';
+import { db } from './db.js';
 
 const statsCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export class PredictionTracker {
-    /**
-     * Track a new prediction
-     * @param {Object} prediction - Compressed prediction object
-     * @param {string} symbol - Market symbol
-     */
     static async track(prediction, symbol) {
         if (!prediction || !prediction.id || prediction.bias === 'NO_EDGE') return;
 
         try {
-            const predictionRef = doc(db, 'predictionHistory', prediction.id);
-
             // Validate snapshot data
             const snapshotPrice = prediction.snapshot?.price || 0;
             const timestamp = prediction.timestamp || Date.now();
 
-            await setDoc(predictionRef, {
+            const data = {
                 ...prediction,
                 timestamp, // Ensure timestamp exists
                 symbol,
@@ -42,7 +27,10 @@ export class PredictionTracker {
                     ...(prediction.snapshot || {}),
                     price: snapshotPrice
                 }
-            });
+            };
+
+            // Use the db service to save (will need a new method savePrediction)
+            await db.savePrediction(prediction.id, data);
             console.log(`[PredictionTracker] Saved: ${prediction.id}`);
         } catch (e) {
             console.error('[PredictionTracker] Error saving prediction:', e);
@@ -56,18 +44,10 @@ export class PredictionTracker {
      */
     static async evaluatePending(symbol, currentCandle) {
         try {
-            const q = query(
-                collection(db, 'predictionHistory'),
-                where('symbol', '==', symbol),
-                where('outcome', '==', 'PENDING'),
-                limit(20)
-            );
-
-            const querySnapshot = await getDocs(q);
+            const pending = await db.getPredictions(symbol, 'PENDING', 20);
             const now = Date.now();
 
-            for (const predictionDoc of querySnapshot.docs) {
-                const p = predictionDoc.data();
+            for (const p of pending) {
                 let outcome = 'PENDING';
                 let reason = '';
 
@@ -97,7 +77,7 @@ export class PredictionTracker {
                 }
 
                 if (outcome !== 'PENDING') {
-                    await updateDoc(predictionDoc.ref, {
+                    await db.updatePrediction(p.id, {
                         outcome,
                         evaluatedAt: now,
                         outcomeReason: reason,
@@ -122,15 +102,7 @@ export class PredictionTracker {
         }
 
         try {
-            const q = query(
-                collection(db, 'predictionHistory'),
-                where('symbol', '==', symbol),
-                orderBy('timestamp', 'desc'),
-                limit(100)
-            );
-
-            const querySnapshot = await getDocs(q);
-            const trades = querySnapshot.docs.map(d => d.data());
+            const trades = await db.getPredictions(symbol, null, 100);
 
             const completed = trades.filter(t => t.outcome !== 'PENDING' && t.outcome !== 'EXPIRED');
             if (completed.length === 0) return { accuracy: 0, total: 0 };

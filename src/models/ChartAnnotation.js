@@ -24,10 +24,16 @@ export class ChartAnnotation {
     }
 
     generateId(type) {
-        const prefix = type.substring(0, 2).toUpperCase();
-        const timestamp = Date.now().toString().slice(-6);
-        const random = Math.random().toString(36).substring(2, 5).toUpperCase();
-        return `${prefix}-${timestamp}-${random}`;
+        const prefix = type.substring(0, 3).toUpperCase().replace('_', '');
+        const timestamp = Date.now().toString().slice(-8);
+        const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+        // Add a micro-counter for same-millisecond uniqueness
+        if (!ChartAnnotation.lastTs || ChartAnnotation.lastTs !== timestamp) {
+            ChartAnnotation.lastTs = timestamp;
+            ChartAnnotation.counter = 0;
+        }
+        ChartAnnotation.counter++;
+        return `${prefix}-${timestamp}-${ChartAnnotation.counter}-${random}`;
     }
 
     setLinkedExplanation(explanationId) {

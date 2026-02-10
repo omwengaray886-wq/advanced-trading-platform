@@ -112,7 +112,7 @@ console.log('AlphaTracker singleton initialized with methods:', Object.getOwnPro
 import { AlphaLeakDetector } from './AlphaLeakDetector.js';
 import { FundamentalAnalyzer } from './fundamentalAnalyzer.js';
 import { CorrelationEngine } from './correlationEngine.js';
-import { EdgeScoringEngine } from './edgeScoringEngine.js';
+import { EdgeScoringEngine } from './EdgeScoringEngine.js';
 import { COTDataService } from './COTDataService.js';
 import { CommodityCorrelationEngine } from './CommodityCorrelationEngine.js';
 
@@ -238,28 +238,70 @@ export class AnalysisOrchestrator {
             const retests = RetestDetector.detectRetests(candles, [...fvgs, ...(marketState.liquidityPools || [])]);
             marketState.retests = retests;
 
-            let divergences = [];
+            // --- PARALLEL EXECUTION BLOCK (Phase 80 Optimization) ---
+            // Run independent heavy-lifting engines concurrently
             let smtResult = { divergences: [], confluenceScore: 0 };
-            if (!isLight) {
-                try {
-                    smtResult = await SMTDivergenceEngine.detectDivergence(symbol, candles, timeframe, significantSwings);
-                    divergences = smtResult.divergences || [];
-                } catch (smtError) {
-                    console.warn(`[Analysis] SMT Divergence Engine failed for ${symbol}:`, smtError.message);
-                }
-            }
-            marketState.divergences = divergences;
-            marketState.smtConfluence = smtResult.confluenceScore;
-            marketState.smtDivergence = (divergences && divergences.length > 0) ? divergences[0] : null;
-
-            // Step 3.6.6: Detect Technical Divergence (RSI/MACD) - Phase 56
             let techDivergences = [];
-            try {
-                techDivergences = await DivergenceEngine.detectDivergence(symbol, candles, timeframe, marketState);
-            } catch (techDivError) {
-                console.warn(`[Analysis] Technical Divergence Engine failed for ${symbol}:`, techDivError.message);
+            let macroCorrelation = { status: 'NEUTRAL', bias: 0 };
+            let eventRisk = { score: 0 };
+            let clusters = null;
+            let realNews = [], calendarEvents = [];
+
+            if (!isLight) {
+                const results = await Promise.allSettled([
+                    // 1. SMT Divergence
+                    SMTDivergenceEngine.detectDivergence(symbol, candles, timeframe, significantSwings),
+                    // 2. Technical Divergence
+                    DivergenceEngine.detectDivergence(symbol, candles, timeframe, marketState),
+                    // 3. Macro Correlation
+                    this.correlationEngine.getCorrelationBias(symbol, assetClass),
+                    // 4. Event Risk
+                    this.correlationEngine.analyzeEventRisk(newsService),
+                    // 5. Correlation Clusters
+                    CorrelationClusterEngine.detectClusters({ [symbol]: { [symbol]: 1.0 } }),
+                    // 6. Real News
+                    newsService.fetchRealNews(symbol),
+                    // 7. Calendar Shocks
+                    newsService.getUpcomingShocks(24)
+                ]);
+
+                // extract results safely
+                if (results[0].status === 'fulfilled') smtResult = results[0].value;
+                if (results[1].status === 'fulfilled') techDivergences = results[1].value;
+                if (results[2].status === 'fulfilled') macroCorrelation = results[2].value;
+                if (results[3].status === 'fulfilled') eventRisk = results[3].value;
+                if (results[4].status === 'fulfilled') clusters = results[4].value;
+                if (results[5].status === 'fulfilled') realNews = results[5].value;
+                if (results[6].status === 'fulfilled') calendarEvents = results[6].value;
+
+                // Log failures for debugging
+                results.forEach((res, idx) => {
+                    if (res.status === 'rejected') {
+                        const services = ['SMT', 'TechDiv', 'Macro', 'EventRisk', 'Clusters', 'News', 'Calendar'];
+                        console.warn(`[Analysis] ${services[idx]} Engine failed:`, res.reason?.message);
+                    }
+                });
             }
+
+            // Assign results to marketState
+            marketState.divergences = smtResult.divergences || [];
+            marketState.smtConfluence = smtResult.confluenceScore;
+            marketState.smtDivergence = (marketState.divergences.length > 0) ? marketState.divergences[0] : null;
             marketState.technicalDivergences = techDivergences;
+            marketState.macroCorrelation = macroCorrelation;
+            marketState.eventRisk = eventRisk;
+            marketState.clusters = clusters;
+
+            // Push technical divergences to global annotations
+            if (techDivergences && techDivergences.length > 0) {
+                baseAnnotations.push(...techDivergences);
+            }
+
+            // Update fundamentals with fetched news
+            const fundamentals = this.fundamentalAnalyzer.analyzeFundamentals(symbol, assetClass, {
+                news: realNews,
+                events: calendarEvents
+            });
 
             // Step 3.6.6b: Detect Failure Patterns (Trap Zones) - Phase 52
             // Must run after structures and gaps are detected
@@ -286,13 +328,6 @@ export class AnalysisOrchestrator {
             const tapeAnalysis = TapeReadingEngine.analyzeTape(candles);
             marketState.tape = tapeAnalysis;
 
-            // Push to global annotations for visualization
-            if (techDivergences && techDivergences.length > 0) {
-                // Add to baseAnnotations so they appear on chart
-                baseAnnotations.push(...techDivergences);
-            }
-
-
             // Step 3.7: Session Intelligence (Phase 72 Upgrade)
             const lastCandle = candles[candles.length - 1];
             if (!lastCandle) throw new Error('Latest candle data is corrupted or missing.');
@@ -312,61 +347,11 @@ export class AnalysisOrchestrator {
                 probability: sessionProbability
             };
 
-
-            // Step 3.9.7: REAL-TIME NEWS & CALENDAR FETCH (Phase 55)
-            let realNews = [], calendarEvents = [];
-            try {
-                [realNews, calendarEvents] = await Promise.all([
-                    newsService.fetchRealNews(symbol).catch(e => { console.warn('News fetch failed:', e.message); return []; }),
-                    newsService.getUpcomingShocks(24).catch(e => { console.warn('Shock fetch failed:', e.message); return []; })
-                ]);
-            } catch (newsError) {
-                console.warn(`[Analysis] News/Calendar service issue for ${symbol}:`, newsError.message);
-            }
-
-            // Step 4: Analyze fundamentals (using real data)
-            const fundamentals = this.fundamentalAnalyzer.analyzeFundamentals(symbol, assetClass, {
-                news: realNews,
-                events: calendarEvents
-            });
-
-            // Step 3.2: Analyze Correlations (Macro Bias)
-            let macroCorrelation = { status: 'NEUTRAL', bias: 0 };
-            let eventRisk = { score: 0 };
-
-            if (!isLight) {
-                try {
-                    macroCorrelation = await this.correlationEngine.getCorrelationBias(symbol, assetClass);
-                    // Phase 2: Event Risk Integration
-                    eventRisk = await this.correlationEngine.analyzeEventRisk(newsService);
-                } catch (corrError) {
-                    console.warn(`[Analysis] Correlation Engine failed for ${symbol}:`, corrError.message);
-                }
-            }
-            marketState.macroCorrelation = macroCorrelation;
-            marketState.eventRisk = eventRisk;
-
-            // Phase 3: Correlation Cluster Detection (Institutional Concentrated Risk)
-            if (!isLight) {
-                try {
-                    // Detect clusters across active watchlist (simulated or pre-fetched)
-                    // For now we detect if this asset is part of a broader risk cluster
-                    const clusters = CorrelationClusterEngine.detectClusters({ [symbol]: { [symbol]: 1.0 } });
-                    marketState.clusters = clusters;
-                } catch (clusterError) {
-                    console.warn(`[Analysis] Cluster detection failed: ${clusterError.message}`);
-                }
-            }
-
-            // Step 3.3: Detect SMT Divergence (Institutional Alpha)
-            // Deprecated: Now handled in Step 7 by DivergenceEngine directly with Multi-Asset logic
-            // const smtDivergence = await this.correlationEngine.detectSMTDivergence(symbol, candles);
-            // marketState.smtDivergence = smtDivergence;
-
             // Step 3.4: Order Flow & Relative Volume (Phase 13)
             const volumeAnalysis = OrderFlowAnalyzer.detectInstitutionalVolume(candles);
             marketState.volumeAnalysis = volumeAnalysis;
             marketState.institutionalVolume = volumeAnalysis.isInstitutional;
+
 
             // Step 3.4.5: Volume Profile Intelligence (Phase 55)
             // SKIPPED in Light Mode (Heavy Volumetrics)
@@ -742,10 +727,8 @@ export class AnalysisOrchestrator {
                     let quantScore = edgeAnalysis.score * 10;
 
                     // Phase 3: Pattern Verification Boost
+                    // Phase 3: Pattern Verification Boost (Now handled in EdgeScoringEngine)
                     if (marketState.patterns && marketState.patterns.prediction === direction) {
-                        // Boost score if historical patterns align with this direction
-                        const boost = marketState.patterns.confidence * 20; // Max +20 points
-                        quantScore += boost;
                         c.rationale += ` + Fractal Confirmation (${(marketState.patterns.confidence * 100).toFixed(0)}%)`;
                     }
 
@@ -795,14 +778,11 @@ export class AnalysisOrchestrator {
                     } : null;
 
                     // Consensus & News
-                    const macroCorr = marketState.macroCorrelation;
-                    let consensusAdjustment = 0;
-                    if (macroCorr && macroCorr.bias !== 'NEUTRAL' && macroCorr.bias !== 'SELF' && macroCorr.bias !== direction) {
-                        consensusAdjustment = 0.2;
-                    }
+                    // Consensus & News
+                    // Consensus adjustment now handled in EdgeScoringEngine
                     const newsPenalty = fundamentals.suitabilityPenalty || 0;
-                    const finalSuitability = Math.max(0.1, c.suitability - newsPenalty - consensusAdjustment);
-                    const finalQuantScore = Math.max(0, quantScore - (newsPenalty * 100) - (consensusAdjustment * 100));
+                    const finalSuitability = Math.max(0.1, c.suitability - newsPenalty);
+                    const finalQuantScore = Math.max(0, quantScore - (newsPenalty * 100));
 
                     // Fractal guards
                     const fractalHandshake = verifyFractalHandshake(marketState, direction);
@@ -1302,12 +1282,13 @@ export class AnalysisOrchestrator {
             // Link visual scenarios and base formations to all setups (Market-wide context)
             const visualScenarios = ScenarioEngine.getVisualScenarios(
                 scenarios,
-                marketState.currentPrice,
+                marketState,
                 baseAnnotations,
                 marketState.volProfile,
                 setups, // Pass setups so paths point to entry zones
                 marketState.orderBook
             );
+
 
             setups.forEach(s => {
                 s.annotations = [
@@ -1439,8 +1420,9 @@ export class AnalysisOrchestrator {
             const pathProjection = PathProjector.generateRoadmap(marketState, marketState.mtf);
 
             // Generate visual scenarios for global annotations (Phase 50)
-            const globalVisualScenarios = ScenarioEngine.getVisualScenarios(scenarios, marketState.currentPrice, analysis.annotations, marketState.volProfile, setups, marketState.orderBook);
+            const globalVisualScenarios = ScenarioEngine.getVisualScenarios(scenarios, marketState, analysis.annotations, marketState.volProfile, setups, marketState.orderBook);
             analysis.annotations.push(...globalVisualScenarios);
+
 
             // 10.4: Predict regime transition
             // 10.4: Regime transition already calculated (Phase 50 Upgrade)
@@ -1463,6 +1445,11 @@ export class AnalysisOrchestrator {
                 scenarios,
                 probabilities
             });
+
+            console.log(`[Analysis] Generated ${setups.length} setups after filtering. Dominant Bias: ${dominantBias}`);
+            if (setups.length > 0) {
+                console.log(`[Analysis] Top Setup Score: ${setups[0].quantScore}, Confidence: ${setups[0].directionalConfidence}`);
+            }
 
             // 10.8: Compress into single prediction
             const shouldShow = PredictionCompressor.shouldShowPrediction(marketState, probabilities);
@@ -1563,18 +1550,15 @@ export class AnalysisOrchestrator {
                 }
             }
 
-            // 12.6: Scenario Path Projections (Phase 12 Restoration)
-            if (dominantScenario?.path) {
-                baseAnnotations.push({
-                    id: `path-${Date.now()}`,
-                    type: 'SCENARIO_PATH',
-                    points: dominantScenario.path,
-                    label: `PROJECTION: ${dominantScenario.name}`,
-                    direction: dominantBias === 'BULLISH' ? 'LONG' : dominantBias === 'BEARISH' ? 'SHORT' : 'NEUTRAL',
-                    confidence: prediction?.confidence || 0.5,
-                    style: 'DASHED'
-                });
+            // 12.6: Link visual points back to dominant scenario for legacy compatibility 
+            // (The annotations are already in analysis.annotations from globalVisualScenarios)
+            if (dominantScenario?.scenario) {
+                const matchingAnnotation = globalVisualScenarios.find(a => a.label?.includes(dominantScenario.scenario.label));
+                if (matchingAnnotation) {
+                    dominantScenario.path = matchingAnnotation.points;
+                }
             }
+
 
             // 6. Generate Liquidity Map (Phase 24)
             // Note: In Phase 27, LiquidityMapService.generateMap expects raw depth data, but here we might be 
@@ -1992,24 +1976,37 @@ export class AnalysisOrchestrator {
     /**
      * Phase 40: Timeframe Stacking Logic
      * Maps the current 'Entry' timeframe to its 'Context' (Truth) timeframe.
+     * Enhanced to support all timeframes: 1m, 5m, 15m, 30m, 1H, 2H, 4H, D, W
+
      */
     determineContextTimeframes(currentTF) {
-        if (!currentTF) return { profile: 'DAY', contextTF: '4h', entryTF: '1h' };
+        if (!currentTF) return { profile: 'DAY_TRADER', contextTF: '4h', entryTF: '1h' };
         const tf = currentTF.toLowerCase();
 
-        let profile = 'DAY'; // Default
+        let profile = 'DAY_TRADER'; // Default
         let contextTF = '4h';
         let entryTF = tf;
 
-        // Scalper Profile
+        // SCALPER Profile: Ultra-fast execution (1m-15m)
         if (['1m', '5m', '15m'].includes(tf)) {
             profile = 'SCALPER';
-            contextTF = '1h'; // Scalpers use 1H for trend, 5m/1m for entry
+            contextTF = '1h'; // Scalpers use 1H for trend confirmation
         }
-        // Swing Profile
-        else if (['4h', '1d', '1w'].includes(tf)) {
+        // DAY_TRADER Profile: Intraday institutional moves (30m-2H)
+        else if (['30m', '1h', '2h'].includes(tf)) {
+
+            profile = 'DAY_TRADER';
+            // Use 4H for 30m/1H, use 1D for 2H
+
+            contextTF = tf === '2h' ? '1d' : '4h';
+        }
+        // SWING Profile: Multi-day positions (4H-W)
+        else if (['4h', '1d', 'w', '1w'].includes(tf)) {
             profile = 'SWING';
-            contextTF = '1w'; // Swing traders use Weekly for context
+            // Use 1D for 4H, use 1W for daily, use 1M (or 1W fallback) for weekly
+            if (tf === '4h') contextTF = '1d';
+            else if (tf === '1d') contextTF = '1w';
+            else contextTF = '1w'; // Weekly uses weekly as context (no monthly data available)
         }
 
         return { profile, contextTF, entryTF };

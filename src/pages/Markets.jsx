@@ -6,7 +6,7 @@ import FullAnalysisReport from '../components/features/FullAnalysisReport';
 import { marketData } from '../services/marketData.js';
 import { TrendingUp, AlertTriangle, ShieldCheck, Activity, BarChart3, HelpCircle, LayoutGrid, Square, Sparkles, Layout, Target, BookOpen, PanelRightOpen, PanelLeftOpen } from 'lucide-react';
 import { generateTradeAnalysis } from '../services/ai.js';
-import { saveTradeSetups } from '../services/db.js';
+import { saveTradeSetups, getMarketAnalysis, subscribeToGlobalSignals } from '../services/db.js';
 import { useToast } from '../context/ToastContext';
 import { backtestService } from '../services/backtestService.js';
 import ChartGrid from '../components/features/ChartGrid';
@@ -27,6 +27,7 @@ import { alertOrchestrator } from '../services/AlertOrchestrator';
 import ExplanationPanel from '../components/features/ExplanationPanel';
 import SentimentGauge from '../components/features/SentimentGauge';
 import InstitutionalScanner from '../components/features/InstitutionalScanner';
+import GlobalSignalsPanel from '../components/features/GlobalSignalsPanel';
 
 export default function Markets() {
     const assetRegistry = {
@@ -126,6 +127,8 @@ export default function Markets() {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [accountSize, setAccountSize] = useState(10000);
     const [isCleanView, setIsCleanView] = useState(false);
+    const [globalSignals, setGlobalSignals] = useState([]);
+
 
     const handleScreenshot = () => {
         setIsCleanView(true);
@@ -142,6 +145,8 @@ export default function Markets() {
 
     // Monitoring listener for cross-asset alerts (Phase 4)
     useEffect(() => {
+
+
         const unsubscribe = alertOrchestrator.onUpdate((alerts) => {
             if (alerts.length > 0) {
                 const latest = alerts[0];
@@ -159,7 +164,16 @@ export default function Markets() {
         return unsubscribe;
     }, [selectedPair, addToast]);
 
+    // Global Signals Subscription
+    useEffect(() => {
+        const unsubscribe = subscribeToGlobalSignals((signals) => {
+            setGlobalSignals(signals);
+        });
+        return unsubscribe;
+    }, []);
+
     const handleToggleMonitoring = () => {
+
         if (isMonitoring) {
             proactiveMonitor.stop();
         } else {
@@ -230,10 +244,12 @@ export default function Markets() {
         ]
     };
 
+
     // Fetch Data & Subscribe
     useEffect(() => {
         setLoading(true);
-        setAnalysis(null);
+        // Do NOT reset analysis immediately; wait to see if we have a saved snapshot
+        // setAnalysis(null); 
         setActiveSetupId('A');
         const symbol = resolveSymbol(selectedPair);
         const interval = timeframe.toLowerCase();
@@ -258,14 +274,45 @@ export default function Markets() {
             }
         };
 
-        const fetchHistory = async () => {
+        const fetchHistoryAndAnalysis = async () => {
             setLoading(true);
             try {
+                // 1. Fetch Price History
                 const formatted = await marketData.fetchHistory(symbol, interval, 300);
                 if (!formatted || formatted.length === 0) {
                     throw new Error(`No data found for ${symbol} on interval ${interval}`);
                 }
                 setChartData(formatted);
+
+                // 2. Try to Load Persisted Analysis (Persistence Fix)
+                try {
+                    const savedAnalysis = await getMarketAnalysis(symbol, interval);
+                    // CRITICAL: Verify the loaded analysis actually belongs to this symbol
+                    if (savedAnalysis && savedAnalysis.timestamp && savedAnalysis.symbol === symbol) {
+                        // Additional freshness check: only load if less than 1 hour old
+                        const ageMinutes = (Date.now() - savedAnalysis.timestamp) / 60000;
+                        if (ageMinutes < 60) {
+                            console.log(`[Markets] Loaded persisted analysis for ${symbol}:`, savedAnalysis.timestamp);
+                            setAnalysis(savedAnalysis);
+                            analysisRef.current = true; // Mark as analyzed so we don't auto-regen immediately
+                        } else {
+                            console.log(`[Markets] Cached analysis for ${symbol} is stale (${ageMinutes.toFixed(0)}m old), regenerating...`);
+                            setAnalysis(null);
+                            analysisRef.current = false;
+                        }
+                    } else {
+                        if (savedAnalysis && savedAnalysis.symbol !== symbol) {
+                            console.warn(`[Markets] Symbol mismatch! Expected ${symbol}, got ${savedAnalysis.symbol}. Clearing cache.`);
+                        }
+                        setAnalysis(null);
+                        analysisRef.current = false;
+                    }
+                } catch (dbError) {
+                    console.warn('[Markets] Failed to load saved analysis:', dbError);
+                    setAnalysis(null);
+                    analysisRef.current = false;
+                }
+
                 setLoading(false);
                 connectWebSocket();
             } catch (error) {
@@ -276,10 +323,7 @@ export default function Markets() {
             }
         };
 
-        fetchHistory();
-        // Reset analysis state when pair or timeframe changes
-        setAnalysis(null);
-        analysisRef.current = false;
+        fetchHistoryAndAnalysis();
 
         return () => {
             unsubscribe();
@@ -357,10 +401,16 @@ export default function Markets() {
     }, [chartData.length, isAnalyzing]);
 
     const TF_COLORS = {
+        'w': '#7c3aed', // Violet
+        'd': '#db2777', // Pink
         '4h': '#1e3a8a', // Dark Blue
+        '2h': '#2563eb', // Blue
         '1h': '#3b82f6', // Light Blue
+        '30m': '#06b6d4', // Cyan
         '15m': '#10b981', // Green
+
         '5m': '#facc15', // Yellow
+        '1m': '#f97316', // Orange
         'default': '#3b82f6'
     };
 
@@ -732,7 +782,8 @@ export default function Markets() {
                     </div>
 
                     <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                        {['5m', '15m', '1H', '4H', 'D'].map(tf => (
+                        {['1m', '5m', '15m', '30m', '1H', '2H', '4H', 'D', 'W'].map(tf => (
+
                             <button
                                 key={tf}
                                 onClick={() => setTimeframe(tf)}
@@ -1045,13 +1096,23 @@ export default function Markets() {
 
                         {/* 1. Intelligence Layer */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            {/* Relocated Global Signals Panel */}
+                            <div style={{ maxHeight: '300px', overflowY: 'auto', background: 'rgba(0,0,0,0.2)', borderRadius: '12px' }}>
+                                <GlobalSignalsPanel
+                                    signals={globalSignals}
+                                    onSelectSignal={(signal) => setSelectedPair(signal.symbol)}
+                                />
+                            </div>
+
                             <SentimentGauge score={analysis?.marketState?.sentiment?.score || 50} />
                             <ExplanationPanel
                                 analysis={analysis}
                                 loading={loading}
                                 onGenerateNew={() => handleGenerateAnalysis(true)}
                             />
+
                             <InstitutionalScanner onSelectSymbol={setSelectedPair} />
+
                         </div>
 
                         <div style={{ height: '1px', background: 'rgba(255,255,255,0.05)' }} />

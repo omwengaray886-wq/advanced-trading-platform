@@ -1,7 +1,9 @@
 // src/lib/firebase.js
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp as initializeClientApp } from "firebase/app";
+import { getAuth as getClientAuth } from "firebase/auth";
+import { getFirestore as getClientFirestore } from "firebase/firestore";
+
+const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
 
 const getEnv = () => {
   if (typeof import.meta !== 'undefined' && import.meta.env) {
@@ -22,26 +24,35 @@ const firebaseConfig = {
   storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: env.VITE_FIREBASE_APP_ID,
-  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID
+  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID,
+  databaseId: env.FIREBASE_DATABASE_ID || env.VITE_FIREBASE_DATABASE_ID || '(default)'
 };
 
+const DATABASE_ID = firebaseConfig.databaseId;
 
-// Initialize Firebase
-let app;
-let auth;
-let db;
 
-try {
-  app = initializeApp(firebaseConfig);
-  // Initialize Services
-  auth = getAuth(app);
-  db = getFirestore(app);
-} catch (error) {
-  console.warn("Firebase initialization failed (likely missing env vars). Using mock services.");
-  app = {};
-  auth = {};
-  db = {};
+let app, auth, db;
+
+if (isNode) {
+  // Node.js environment - Placeholder for Admin SDK handled in db.js or background-worker.js
+  // We export nulls here to follow the pattern, but the worker will use admin sdk directly
+  app = null;
+  auth = null;
+  db = null;
+} else {
+  // Browser environment
+  try {
+    app = initializeClientApp(firebaseConfig);
+    auth = getClientAuth(app);
+    db = getClientFirestore(app, DATABASE_ID !== '(default)' ? DATABASE_ID : undefined);
+  } catch (error) {
+    console.warn("Firebase initialization failed (likely missing env vars). Using mock services.");
+    app = {};
+    auth = {};
+    db = {};
+  }
 }
 
-export { auth, db };
+export { auth, db, isNode, DATABASE_ID };
 export default app;
+

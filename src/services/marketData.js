@@ -8,7 +8,9 @@ const INTERVAL_MAP = {
     '5m': '5m', '5M': '5m',
     '15m': '15m', '15M': '15m',
     '30m': '30m', '30M': '30m',
+
     '1h': '1h', '1H': '1h',
+    '2h': '2h', '2H': '2h',
     '4h': '4h', '4H': '4h',
     '1d': '1d', '1D': '1d',
     '1w': '1w', '1W': '1w'
@@ -17,8 +19,9 @@ const INTERVAL_MAP = {
 const isDev = (typeof process !== 'undefined' && process.env.NODE_ENV === 'development') ||
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV);
 
-// Always use proxy in browser/dev to avoid CORS and hide keys
-const BINANCE_REST_BASE = '/api/binance';
+// Always use proxy in browser/dev to avoid CORS and hide keys, but use absolute URL in Node.js
+const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
+const BINANCE_REST_BASE = isNode ? 'https://api.binance.com/api/v3' : '/api/binance';
 
 /**
  * Map institutional symbols to exchange-specific symbols (Binance Spot)
@@ -272,21 +275,35 @@ export class MarketDataService {
         this.stopReconnect();
 
         if (this.ws) {
-            // Remove all custom listeners to prevent "Ping after close"
+            // Remove ALL listeners immediately to prevent "Ping after close" or unexpected messages
             this.ws.onopen = null;
             this.ws.onmessage = null;
             this.ws.onerror = null;
+            this.ws.onclose = null; // Important: Clear onclose as well since we are manually handling it
 
             if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
-                this.ws.close();
+                try {
+                    this.ws.close();
+                } catch (e) {
+                    console.warn('Error closing primary WS:', e.message);
+                }
             }
             this.ws = null;
         }
 
-        // Cleanup depth connections
-        this.depthWS.forEach(ws => {
+        // Cleanup depth connections with same aggressive listener clearing
+        this.depthWS.forEach((ws, symbol) => {
+            ws.onopen = null;
             ws.onmessage = null;
-            ws.close();
+            ws.onerror = null;
+            ws.onclose = null;
+            try {
+                if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                    ws.close();
+                }
+            } catch (e) {
+                console.warn(`Error closing depth WS for ${symbol}:`, e.message);
+            }
         });
         this.depthWS.clear();
 
@@ -376,6 +393,7 @@ export class MarketDataService {
                 ws.onopen = null;
                 ws.onmessage = null;
                 ws.onerror = null;
+                ws.onclose = null;
 
                 if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
                     try {

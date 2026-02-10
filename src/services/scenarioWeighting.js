@@ -81,7 +81,14 @@ export class ScenarioWeighting {
         // 4. News Risk Penalty (subtract up to 10 points)
         const newsRiskPenalty = this._getNewsRiskPenalty(marketState) * 10;
 
-        const totalScore = htfBiasScore + liquidityScore + structureScore - newsRiskPenalty;
+        // 5. Momentum Scaling (Phase 80: +/- 10 points)
+        const velocity = marketState.velocity || 1.0;
+        const trendDir = marketState.trend?.direction || 'NEUTRAL';
+        const scenarioDir = scenario.direction;
+        const isMomentumAligned = (normalizeDirection(trendDir) === normalizeDirection(scenarioDir));
+        const momentumBonus = isMomentumAligned ? (velocity > 1.0 ? 10 : 5) : (velocity > 1.2 ? -10 : 0);
+
+        const totalScore = htfBiasScore + liquidityScore + structureScore + momentumBonus - newsRiskPenalty;
 
         return Math.max(Math.min(Math.round(totalScore), 100), 0);
     }
@@ -134,14 +141,18 @@ export class ScenarioWeighting {
 
         if (nearbyPools.length === 0) return 0.4;
 
+        // Phase 80: Confluence Density Scaling
+        // More overlapping pools = higher confidence
+        const densityBonus = Math.min(0.2, (nearbyPools.length - 1) * 0.1);
+
         // Score based on pool strength
         const strongPools = nearbyPools.filter(p => p.strength === 'HIGH');
-        if (strongPools.length > 0) return 1.0;
+        if (strongPools.length > 0) return Math.min(1.0, 1.0 + densityBonus);
 
         const mediumPools = nearbyPools.filter(p => p.strength === 'MEDIUM');
-        if (mediumPools.length > 0) return 0.7;
+        if (mediumPools.length > 0) return Math.min(1.0, 0.7 + densityBonus);
 
-        return 0.5;
+        return Math.min(1.0, 0.5 + densityBonus);
     }
 
     /**
@@ -164,11 +175,18 @@ export class ScenarioWeighting {
             return s.markerType === 'BOS' && s.status !== 'FAILED' && structDir === scenarioDir;
         }).length;
 
-        if (alignedBOS >= 3) return 1.0;
-        if (alignedBOS >= 2) return 0.75;
-        if (alignedBOS >= 1) return 0.5;
+        // Phase 80: Confluence Scaling
+        // BOS + FVG/OB alignment provides density bonus
+        const alignedFVGs = (marketState.fvgs || []).filter(f => normalizeDirection(f.direction) === normalizeDirection(scenarioDirection)).length;
+        const alignedOBs = (marketState.orderBlocks || []).filter(ob => normalizeDirection(ob.direction) === normalizeDirection(scenarioDirection)).length;
 
-        return 0.3;
+        const densityBonus = (alignedFVGs > 0 ? 0.1 : 0) + (alignedOBs > 0 ? 0.1 : 0);
+
+        if (alignedBOS >= 3) return Math.min(1.0, 1.0 + densityBonus);
+        if (alignedBOS >= 2) return Math.min(1.0, 0.75 + densityBonus);
+        if (alignedBOS >= 1) return Math.min(1.0, 0.5 + densityBonus);
+
+        return Math.min(1.0, 0.3 + densityBonus);
     }
 
     /**

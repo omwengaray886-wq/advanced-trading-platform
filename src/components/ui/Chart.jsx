@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { createChart, CandlestickSeries } from 'lightweight-charts';
+import { createChart } from 'lightweight-charts';
 import { normalizeDirection } from '../../utils/normalization';
 import { EntryConfirmationOverlay } from './EntryConfirmationOverlay';
 import { ChartLegend } from './ChartLegend';
@@ -55,16 +55,19 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
         }
 
         const getSafePoint = (time, price) => {
-            // Safety Check: Ensure inputs are valid
+            // Safety Check: Ensure inputs are valid and numbers
             if (time === null || time === undefined || isNaN(time) || !isFinite(time)) return { x: null, y: null };
             if (price === null || price === undefined || isNaN(price) || !isFinite(price)) return { x: null, y: null };
 
-            let x = timeScale.timeToCoordinate(time);
+            // Lightweight-charts expects integer timestamps for 'time' coordinates
+            const integerTime = Math.floor(time);
+
+            let x = timeScale.timeToCoordinate(integerTime);
             let y = seriesRef.current.priceToCoordinate(price);
 
             // Future Projection
-            if (x === null && time > lastCandleTime && lastCandleX !== null && pixelsPerSecond > 0) {
-                const secondsAhead = time - lastCandleTime;
+            if (x === null && integerTime > lastCandleTime && lastCandleX !== null && pixelsPerSecond > 0) {
+                const secondsAhead = integerTime - lastCandleTime;
                 x = lastCandleX + (secondsAhead * pixelsPerSecond);
             }
 
@@ -271,7 +274,7 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
             },
         });
 
-        const series = chart.addSeries(CandlestickSeries, {
+        const series = chart.addCandlestickSeries({
             upColor: '#10b981',
             downColor: '#ef4444',
             borderVisible: false,

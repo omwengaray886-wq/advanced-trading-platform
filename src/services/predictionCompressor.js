@@ -5,7 +5,7 @@
  * Output: 1 bias, 1 target, 1 invalidation, 1 confidence score.
  */
 
-import { EdgeScoringEngine } from './edgeScoringEngine.js';
+import { EdgeScoringEngine } from './EdgeScoringEngine.js';
 
 export class PredictionCompressor {
     /**
@@ -665,9 +665,28 @@ export class PredictionCompressor {
         // Phase 52 Upgrade: Obligation Gating
         const isObligated = marketState.obligations?.state === 'OBLIGATED';
 
-        // ACCURACY UPGRADE (Phase 73): Increased thresholds for higher precision
-        // If we are just trend following without a clear "Need" to move, require 80% confidence.
-        const minThreshold = isObligated ? 60 : 80;
+        // ACCURACY UPGRADE (Phase 80): Increased thresholds for higher precision
+        // If we are just trend following without a clear "Need" to move, require 85% confidence.
+        const minThreshold = isObligated ? 65 : 85;
+
+        // Phase 80: Opposing Liquidity Gating
+        // If we predict a move, but there is a massive HTF Liquidity Pool in the opposite direction
+        // that has NOT been swept, it's safer to wait.
+        const htfLiquidity = (marketState.liquidityPools || []).filter(p => p.strength === 'HIGH' && p.isHTF);
+        if (htfLiquidity.length > 0) {
+            const currentPrice = marketState.currentPrice || marketState.price;
+            const predDir = probabilities.continuation > probabilities.reversal ? ltfBias : (ltfBias === 'BULLISH' ? 'BEARISH' : 'BULLISH');
+
+            const hasMajorOpposingPool = htfLiquidity.some(p =>
+                (predDir === 'BULLISH' && p.price < currentPrice) ||
+                (predDir === 'BEARISH' && p.price > currentPrice)
+            );
+
+            if (hasMajorOpposingPool && !isObligated) {
+                // console.log(`[PRECISION] Suppressing due to major opposing HTF liquidity`);
+                return false;
+            }
+        }
 
         if (maxProb < minThreshold) {
             // console.log(`[PRECISION] Suppressing low-prob prediction: ${maxProb}% < ${minThreshold}% threshold`);

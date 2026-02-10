@@ -5,44 +5,19 @@
  * based on current market regime performance.
  */
 
-import { db } from '../lib/firebase.js';
-import { collection, doc, setDoc, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { db } from './db.js';
 
 export class StrategyPerformanceTracker {
-    /**
-     * Track a strategy outcome
-     * @param {Object} outcome - Outcome data
-     * @param {string} outcome.strategyName - Strategy name ('OrderBlock', 'FVG', etc.)
-     * @param {string} outcome.result - 'WIN' or 'LOSS'
-     * @param {string} outcome.marketRegime - Regime at time of signal
-     * @param {string} outcome.symbol - Trading symbol
-     * @param {number} outcome.confidence - Original confidence score
-     */
     static async trackOutcome(outcome) {
         try {
             const outcomeId = `${outcome.symbol}_${Date.now()}`;
-            const outcomeRef = doc(collection(db, 'strategyOutcomes'), outcomeId);
-
-            await setDoc(outcomeRef, {
-                ...outcome,
-                timestamp: Date.now(),
-                timestampReadable: new Date().toISOString()
-            });
-
+            await db.trackOutcome(outcomeId, outcome);
             console.log(`Strategy outcome tracked: ${outcome.strategyName} → ${outcome.result}`);
         } catch (error) {
             console.error('Failed to track strategy outcome:', error);
-            // Don't throw - tracking failures should not break the platform
         }
     }
 
-    /**
-     * Get performance statistics for a strategy in a specific regime
-     * @param {string} strategyName - Strategy name
-     * @param {string} marketRegime - Optional regime filter
-     * @param {number} lookbackDays - Days to look back (default: 30)
-     * @returns {Promise<Object>} Performance stats
-     */
     static async getStrategyPerformance(strategyName, marketRegime = null, lookbackDays = 30) {
         try {
             if (!strategyName) {
@@ -51,23 +26,11 @@ export class StrategyPerformanceTracker {
             }
 
             const cutoffTime = Date.now() - (lookbackDays * 24 * 60 * 60 * 1000);
-            const outcomesRef = collection(db, 'strategyOutcomes');
-
             const cleanStrategyName = (typeof strategyName === 'object' && strategyName !== null)
                 ? (strategyName.constructor.name || 'Unknown')
                 : String(strategyName);
 
-            const q = query(
-                outcomesRef,
-                where('strategyName', '==', cleanStrategyName),
-                where('timestamp', '>=', cutoffTime),
-                orderBy('timestamp', 'desc'),
-                limit(100)
-            );
-
-            const snapshot = await getDocs(q);
-            let outcomes = [];
-            snapshot.forEach(doc => outcomes.push(doc.data()));
+            let outcomes = await db.getStrategyOutcomes(cleanStrategyName, cutoffTime, 100);
 
             // Filter by regime if specified
             if (marketRegime) {
@@ -167,16 +130,9 @@ export class StrategyPerformanceTracker {
         return 'LOW';
     }
 
-    /**
-     * Get recent strategy trends
-     * @param {string} strategyName - Strategy name
-     * @param {number} limit - Number of recent outcomes to analyze
-     * @returns {Promise<Object>} Trend analysis
-     */
     static async getStrategyTrend(strategyName, lookbackLimit = 20) {
         try {
             if (!strategyName) {
-                console.warn('[StrategyPerformanceTracker] Missing strategyName in getStrategyTrend');
                 return { trend: 'UNKNOWN', recentWinRate: 0.5, momentum: 'NEUTRAL' };
             }
 
@@ -184,17 +140,8 @@ export class StrategyPerformanceTracker {
                 ? (strategyName.constructor.name || 'Unknown')
                 : String(strategyName);
 
-            const outcomesRef = collection(db, 'strategyOutcomes');
-            const q = query(
-                outcomesRef,
-                where('strategyName', '==', cleanStrategyName),
-                orderBy('timestamp', 'desc'),
-                limit(lookbackLimit)
-            );
-
-            const snapshot = await getDocs(q);
-            const outcomes = [];
-            snapshot.forEach(doc => outcomes.push(doc.data()));
+            const cutoffTime = Date.now() - (60 * 24 * 60 * 60 * 1000); // 60 days lookback for trend
+            const outcomes = await db.getStrategyOutcomes(cleanStrategyName, cutoffTime, lookbackLimit);
 
             if (outcomes.length < 5) {
                 return {

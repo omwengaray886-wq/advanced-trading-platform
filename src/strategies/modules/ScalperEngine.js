@@ -146,8 +146,9 @@ export class ScalperEngine {
         const bidVol = bids.slice(0, 15).reduce((sum, b) => sum + (b.volume * getWeight(b.price)), 0);
         const askVol = asks.slice(0, 15).reduce((sum, a) => sum + (a.volume * getWeight(a.price)), 0);
 
-        if (bidVol > askVol * 1.5) return { direction: 'LONG', ratio: bidVol / askVol };
-        if (askVol > bidVol * 1.5) return { direction: 'SHORT', ratio: askVol / bidVol };
+        // Tightened Threshold: 2.0x Imbalance (was 1.5x)
+        if (bidVol > askVol * 2.0) return { direction: 'LONG', ratio: bidVol / askVol };
+        if (askVol > bidVol * 2.0) return { direction: 'SHORT', ratio: askVol / bidVol };
 
         return { direction: 'NEUTRAL', ratio: 1 };
     }
@@ -166,8 +167,8 @@ export class ScalperEngine {
         // Long Setup: Front-run a BID Wall (Support)
         const bidWall = bids.find(b => b.intensity > 0.8 && b.price < currentPrice);
         if (bidWall) {
-            // Check if wall is close enough (within 0.5%)
-            if ((currentPrice - bidWall.price) / currentPrice < 0.005) {
+            // Tightened Threshold: Wall must be within 0.2% (was 0.5%)
+            if ((currentPrice - bidWall.price) / currentPrice < 0.002) {
                 return {
                     direction: 'LONG',
                     wallPrice: bidWall.price,
@@ -181,7 +182,8 @@ export class ScalperEngine {
         // Short Setup: Front-run an ASK Wall (Resistance)
         const askWall = asks.find(a => a.intensity > 0.8 && a.price > currentPrice);
         if (askWall) {
-            if ((askWall.price - currentPrice) / currentPrice < 0.005) {
+            // Tightened Threshold: Wall must be within 0.2% (was 0.5%)
+            if ((askWall.price - currentPrice) / currentPrice < 0.002) {
                 return {
                     direction: 'SHORT',
                     wallPrice: askWall.price,

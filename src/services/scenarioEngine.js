@@ -32,8 +32,8 @@ export class ScenarioEngine {
         const proximity = fundamentals?.proximityAnalysis;
 
         // 1. Detect Waiting Conditions (Phase 40)
-        const waitingCondition = this.detectWaitingCondition(marketState, fundamentals);
-        const isWaiting = waitingCondition !== null;
+        let waitingCondition = this.detectWaitingCondition(marketState, fundamentals);
+        let isWaiting = waitingCondition !== null;
 
         let upProb = 0.33, downProb = 0.33, rangeProb = 0.34;
 
@@ -199,6 +199,36 @@ export class ScenarioEngine {
     }
 
     /**
+     * Check if a scenario is confirmed by market conditions
+     * @param {Object} marketState
+     * @param {Object} scenario
+     * @param {Array} setups
+     * @returns {boolean}
+     */
+    static checkConfirmation(marketState, scenario, setups) {
+        if (!marketState || !scenario) return false;
+
+        const bias = this._normalizeDirection(scenario.bias);
+        const trend = this._normalizeDirection(marketState.trend?.direction);
+        const mtfBias = this._normalizeDirection(marketState.mtf?.globalBias);
+
+        // 1. alignment with global bias
+        if (bias === mtfBias) return true;
+
+        // 2. alignment with current trend (if strong)
+        if (bias === trend && marketState.trend?.strength > 60) return true;
+
+        // 3. alignment with a high-quality setup
+        const matchingSetup = setups.find(s =>
+            this._normalizeDirection(s.direction) === bias &&
+            s.quantScore > 60
+        );
+        if (matchingSetup) return true;
+
+        return false;
+    }
+
+    /**
      * Detect if market is in a "Waiting" state
      */
     static detectWaitingCondition(marketState, fundamentals) {
@@ -208,45 +238,11 @@ export class ScenarioEngine {
     }
 
     /**
-     * Check if a scenario is confirmed by recent price action
-     */
-    static checkConfirmation(marketState, scenario, setups = []) {
-        if (!scenario.bias || scenario.bias === 'NEUTRAL') return true;
-
-        const normalizedBias = this._normalizeDirection(scenario.bias);
-        const isBullish = normalizedBias === 'BULLISH';
-
-        const primarySetup = setups.find(s => this._normalizeDirection(s.direction) === normalizedBias);
-
-        // 1. Bayesian Confidence Check
-        const bayesianProb = primarySetup?.bayesianStats?.probability || 0;
-        const hasBayesianEdge = bayesianProb >= 0.70;
-
-        // 2. Multi-Timeframe Handshake
-        const htfBias = this._normalizeDirection(marketState.mtf?.globalBias);
-        const hasMTFAlignment = htfBias === normalizedBias;
-
-        // 3. Technical Confirmations
-        const hasRetest = (marketState.retests || []).some(r =>
-            this._normalizeDirection(r.direction) === normalizedBias
-        );
-
-        const hasSweep = marketState.liquiditySweep && (
-            (isBullish && marketState.liquiditySweep.type === 'BULLISH_SWEEP') ||
-            (!isBullish && marketState.liquiditySweep.type === 'BEARISH_SWEEP')
-        );
-
-        // 4. Order Flow Alignment
-        const orderFlowAligned = this._normalizeDirection(marketState.orderFlow?.bias) === normalizedBias;
-
-        return hasBayesianEdge && (hasMTFAlignment || orderFlowAligned || hasRetest || hasSweep);
-    }
-
-    /**
      * Map scenarios to visual path JSON for the frontend
      */
-    static getVisualScenarios(scenarios, currentPrice, annotations = [], volProfile = null, setups = [], orderBook = null) {
+    static getVisualScenarios(scenarios, marketState, annotations = [], volProfile = null, setups = [], orderBook = null) {
         const visual = [];
+        const currentPrice = marketState.currentPrice;
         const primarySetup = setups[0];
         const secondarySetup = setups.length > 1 ? setups[1] : null;
 
@@ -256,7 +252,7 @@ export class ScenarioEngine {
                 type: 'SCENARIO_PATH',
                 style: scenarios.primary.style || 'BOLD',
                 direction: scenarios.primary.bias,
-                points: this.generatePathway(currentPrice, scenarios.primary, annotations, volProfile, primarySetup, orderBook),
+                points: this.generatePathway(marketState, scenarios.primary, annotations, volProfile, primarySetup, orderBook),
                 label: scenarios.primary.label,
                 probability: scenarios.primary.probability,
                 isWaiting: scenarios.isWaiting
@@ -269,7 +265,7 @@ export class ScenarioEngine {
                 type: 'SCENARIO_PATH',
                 style: scenarios.alternate.style || 'DASHED',
                 direction: scenarios.alternate.bias,
-                points: this.generatePathway(currentPrice, scenarios.alternate, annotations, volProfile, secondarySetup, orderBook),
+                points: this.generatePathway(marketState, scenarios.alternate, annotations, volProfile, secondarySetup, orderBook),
                 label: scenarios.alternate.label,
                 probability: scenarios.alternate.probability
             });
@@ -281,7 +277,8 @@ export class ScenarioEngine {
     /**
      * Generate multi-point trajectory
      */
-    static generatePathway(currentPrice, scenario, annotations, volProfile, setup, orderBook) {
+    static generatePathway(marketState, scenario, annotations, volProfile, setup, orderBook) {
+        const currentPrice = marketState.currentPrice;
         const points = [{ price: currentPrice, type: 'START', timeOffset: 0 }];
         const normalizedBias = this._normalizeDirection(scenario.bias);
         const isBullish = normalizedBias === 'BULLISH';
@@ -307,7 +304,28 @@ export class ScenarioEngine {
         }
 
         if (pivotPrice && ((isBullish && pivotPrice < currentPrice) || (!isBullish && pivotPrice > currentPrice))) {
-            points.push({ price: pivotPrice, type: 'PIVOT', label: 'Entry', barsOffset: 5 });
+            // Dynamic barsOffset based on velocity
+            const velocity = marketState.velocity || 1.0;
+            const pivotOffset = Math.max(3, Math.min(10, Math.round(5 / velocity)));
+
+            // Check for Manipulation (Judas Swing)
+            const isManipulated = marketState.liquiditySweep &&
+                ((isBullish && marketState.liquiditySweep.type === 'BEARISH_SWEEP') ||
+                    (!isBullish && marketState.liquiditySweep.type === 'BULLISH_SWEEP'));
+
+            if (isManipulated) {
+                // Add a fake-out point in the opposite direction first
+                const sweepPrice = marketState.liquiditySweep.price;
+                points.push({
+                    price: sweepPrice,
+                    type: 'PIVOT',
+                    label: 'Manipulation',
+                    barsOffset: Math.round(pivotOffset / 2),
+                    style: 'DOTTED'
+                });
+            }
+
+            points.push({ price: pivotPrice, type: 'PIVOT', label: 'Entry', barsOffset: pivotOffset });
         }
 
         let target = setup?.targets?.[0]?.price || (isBullish ? currentPrice * 1.02 : currentPrice * 0.98);
@@ -325,7 +343,10 @@ export class ScenarioEngine {
             }
         }
 
-        points.push({ price: target, type: 'TARGET', label: 'Target', barsOffset: 15 });
+        const velocity = marketState.velocity || 1.0;
+        const targetOffset = Math.max(8, Math.min(25, Math.round(15 / velocity)));
+
+        points.push({ price: target, type: 'TARGET', label: 'Target', barsOffset: targetOffset });
 
         return points;
     }

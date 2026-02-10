@@ -10,7 +10,6 @@ import { OrderBookEngine } from './OrderBookEngine.js';
  */
 
 export class EdgeScoringEngine {
-    // Local helper removed in favor of shared utility
 
     /**
      * Calculate Edge Score
@@ -22,12 +21,38 @@ export class EdgeScoringEngine {
      */
     static calculateScore(setup, marketState, bayesianStats, symbol = 'BTCUSDT') {
         if (!setup) return { score: 0, breakdown: { positives: [], risks: ['No active setup'] } };
+        if (!marketState) return { score: 0, breakdown: { positives: [], risks: ['Missing Market Context'] } };
 
         let totalPoints = 0;
         const positives = [];
         const risks = [];
 
         const setupDir = normalizeDirection(setup.direction);
+
+        // === TIMEFRAME PROFILE DETECTION ===
+        const tf = (marketState.timeframe || '1h').toLowerCase();
+        let tfProfile = 'DAY_TRADER'; // Default
+        let killzoneWeight = 1.0;
+        let htfWeight = 1.0;
+        let minRR = 2.0;
+
+        if (['1m', '5m', '15m'].includes(tf)) {
+            tfProfile = 'SCALPER';
+            killzoneWeight = 1.3; // Scalping prioritizes session timing
+            htfWeight = 0.7; // Lower HTF requirement for scalps
+            minRR = 1.5; // Scalps accept lower R:R
+        } else if (['30m', '1h', '2h'].includes(tf)) {
+
+            tfProfile = 'DAY_TRADER';
+            killzoneWeight = 1.0; // Balanced
+            htfWeight = 1.0;
+            minRR = 2.0;
+        } else if (['4h', '1d', 'w', '1w'].includes(tf)) {
+            tfProfile = 'SWING';
+            killzoneWeight = 0.6; // Swing less dependent on session
+            htfWeight = 1.4; // Swing requires strong HTF alignment
+            minRR = 3.0; // Swing needs higher R:R
+        }
 
         // 1. Bayesian Strategy Reliability (up to 40 points)
         const reliability = (bayesianStats?.probability || 0.5) * 100;
@@ -42,31 +67,36 @@ export class EdgeScoringEngine {
             risks.push(`Low Strategy Reliability (${reliability.toFixed(0)}%)`);
         }
 
-        // 2. R:R Feasibility (up to 20 points)
+        // 2. R:R Feasibility (up to 20 points) - TIMEFRAME ADJUSTED
         const rr = setup.rr || 0;
-        if (rr >= 3) {
+        if (rr >= minRR + 1) {
             totalPoints += 20;
-            positives.push(`High yield R:R (${rr.toFixed(1)})`);
-        } else if (rr >= 2) {
+            positives.push(`High yield R:R (${rr.toFixed(1)}) for ${tfProfile}`);
+        } else if (rr >= minRR) {
             totalPoints += 15;
-            positives.push(`Standard R:R (${rr.toFixed(1)})`);
+            positives.push(`Standard R:R (${rr.toFixed(1)}) for ${tfProfile}`);
+        } else if (rr >= minRR * 0.7) {
+            totalPoints += 8;
+            risks.push(`Below-optimal R:R (${rr.toFixed(1)}) for ${tfProfile} - expected ≥${minRR}`);
         } else if (rr > 0) {
-            totalPoints += 5;
-            risks.push(`Low R:R yield (${rr.toFixed(1)})`);
+            totalPoints += 3;
+            risks.push(`Low R:R yield (${rr.toFixed(1)}) - high risk for ${tfProfile}`);
         }
 
-        // 3. Timeframe Stacking (up to 25 points)
+        // 3. Timeframe Stacking (up to 25 points) - HTF WEIGHT APPLIED
         const globalBias = normalizeDirection(marketState.mtf?.globalBias);
         const mtfAligned = globalBias === setupDir;
 
         if (globalBias === 'NEUTRAL') {
             totalPoints += 5;
         } else if (mtfAligned) {
-            totalPoints += 25;
-            positives.push('HTF Context alignment (1D/4H)');
+            const htfBonus = Math.round(25 * htfWeight);
+            totalPoints += htfBonus;
+            positives.push(`HTF Context alignment (${tfProfile === 'SWING' ? 'CRITICAL' : 'CONFIRMED'})`);
         } else {
-            totalPoints -= 15;
-            risks.push('HTF Bias conflict');
+            const htfPenalty = Math.round(15 * htfWeight);
+            totalPoints -= htfPenalty;
+            risks.push(`HTF Bias conflict${tfProfile === 'SWING' ? ' - HIGH RISK FOR SWING' : ''}`);
         }
 
         // 4. Institutional Confluence (up to 50 points)
@@ -88,8 +118,10 @@ export class EdgeScoringEngine {
         if (inKillzone) {
             const hour = marketState.session?.hour ?? new Date().getUTCHours();
             const isPowerHour = (hour === 8 || hour === 9 || hour === 13 || hour === 14);
-            totalPoints += isPowerHour ? 20 : 10;
-            positives.push(`Killzone alignment (${marketState.session.killzone}${isPowerHour ? ' - POWER HOUR' : ''})`);
+            const baseBonus = isPowerHour ? 20 : 10;
+            const killzoneBonus = Math.round(baseBonus * killzoneWeight);
+            totalPoints += killzoneBonus;
+            positives.push(`Killzone alignment (${marketState.session.killzone}${isPowerHour ? ' - POWER HOUR' : ''})${tfProfile === 'SCALPER' ? ' [CRITICAL]' : ''}`);
         }
         if (targetsObligation) {
             totalPoints += 15;
@@ -134,8 +166,8 @@ export class EdgeScoringEngine {
             positives.push('Entry supported by DOM Liquidity Wall');
         }
 
-        // 6. Cross-Asset Consensus (Macro Alignment)
-        const macroAlignment = marketState.macroSentiment;
+        // 7. Cross-Asset Consensus (Macro Alignment)
+        const macroAlignment = marketState.macroSentiment || marketState.macroCorrelation;
         if (macroAlignment && macroAlignment.bias && macroAlignment.bias !== 'NEUTRAL') {
             const macroBias = normalizeDirection(macroAlignment.bias);
             const isInverse = isInversePair(symbol, 'DXY');
@@ -155,7 +187,7 @@ export class EdgeScoringEngine {
             }
         }
 
-        // 7. Order Book Depth & Walls
+        // 8. Order Book Depth & Walls
         const depthAnalysis = marketState.orderBookDepth || marketState.orderBook;
         if (depthAnalysis) {
             const depthBonus = OrderBookEngine.getDepthAlignmentBonus(setup.direction, depthAnalysis);
@@ -177,7 +209,7 @@ export class EdgeScoringEngine {
             risks.push(`Trap Zone Detected: ${marketState.trapZones.warning || 'Pattern Failure'}`);
         }
 
-        // 8. AMD Cycle Calibration
+        // 9. AMD Cycle Calibration
         const cycle = marketState.marketCycle || marketState.amdCycle;
         if (cycle && cycle.phase !== 'UNKNOWN') {
             const cycleDir = normalizeDirection(cycle.direction || cycle.bias);
@@ -205,7 +237,7 @@ export class EdgeScoringEngine {
             }
         }
 
-        // 9. Institutional Liquidity Sweep (Phase 52)
+        // 10. Institutional Liquidity Sweep (Phase 52)
         const sweep = marketState.liquiditySweep;
         if (sweep && sweep.isSweepDetected) {
             const sweepDir = normalizeDirection(sweep.side === 'BUY_SIDE' ? 'LONG' : 'SHORT');
@@ -215,7 +247,7 @@ export class EdgeScoringEngine {
             }
         }
 
-        // 10. Institutional Flow Alpha (Alpha Tracker)
+        // 11. Institutional Flow Alpha (Alpha Tracker)
         const alphaStats = marketState.alphaMetrics || marketState.alphaStats;
         const alphaLeaks = marketState.alphaLeaks || [];
 
@@ -246,7 +278,7 @@ export class EdgeScoringEngine {
             }
         }
 
-        // 11. Momentum Cluster Alignment (Layer 4)
+        // 12. Momentum Cluster Alignment (Layer 4)
         const momentumPoints = this.calculateMomentumCluster(setup.direction, marketState);
         if (momentumPoints !== 0) {
             totalPoints += momentumPoints;
@@ -254,7 +286,7 @@ export class EdgeScoringEngine {
             else risks.push(`Momentum Divergence/Overextension (${Math.abs(momentumPoints)}pt penalty)`);
         }
 
-        // 12. Crowd Sentiment Alignment
+        // 13. Crowd Sentiment Alignment
         const sentiment = marketState.sentiment || marketState.macroSentiment;
 
         if (sentiment && sentiment.label !== 'NEUTRAL') {
@@ -268,7 +300,21 @@ export class EdgeScoringEngine {
             }
         }
 
-        // 8. Directional Confidence
+        // 14. Fractal Pattern Verification (Phase 3 Boost)
+        const patterns = marketState.patterns;
+        if (patterns && patterns.prediction) {
+            const patternDir = normalizeDirection(patterns.prediction);
+            if (patternDir === setupDir) {
+                const boost = (patterns.confidence || 0) * 20;
+                totalPoints += boost;
+                positives.push(`Fractal Confirmation (${((patterns.confidence || 0) * 100).toFixed(0)}%)`);
+            } else if ((patterns.confidence || 0) > 0.6) {
+                totalPoints -= 15;
+                risks.push('Fractal Pattern Conflict');
+            }
+        }
+
+        // 15. Directional Confidence
         if (setup.directionalConfidence !== undefined) {
             const confidence = setup.directionalConfidence;
             if (confidence >= 0.7) {

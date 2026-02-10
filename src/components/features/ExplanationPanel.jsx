@@ -222,11 +222,15 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
                             <span style={{ color: 'var(--color-text-secondary)' }}>Point of Control (POC)</span>
-                            <span style={{ fontWeight: 'bold' }}>{marketState.volProfile.poc?.toFixed(5) || 'N/A'}</span>
+                            <span style={{ fontWeight: 'bold' }}>{marketState.volProfile?.poc?.toFixed(2) || '---'}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-                            <span style={{ color: 'var(--color-text-secondary)' }}>Value Area (VAH-VAL)</span>
-                            <span style={{ fontWeight: '500' }}>{marketState.volProfile.vah?.toFixed(5) || 'N/A'} - {marketState.volProfile.val?.toFixed(5) || 'N/A'}</span>
+                            <span style={{ color: 'var(--color-text-tertiary)' }}>Value Area Low</span>
+                            <span style={{ color: 'var(--color-text-secondary)' }}>{marketState.volProfile?.val?.toFixed(2) || '---'}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                            <span style={{ color: 'var(--color-text-tertiary)' }}>Value Area High</span>
+                            <span style={{ color: 'var(--color-text-secondary)' }}>{marketState.volProfile?.vah?.toFixed(2) || '---'}</span>
                         </div>
 
                         {/* Position relative to value */}
