@@ -4,7 +4,7 @@
  */
 
 import { newsShockEngine } from './newsShockEngine.js';
-import { EdgeScoringEngine } from './edgeScoringEngine.js';
+import { EdgeScoringEngine } from './EdgeScoringEngine.js';
 
 class MultiTimeframeValidator {
     /**

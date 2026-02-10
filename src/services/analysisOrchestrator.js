@@ -112,7 +112,7 @@ console.log('AlphaTracker singleton initialized with methods:', Object.getOwnPro
 import { AlphaLeakDetector } from './AlphaLeakDetector.js';
 import { FundamentalAnalyzer } from './fundamentalAnalyzer.js';
 import { CorrelationEngine } from './correlationEngine.js';
-import { EdgeScoringEngine } from './edgeScoringEngine.js';
+import { EdgeScoringEngine } from './EdgeScoringEngine.js';
 import { COTDataService } from './COTDataService.js';
 import { CommodityCorrelationEngine } from './CommodityCorrelationEngine.js';
 

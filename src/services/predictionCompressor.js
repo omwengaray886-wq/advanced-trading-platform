@@ -5,7 +5,7 @@
  * Output: 1 bias, 1 target, 1 invalidation, 1 confidence score.
  */
 
-import { EdgeScoringEngine } from './edgeScoringEngine.js';
+import { EdgeScoringEngine } from './EdgeScoringEngine.js';
 
 export class PredictionCompressor {
     /**
