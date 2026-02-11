@@ -29,7 +29,7 @@ export default function GlobalSignalsPanel({ signals, onSelectSignal }) {
     };
 
     return (
-        <div style={{ padding: '0', display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div style={{ padding: '0', display: 'flex', flexDirection: 'column' }}>
             <div style={{
                 padding: '12px 16px',
                 background: 'linear-gradient(90deg, rgba(37, 99, 235, 0.1), transparent)',

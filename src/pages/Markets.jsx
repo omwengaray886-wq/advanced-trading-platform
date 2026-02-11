@@ -1097,7 +1097,14 @@ export default function Markets() {
                         {/* 1. Intelligence Layer */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                             {/* Relocated Global Signals Panel */}
-                            <div style={{ maxHeight: '300px', overflowY: 'auto', background: 'rgba(0,0,0,0.2)', borderRadius: '12px' }}>
+                            <div style={{
+                                maxHeight: '350px',
+                                overflowY: 'auto',
+                                background: 'rgba(15, 23, 42, 0.3)',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255,255,255,0.05)',
+                                paddingBottom: '8px'
+                            }}>
                                 <GlobalSignalsPanel
                                     signals={globalSignals}
                                     onSelectSignal={(signal) => setSelectedPair(signal.symbol)}
