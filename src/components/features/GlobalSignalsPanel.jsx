@@ -129,6 +129,30 @@ export default function GlobalSignalsPanel({ signals, onSelectSignal }) {
                             </span>
                         </div>
 
+                        {/* Professional News Directional Advice (Phase 5) */}
+                        {signal.fundamentals?.impact?.newsAdvice && (
+                            <div style={{
+                                marginBottom: '10px',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                background: signal.fundamentals.impact.newsAdvice === 'BUY' ? 'rgba(16, 185, 129, 0.1)' :
+                                    signal.fundamentals.impact.newsAdvice === 'SELL' ? 'rgba(239, 68, 68, 0.1)' :
+                                        'rgba(255,255,255,0.05)',
+                                borderLeft: `3px solid ${signal.fundamentals.impact.newsAdvice === 'BUY' ? '#10b981' :
+                                    signal.fundamentals.impact.newsAdvice === 'SELL' ? '#ef4444' :
+                                        'rgba(255,255,255,0.2)'
+                                    }`,
+                                fontSize: '10px',
+                                fontWeight: 'bold',
+                                color: signal.fundamentals.impact.newsAdvice === 'BUY' ? '#10b981' :
+                                    signal.fundamentals.impact.newsAdvice === 'SELL' ? '#ef4444' :
+                                        'rgba(255,255,255,0.6)'
+                            }}>
+                                {signal.fundamentals.impact.newsAdvice === 'BUY' ? '🚀' :
+                                    signal.fundamentals.impact.newsAdvice === 'SELL' ? '⚠️' : 'ℹ️'} ADVICE: {signal.fundamentals.impact.newsAdvice} {signal.fundamentals.impact.newsAdvice !== 'NORMAL' ? '(NEWS SUPPORTED)' : '(TECH ONLY)'}
+                            </div>
+                        )}
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#facc15' }}>
                                 {signal.confluenceScore}%
@@ -140,6 +164,69 @@ export default function GlobalSignalsPanel({ signals, onSelectSignal }) {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Professional News Intel (Tiered) */}
+                        {signal.fundamentals?.proximityAnalysis?.event && (
+                            <div style={{
+                                marginTop: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                flexWrap: 'wrap'
+                            }}>
+                                <span style={{
+                                    fontSize: '8px',
+                                    fontWeight: 'bold',
+                                    background: signal.fundamentals.proximityAnalysis.event.tier === 'TIER 1' ? '#ef4444' : '#3b82f6',
+                                    color: 'white',
+                                    padding: '1px 5px',
+                                    borderRadius: '3px'
+                                }}>
+                                    {signal.fundamentals.proximityAnalysis.event.tier}
+                                </span>
+                                <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontWeight: '500' }}>
+                                    {signal.fundamentals.proximityAnalysis.event.type?.split(' ')[0]}
+                                </span>
+                                {signal.fundamentals.proximityAnalysis.event.actual && (
+                                    <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 'bold', marginLeft: 'auto' }}>
+                                        {signal.fundamentals.proximityAnalysis.event.actual} <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 'normal' }}>({signal.fundamentals.proximityAnalysis.event.forecast || 'N/A'})</span>
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Tactical News Sweep Status (Phase 5) */}
+                        {signal.tacticalSetup && (
+                            <div style={{
+                                marginTop: '4px',
+                                padding: '6px',
+                                borderRadius: '4px',
+                                background: 'rgba(250, 204, 21, 0.1)',
+                                border: '1px solid rgba(250, 204, 21, 0.3)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{
+                                        fontSize: '8px',
+                                        fontWeight: 'bold',
+                                        background: '#facc15',
+                                        color: '#000',
+                                        padding: '1px 4px',
+                                        borderRadius: '2px'
+                                    }}>
+                                        TACTICAL SWEEP
+                                    </span>
+                                    <span style={{ fontSize: '9px', color: '#facc15', fontWeight: 'bold' }}>
+                                        {signal.tacticalSetup.status === 'SWEEP_CONFIRMED' ? 'REJECTION DETECTED' : 'PENDING GRAB'}
+                                    </span>
+                                </div>
+                                <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.8)', fontStyle: 'italic' }}>
+                                    {signal.tacticalSetup.message}
+                                </span>
+                            </div>
+                        )}
 
                         {/* Validated Timeframes */}
                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>

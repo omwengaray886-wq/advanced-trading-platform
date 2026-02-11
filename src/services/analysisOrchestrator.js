@@ -116,6 +116,7 @@ import { EdgeScoringEngine } from './EdgeScoringEngine.js';
 import { ExecutionTrigger } from '../analysis/ExecutionTrigger.js';
 import { COTDataService } from './COTDataService.js';
 import { CommodityCorrelationEngine } from './CommodityCorrelationEngine.js';
+import { tacticalNewsEngine } from './TacticalNewsEngine.js';
 
 // Logic Integration: Advanced Analysis Engines
 import { CorrelationClusterEngine } from './CorrelationClusterEngine.js';
@@ -263,7 +264,7 @@ export class AnalysisOrchestrator {
                     // 6. Real News
                     newsService.fetchRealNews(symbol),
                     // 7. Calendar Shocks
-                    newsService.getUpcomingShocks(24)
+                    newsService.getUpcomingShocks(72)
                 ]);
 
                 // extract results safely
@@ -304,11 +305,16 @@ export class AnalysisOrchestrator {
                 events: calendarEvents
             });
 
+            // Step 3.6.5: Tactical News Sweep Detection (Phase 5)
+            const tacticalSetup = tacticalNewsEngine.detectTacticalOpportunity(marketState, fundamentals);
+            marketState.tacticalSetup = tacticalSetup;
+
             // Step 3.6.6b: Detect Failure Patterns (Trap Zones) - Phase 52
             // Must run after structures and gaps are detected
             const failurePatterns = FailurePatternDetector.detectAllPatterns(candles, allStructures, fvgs);
             const trapZones = FailurePatternDetector.getTrapZones(failurePatterns);
             marketState.trapZones = trapZones;
+            analysis.tacticalSetup = tacticalSetup; // Propagate to final analysis
 
             // --- PHASE 5: DEEP INSTITUTIONAL INTELLIGENCE ---
             // Step 3.6.7: Deep Order Flow Analysis (Estimated Delta & Absorption)
@@ -803,9 +809,14 @@ export class AnalysisOrchestrator {
                     } : null;
 
                     // Consensus & News
-                    // Consensus & News
                     // Consensus adjustment now handled in EdgeScoringEngine
-                    const newsPenalty = fundamentals.suitabilityPenalty || 0;
+                    let newsPenalty = fundamentals.suitabilityPenalty || 0;
+
+                    // News Directional Conflict Check (Phase 5)
+                    const newsAdvice = fundamentals.impact?.newsAdvice;
+                    if (newsAdvice === 'BUY' && direction === 'SHORT') newsPenalty += 0.2;
+                    if (newsAdvice === 'SELL' && direction === 'LONG') newsPenalty += 0.2;
+
                     const finalSuitability = Math.max(0.1, c.suitability - newsPenalty);
                     const finalQuantScore = Math.max(0, quantScore - (newsPenalty * 100));
 
@@ -833,15 +844,18 @@ export class AnalysisOrchestrator {
                         suggestedSize,
                         riskPercentage,
                         sizingWarning,
-                        executionComplexity,
                         executionPrecision,
                         annotations,
-                        rationale: `${direction} opportunity detected via ${c.strategy.name}. Trend: ${marketState.mtf.globalBias}. Institutional Volume: ${marketState.volumeAnalysis.isInstitutional ? 'DETECTED' : 'LOW'}.`,
+                        rationale: (newsAdvice && ((newsAdvice === 'BUY' && direction === 'SHORT') || (newsAdvice === 'SELL' && direction === 'LONG')))
+                            ? `[NEWS CONFLICT] ${direction} opportunity detected via ${c.strategy.name} despite fundamental headwinds. Trend: ${marketState.mtf.globalBias}.`
+                            : `${direction} opportunity detected via ${c.strategy.name}. Trend: ${marketState.mtf.globalBias}. Institutional Volume: ${marketState.volumeAnalysis.isInstitutional ? 'DETECTED' : 'LOW'}.`,
                         monteCarlo: !isLight ? monteCarloService.runSimulation({
                             winRate: winRate ? (winRate * 100).toFixed(0) : '0',
                             profitFactor: riskReward,
                             totalTrades: 100
-                        }, 500, 30, accountSize) : null
+                        }, 500, 30, accountSize) : null,
+                        fundamentals: fundamentals, // Attach news context
+                        tacticalSetup: marketState.tacticalSetup // Attach tactical context
                     };
                 } catch (e) {
                     console.error(`Candidate evaluation failed for ${c.strategy.name}:`, e.message);
@@ -1109,12 +1123,19 @@ export class AnalysisOrchestrator {
             }
 
             // 12. News-Impact Zones (Phase 15 Requirement)
-            events.filter(e => e.impact === 'high').forEach(e => {
+            events.filter(e => e.impact === 'HIGH').forEach(e => {
                 baseAnnotations.push(new NewsImpactZone(
-                    e.title, e.impact, e.time,
+                    e.type || e.title, e.impact, e.timestamp || e.time,
                     marketState.currentPrice * 1.01,
                     marketState.currentPrice * 0.99,
-                    { timeframe }
+                    {
+                        timeframe,
+                        tier: newsService.getTier(e.type || e.title),
+                        forecast: e.forecast,
+                        previous: e.previous,
+                        actual: e.actual,
+                        unit: e.unit
+                    }
                 ));
             });
 
@@ -1549,6 +1570,7 @@ export class AnalysisOrchestrator {
             analysis.trapZones = trapZones;
             analysis.dominantScenario = dominantScenario;
             analysis.dominantBias = dominantBias;
+            analysis.fundamentals = fundamentals;
 
             // Step 11: Portfolio Stress & Concentration Analysis (Phase 60)
             if (!isLight && setups.length > 0) {
@@ -1618,7 +1640,8 @@ export class AnalysisOrchestrator {
                         capitalTag: 'High Frequency',
                         isClusterSynced: scalpSetup.isClusterSynced,
                         rationale: scalpSetup.rationale,
-                        annotations: []
+                        annotations: [],
+                        fundamentals: fundamentals // Attach news context
                     });
                 }
             }

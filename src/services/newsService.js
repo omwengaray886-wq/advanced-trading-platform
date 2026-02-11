@@ -99,9 +99,10 @@ export class NewsService {
                 impact: e.impact.toUpperCase(),
                 asset: e.currency,
                 actual: e.actual,
-                forecast: e.estimate,
+                forecast: e.estimate || e.forecast,
                 previous: e.previous,
                 status: e.actual ? 'RELEASED' : 'PENDING',
+                unit: e.unit,
                 bias: 'NEUTRAL',
                 volatilityExpected: e.impact.toUpperCase() === 'HIGH' ? 'HIGH' : 'MEDIUM'
             }));
@@ -117,7 +118,7 @@ export class NewsService {
     /**
      * Get high-impact shocks for the next window
      */
-    async getUpcomingShocks(windowHours = 24) {
+    async getUpcomingShocks(windowHours = 72) {
         const now = new Date();
         const future = new Date(now.getTime() + windowHours * 3600 * 1000);
 
@@ -130,14 +131,36 @@ export class NewsService {
     }
 
     /**
-     * Private: Score news impact based on keywords
+     * Private: Score news impact based on keywords and assign professional Tiers
      */
     _scoreImpact(title, metadata) {
-        const keywords = ['EMBARGO', 'HALT', 'HACK', 'ETF', 'SEC', 'INFLATION', 'RATE', 'WAR'];
         const upperTitle = title.toUpperCase();
 
-        if (keywords.some(k => upperTitle.includes(k))) return 'HIGH';
+        const TIER_1 = ['PAYROLL', 'NFP', 'CPI', 'FOMC', 'INTEREST RATE', 'GDP', 'RETAIL SALES', 'ISM'];
+        const TIER_2 = ['PPI', 'ECB', 'BOE', 'BOJ', 'UNEMPLOYMENT', 'ELECTION', 'GERMAN PMI'];
+        const TIER_3 = ['ADP', 'CONFIDENCE', 'HOUSING', 'PERMITS', 'TRADE BALANCE', 'INVENTORIES'];
+        const SPECIAL = ['SPEECH', 'WAR', 'SANCTION', 'CRISIS', 'EMERGENCY', 'HACK', 'HUNT'];
+
+        if (TIER_1.some(k => upperTitle.includes(k))) return 'HIGH'; // Tier 1 mapped to HIGH
+        if (TIER_2.some(k => upperTitle.includes(k))) return 'HIGH'; // Tier 2 also mapped to HIGH internally
+        if (TIER_3.some(k => upperTitle.includes(k))) return 'MEDIUM';
+        if (SPECIAL.some(k => upperTitle.includes(k))) return 'HIGH';
+
+        // Legacy mapping for high-impact keywords (Phase 72)
+        const highImpactKeywords = ['EMBARGO', 'HALT', 'ETF', 'SEC', 'INFLATION', 'WAR'];
+        if (highImpactKeywords.some(k => upperTitle.includes(k))) return 'HIGH';
+
         return 'MEDIUM';
+    }
+
+    /**
+     * Map internal score to Professional Tier labels
+     */
+    getTier(title) {
+        const upperTitle = title.toUpperCase();
+        if (['PAYROLL', 'NFP', 'CPI', 'FOMC', 'RATE', 'GDP'].some(k => upperTitle.includes(k))) return 'TIER 1';
+        if (['ECB', 'BOE', 'BOJ', 'PPI', 'UNEMPLOYMENT'].some(k => upperTitle.includes(k))) return 'TIER 2';
+        return 'TIER 3';
     }
 
     // Legacy method for backward compatibility

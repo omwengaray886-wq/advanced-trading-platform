@@ -13,7 +13,7 @@ class NewsShockEngine {
      */
     async getActiveShock(symbol) {
         const currency = this.getRelevantCurrency(symbol);
-        const upcoming = await newsService.getUpcomingShocks(24);
+        const upcoming = await newsService.getUpcomingShocks(72);
 
         if (!Array.isArray(upcoming)) return null;
 

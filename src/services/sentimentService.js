@@ -8,6 +8,10 @@
 const sentimentCache = new Map();
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
+// detect environment
+const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
+const BACKEND_BASE = isNode ? 'http://localhost:3001' : '';
+
 /**
  * Analyze market sentiment for a given symbol
  * @param {string} symbol - Trading symbol (e.g., 'BTCUSDT', 'EURUSD')
@@ -92,7 +96,7 @@ export async function analyzeSentiment(symbol) {
 async function getNewsSentiment(symbol) {
     try {
         const query = encodeURIComponent(`${symbol} cryptocurrency OR ${symbol} forex`);
-        const url = `/api/news/v2/everything?q=${query}&sortBy=publishedAt&language=en&pageSize=20`;
+        const url = `${BACKEND_BASE}/api/news/v2/everything?q=${query}&sortBy=publishedAt&language=en&pageSize=20`;
 
         const response = await fetch(url, {
             headers: { 'Accept': 'application/json' }

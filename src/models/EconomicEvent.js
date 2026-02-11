@@ -16,6 +16,7 @@ export class EconomicEvent {
         this.forecast = data.forecast || null;
         this.previous = data.previous || null;
         this.status = data.status || 'PENDING'; // PENDING, RELEASED
+        this.tier = data.tier || null; // TIER 1, TIER 2, TIER 3
         this.description = data.description || '';
     }
 
@@ -136,10 +137,55 @@ export class EconomicEvent {
             forecast: this.forecast,
             previous: this.previous,
             status: this.status,
+            tier: this.tier,
+            tradingBias: this.getTradingBias(),
             description: this.description,
             phase: this.getPhase(),
             proximity: this.getProximity()
         };
+    }
+
+    /**
+     * Determine trading bias based on Actual vs Forecast
+     * @returns {string} - BULLISH, BEARISH, NEUTRAL
+     */
+    getTradingBias() {
+        if (this.status !== 'RELEASED' || !this.actual || !this.forecast) {
+            return 'NEUTRAL';
+        }
+
+        const beatMiss = this.getBeatMiss();
+        if (beatMiss === 'INLINE' || !beatMiss) return 'NEUTRAL';
+
+        const type = (this.type || '').toUpperCase();
+
+        // 1. Indicators where HIGHER is BULLISH (Growth, Inflation, Employment)
+        const positiveCorrelation = [
+            'NFP', 'PAYROLL', 'GDP', 'CPI', 'PPI', 'RETAIL', 'PMI', 'SURVEY', 'CONFIDENCE'
+        ];
+
+        // 2. Indicators where HIGHER is BEARISH (Unemployment, Claims)
+        const negativeCorrelation = [
+            'UNEMPLOYMENT', 'CLAIMS', 'JOBLESS'
+        ];
+
+        const isPositiveType = positiveCorrelation.some(k => type.includes(k));
+        const isNegativeType = negativeCorrelation.some(k => type.includes(k));
+
+        if (isPositiveType) {
+            return beatMiss === 'BEAT' ? 'BULLISH' : 'BEARISH';
+        }
+
+        if (isNegativeType) {
+            // Higher unemployment is bad for currency (usually)
+            return beatMiss === 'BEAT' ? 'BEARISH' : 'BULLISH';
+        }
+
+        // Default: If bias is already set (HAWKISH/DOVISH), use it
+        if (this.bias === 'HAWKISH') return 'BULLISH';
+        if (this.bias === 'DOVISH') return 'BEARISH';
+
+        return 'NEUTRAL';
     }
 }
 
@@ -161,4 +207,11 @@ export const EVENT_TYPES = {
     ETF_FLOW: 'ETF_FLOW',
     NETWORK_ACTIVITY: 'NETWORK_ACTIVITY',
     FUNDING_RATE: 'FUNDING_RATE'
+};
+// Tiers based on user requirements
+export const IMPACT_TIERS = {
+    TIER_1: 'MARKET_MOVER', // US CPI, NFP, FOMC, GDP
+    TIER_2: 'HIGH_IMPACT',   // ECB, BOE, BOJ, Core CPI
+    TIER_3: 'MODERATE',      // ADP, Confidence, Housing
+    SPECIAL: 'SPECIAL'       // Geopolitical, Speeches
 };

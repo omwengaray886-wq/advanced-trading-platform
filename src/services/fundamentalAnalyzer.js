@@ -43,10 +43,11 @@ export class FundamentalAnalyzer {
      * Calculate overall fundamental impact
      * @param {Array} events - Economic events
      * @param {string} assetClass - Asset class
+     * @param {Array} news - Recent news headlines
      * @returns {Object} - Impact analysis
      */
-    calculateOverallImpact(events, assetClass) {
-        if (events.length === 0) {
+    calculateOverallImpact(events, assetClass, news = []) {
+        if (events.length === 0 && news.length === 0) {
             return {
                 direction: 'NEUTRAL',
                 strength: 0,
@@ -55,26 +56,68 @@ export class FundamentalAnalyzer {
             };
         }
 
-        // Calculate composite impact
+        // Calculate composite impact for events
         const scores = events.map(e => {
-            // We only need the impact score here, so technical bias doesn't matter yet
-            // passing 'NEUTRAL' as placeholder
+            // Assign Tier if not already present
+            if (!e.tier) {
+                e.tier = this._determineTier(e.type || e.event);
+            }
+
             const calc = new EventImpact(e, 'NEUTRAL');
-            return calc.calculateImpact();
+            const score = calc.calculateImpact();
+
+            // Tier 1 Boost
+            if (e.tier === 'TIER 1') {
+                score.strength = Math.min(score.strength * 1.5, 1.2);
+                score.confidence = Math.min(score.confidence + 0.2, 0.95);
+            }
+
+            return score;
         });
 
+        // News headlines impact mapping
+        const newsBias = news.reduce((acc, n) => {
+            if (n.sentiment === 'BULLISH') acc += 0.1;
+            if (n.sentiment === 'BEARISH') acc -= 0.1;
+            return acc;
+        }, 0);
+
         // Aggregate scores
-        const avgDirection = scores.reduce((sum, s) => sum + s.directionScore, 0) / scores.length;
-        const maxStrength = Math.max(...scores.map(s => s.strength));
-        const avgConfidence = scores.reduce((sum, s) => sum + s.confidence, 0) / scores.length;
+        const eventDirection = scores.length > 0 ? (scores.reduce((sum, s) => sum + s.directionScore, 0) / scores.length) : 0;
+        const avgDirection = (eventDirection * 0.7) + (newsBias * 0.3);
+        const maxStrength = Math.max(...(scores.map(s => s.strength) || [0]), Math.abs(newsBias));
+        const avgConfidence = scores.length > 0 ? (scores.reduce((sum, s) => sum + s.confidence, 0) / scores.length) : 0.6;
+
+        // Calculate News Advice (Phase 5)
+        const activeBiases = events.filter(e => e.isReleased()).map(e => e.getTradingBias()).filter(b => b !== 'NEUTRAL');
+        let newsAdvice = 'NORMAL';
+        if (activeBiases.length > 0) {
+            const bullishCount = activeBiases.filter(b => b === 'BULLISH').length;
+            const bearishCount = activeBiases.filter(b => b === 'BEARISH').length;
+            if (bullishCount > bearishCount) newsAdvice = 'BUY';
+            else if (bearishCount > bullishCount) newsAdvice = 'SELL';
+        }
 
         return {
-            direction: avgDirection > 0.2 ? 'BULLISH' : avgDirection < -0.2 ? 'BEARISH' : 'NEUTRAL',
-            strength: maxStrength,
+            direction: avgDirection > 0.15 ? 'BULLISH' : avgDirection < -0.15 ? 'BEARISH' : 'NEUTRAL',
+            strength: Math.min(maxStrength, 1.2),
             confidence: avgConfidence,
+            newsAdvice,
             timeHorizon: this.determineTimeHorizon(events),
             weight: this.getFundamentalWeight(assetClass)
         };
+    }
+
+    /**
+     * Determine Tier based on event type
+     * @private
+     */
+    _determineTier(type) {
+        if (!type) return 'TIER 3';
+        const t = type.toUpperCase();
+        if (['PAYROLL', 'NFP', 'CPI', 'FOMC', 'RATE', 'GDP'].some(k => t.includes(k))) return 'TIER 1';
+        if (['ECB', 'BOE', 'BOJ', 'PPI', 'UNEMPLOYMENT', 'RETAIL'].some(k => t.includes(k))) return 'TIER 2';
+        return 'TIER 3';
     }
 
     /**
@@ -98,8 +141,9 @@ export class FundamentalAnalyzer {
      * @returns {string} - Time horizon
      */
     determineTimeHorizon(events) {
+        if (events.length === 0) return 'MEDIUM_TERM';
         const urgentEvents = events.filter(e => {
-            const timeToEvent = e.timestamp - Date.now();
+            const timeToEvent = (e.timestamp * 1000) - Date.now();
             return timeToEvent < 86400000 * 3; // Within 3 days
         });
 
@@ -113,12 +157,14 @@ export class FundamentalAnalyzer {
      * @returns {number} - Weight (0-1)
      */
     getFundamentalWeight(assetClass) {
-        return {
+        const weights = {
             FOREX: 0.7,
             CRYPTO: 0.4,
             INDICES: 0.8,
-            STOCKS: 0.9
-        }[assetClass] || 0.5;
+            STOCKS: 0.9,
+            METALS: 0.75
+        };
+        return weights[assetClass] || 0.5;
     }
 
     /**
@@ -134,20 +180,28 @@ export class FundamentalAnalyzer {
         }
 
         const direction = impact.direction.toLowerCase();
-        const strength = impact.strength > 0.7 ? 'strong' : impact.strength > 0.5 ? 'moderate' : 'weak';
+        const strength = impact.strength > 0.9 ? 'critical' : impact.strength > 0.7 ? 'strong' : impact.strength > 0.5 ? 'moderate' : 'weak';
 
-        let summary = `Fundamentals show ${strength} ${direction} bias. `;
+        let summary = `Fundamentals show ${strength} ${direction} focus. `;
 
-        const upcomingEvents = events.filter(e => e.timestamp > Date.now());
-        if (upcomingEvents.length > 0) {
-            const nextEvent = upcomingEvents[0];
-            summary += `Key event: ${nextEvent.event} (${nextEvent.impact} impact). `;
+        const tier1 = events.filter(e => e.tier === 'TIER 1');
+        if (tier1.length > 0) {
+            summary += `Action driven by Tier 1 ${tier1[0].type || tier1[0].event}. `;
+            if (tier1[0].actual) {
+                summary += `Result: ${tier1[0].actual} vs ${tier1[0].forecast || 'N/A'}. `;
+            }
+        } else {
+            const upcomingEvents = events.filter(e => e.timestamp * 1000 > Date.now());
+            if (upcomingEvents.length > 0) {
+                const nextEvent = upcomingEvents[0];
+                summary += `Key upcoming: ${nextEvent.type || nextEvent.event} (${nextEvent.impact} impact). `;
+            }
         }
 
         if (assetClass === 'CRYPTO') {
-            summary += 'Monitor on-chain flows and funding rates for confirmation.';
-        } else if (assetClass === 'FOREX') {
-            summary += 'Watch for central bank rhetoric and economic data releases.';
+            summary += 'Sentiment leads; watch funding for over-extension.';
+        } else if (assetClass === 'FOREX' || assetClass === 'METALS') {
+            summary += 'Monitor yields and central bank liquidity windows.';
         }
 
         return summary;
@@ -158,17 +212,17 @@ export class FundamentalAnalyzer {
      */
     analyzeProximity(events) {
         const now = Date.now();
-        const highImpactEvents = events.filter(e => e.impact === 'HIGH' || e.impact === 'VERY_HIGH');
+        const highImpactEvents = events.filter(e => e.impact === 'HIGH' || e.impact === 'VERY_HIGH' || e.tier === 'TIER 1');
 
         if (highImpactEvents.length === 0) return null;
 
         const nextEvent = highImpactEvents
-            .filter(e => e.timestamp > now)
+            .filter(e => (e.timestamp * 1000) > now)
             .sort((a, b) => a.timestamp - b.timestamp)[0];
 
         if (!nextEvent) return null;
 
-        const minutesToEvent = (nextEvent.timestamp - now) / (1000 * 60);
+        const minutesToEvent = ((nextEvent.timestamp * 1000) - now) / (1000 * 60);
 
         return {
             event: nextEvent,

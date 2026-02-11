@@ -9,7 +9,12 @@ export class NewsImpactZone extends ChartAnnotation {
         super('NEWS_IMPACT_ZONE', { time, high, low }, metadata);
 
         this.eventTitle = eventTitle;
-        this.impact = impact; // high, medium, low
+        this.impact = impact; // HIGH, MEDIUM, LOW
+        this.tier = metadata.tier || 'TIER 3';
+        this.forecast = metadata.forecast || null;
+        this.previous = metadata.previous || null;
+        this.actual = metadata.actual || null;
+        this.unit = metadata.unit || '';
         this.volatilityMultiplier = metadata.volatilityMultiplier || 1.0;
     }
 

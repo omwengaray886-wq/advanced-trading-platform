@@ -57,11 +57,7 @@ export class PredictionCompressor {
             expiresAt,
 
             // Validity Conditions (Phase 51)
-            validityConditions: [
-                `Price stays ${bias === 'BULLISH' ? 'above' : 'below'} ${invalidation}`,
-                `HTF ${marketState.mtf?.globalBias} structure remains intact`,
-                "No high-impact news releases within 15 mins"
-            ],
+            validityConditions: this._buildValidityConditions(bias, invalidation, marketState, analysis.fundamentals),
 
             // Transparency Breakdown
             confidenceBreakdown: {
@@ -694,5 +690,29 @@ export class PredictionCompressor {
         }
 
         return true;
+    }
+
+    /**
+     * Build dynamic validity conditions (Phase 5)
+     * @private
+     */
+    static _buildValidityConditions(bias, invalidation, marketState, fundamentals) {
+        const conditions = [
+            `Price stays ${bias === 'BULLISH' ? 'above' : 'below'} ${invalidation}`,
+            `HTF ${marketState.mtf?.globalBias || 'NEUTRAL'} structure remains intact`
+        ];
+
+        // 3. Dynamic News Condition
+        const proximity = fundamentals?.proximityAnalysis;
+        if (proximity?.isImminent) {
+            const eventType = (proximity.event.type || proximity.event.event || 'Economic Event').split(' ')[0];
+            conditions.push(`Stable through ${eventType} in ${Math.round(proximity.minutesToEvent)}m`);
+        } else if (marketState.activeShock?.severity === 'HIGH') {
+            conditions.push("High-impact news volatility subsides");
+        } else {
+            conditions.push("No high-impact news releases within 30 mins");
+        }
+
+        return conditions;
     }
 }
