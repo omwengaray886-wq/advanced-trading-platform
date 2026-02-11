@@ -314,7 +314,6 @@ export class AnalysisOrchestrator {
             const failurePatterns = FailurePatternDetector.detectAllPatterns(candles, allStructures, fvgs);
             const trapZones = FailurePatternDetector.getTrapZones(failurePatterns);
             marketState.trapZones = trapZones;
-            analysis.tacticalSetup = tacticalSetup; // Propagate to final analysis
 
             // --- PHASE 5: DEEP INSTITUTIONAL INTELLIGENCE ---
             // Step 3.6.7: Deep Order Flow Analysis (Estimated Delta & Absorption)
@@ -1571,6 +1570,7 @@ export class AnalysisOrchestrator {
             analysis.dominantScenario = dominantScenario;
             analysis.dominantBias = dominantBias;
             analysis.fundamentals = fundamentals;
+            analysis.tacticalSetup = marketState.tacticalSetup;
 
             // Step 11: Portfolio Stress & Concentration Analysis (Phase 60)
             if (!isLight && setups.length > 0) {
