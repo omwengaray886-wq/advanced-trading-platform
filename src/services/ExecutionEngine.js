@@ -98,4 +98,70 @@ export class ExecutionEngine {
 
         return isAligned ? 'HIGH' : 'LOW';
     }
+
+    /**
+     * Check Real-Time Spread Health
+     * Blocks execution if spread exceeds 10% of ATR (cost of business is too high)
+     * @param {number} currentPrice - Market mid-price
+     * @param {number} bid - Current Bid
+     * @param {number} ask - Current Ask
+     * @param {number} atr - Average True Range
+     * @returns {Object} { isSafe, spread, spreadToATR, message }
+     */
+    static checkSpreadHealth(currentPrice, bid, ask, atr) {
+        if (!bid || !ask || !atr) return { isSafe: true, message: 'Missing data, assuming safe' };
+
+        const spread = ask - bid;
+        const spreadToATR = spread / atr;
+
+        // Safety Threshold: Spread should not exceed 10% of the daily range (ATR)
+        // In scalping (low TF), this might need to be 20%, but 10% is a safe institutional baseline.
+        const SAFE_THRESHOLD = 0.10;
+
+        if (spreadToATR > SAFE_THRESHOLD) {
+            return {
+                isSafe: false,
+                spread,
+                spreadToATR,
+                message: `Spread (${spread.toFixed(2)}) is ${(spreadToATR * 100).toFixed(1)}% of ATR. Execution Unsafe.`
+            };
+        }
+
+        return {
+            isSafe: true,
+            spread,
+            spreadToATR,
+            message: 'Spread Nominal'
+        };
+    }
+
+    /**
+     * Get Optimal Order Type based on Volatility
+     * @param {Object} volatilityState - { level: 'LOW'|'MEDIUM'|'HIGH'|'EXTREME' }
+     * @returns {string} 'LIMIT' | 'STOP_MARKET' | 'MARKET'
+     */
+    static getOptimalOrderType(volatilityState) {
+        const level = volatilityState?.level || 'MEDIUM';
+
+        // 1. Low Volatility (Grinding/Ranging) -> Patient Limit Orders
+        // We want to be a maker and capture the spread.
+        if (level === 'LOW') {
+            return 'LIMIT';
+        }
+
+        // 2. Medium Volatility -> Standard Execution
+        // Limit orders are still preferred, but we might lean aggressively.
+        if (level === 'MEDIUM') {
+            return 'LIMIT';
+        }
+
+        // 3. High/Extreme Volatility (Breakout/Crash) -> Aggressive Entry
+        // Price is moving fast. Limit orders will be left behind. 
+        // We use STOP_MARKET to trigger entry only if price keeps moving in our direction.
+        if (level === 'HIGH' || level === 'EXTREME') {
+            return 'STOP_MARKET';
+        }
+
+        return 'LIMIT';
+    }
 }

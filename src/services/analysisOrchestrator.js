@@ -113,6 +113,7 @@ import { AlphaLeakDetector } from './AlphaLeakDetector.js';
 import { FundamentalAnalyzer } from './fundamentalAnalyzer.js';
 import { CorrelationEngine } from './correlationEngine.js';
 import { EdgeScoringEngine } from './EdgeScoringEngine.js';
+import { ExecutionTrigger } from '../analysis/ExecutionTrigger.js';
 import { COTDataService } from './COTDataService.js';
 import { CommodityCorrelationEngine } from './CommodityCorrelationEngine.js';
 
@@ -732,6 +733,19 @@ export class AnalysisOrchestrator {
                         c.rationale += ` + Fractal Confirmation (${(marketState.patterns.confidence * 100).toFixed(0)}%)`;
                     }
 
+                    // 4. Execution Trigger: Candle Confirmation
+                    // Ensure the latest candle supports our entry (e.g. rejection wick)
+                    const trigger = ExecutionTrigger.verifyCandleConfirmation(lastCandle, direction);
+                    if (!trigger.isConfirmed) {
+                        // We deduct points but don't hard block unless it's a breakout strategy
+                        // Ideally we would set status = 'PENDING_CONFIRMATION'
+                        quantScore -= 10;
+                        c.rationale += ` [WAIT: ${trigger.reason}]`;
+                    } else {
+                        quantScore += 5;
+                        c.rationale += ` [CONFIRMED: ${trigger.reason}]`;
+                    }
+
                     // Volatility-Adjusted Targets
                     if (marketState.volatility && riskParams.targets?.length > 0) {
                         const baseDistance = riskParams.targets[0].price - riskParams.entry.optimal;
@@ -771,10 +785,15 @@ export class AnalysisOrchestrator {
                     // Precision Execution
                     const executionPrecision = AssetClassAdapter.calculateExecutionPrecision(assetClass, timeframe, marketState.atr, lastCandle.time);
                     const precisionBuffer = executionPrecision.dynamicBuffer || 0;
+
+                    // Dynamic Order Type Selection
+                    const orderType = ExecutionEngine.getOptimalOrderType(marketState.volatility);
+
                     const augmentedEntry = riskParams.entry ? {
                         ...riskParams.entry,
                         optimal: direction === 'LONG' ? riskParams.entry.optimal + precisionBuffer : riskParams.entry.optimal - precisionBuffer,
-                        hasBuffer: true
+                        hasBuffer: true,
+                        type: orderType // LIMIT or STOP_MARKET
                     } : null;
 
                     // Consensus & News
@@ -1702,6 +1721,31 @@ export class AnalysisOrchestrator {
         if (!orderBook || !riskParams) return;
 
         const clusters = LiquidityMapService.findClusters(orderBook);
+
+        // ENTRY Refinement: Front-Run a Wall
+        // If we are longing, and there is a massive Buy Wall at 100, we want to enter at 100.01
+        // If we are shorting, and there is a massive Sell Wall at 100, we want to enter at 99.99
+        if (riskParams.entry) {
+            const protectiveWalls = direction === 'LONG' ? clusters.buyClusters : clusters.sellClusters;
+
+            // Find a wall very close to our optimal entry
+            const nearestWall = protectiveWalls
+                .filter(w => Math.abs(w.price - riskParams.entry.optimal) / riskParams.entry.optimal < 0.002) // Within 0.2%
+                .sort((a, b) => b.quantity - a.quantity)[0]; // Largest wall
+
+            if (nearestWall) {
+                const tickSize = 0.05; // Ideally fetch from asset adapter per symbol
+                // LONG: Wall @ 100 -> Entry @ 100 + tick
+                // SHORT: Wall @ 100 -> Entry @ 100 - tick
+                const adjustedEntry = direction === 'LONG'
+                    ? nearestWall.price + tickSize
+                    : nearestWall.price - tickSize;
+
+                // Only adjust if it improves our position or safety significantly
+                riskParams.entry.optimal = adjustedEntry;
+                riskParams.entry.reason = `Front-running ${nearestWall.quantity.toFixed(0)} lot wall @ ${nearestWall.price}`;
+            }
+        }
 
         // TP Refinement: AIM for just BEFORE a wall
         if (riskParams.targets && riskParams.targets.length > 0) {
