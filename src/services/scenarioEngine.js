@@ -158,9 +158,9 @@ export class ScenarioEngine {
         upProb /= total; downProb /= total; rangeProb /= total;
 
         const scenarios = [
-            { direction: 'up', probability: parseFloat(upProb.toFixed(2)), label: 'Bullish Expansion' },
-            { direction: 'down', probability: parseFloat(downProb.toFixed(2)), label: 'Bearish Expansion' },
-            { direction: 'range', probability: parseFloat(rangeProb.toFixed(2)), label: 'Consolidation' }
+            { direction: 'up', probability: parseFloat((upProb || 0).toFixed(2)), label: 'Bullish Expansion' },
+            { direction: 'down', probability: parseFloat((downProb || 0).toFixed(2)), label: 'Bearish Expansion' },
+            { direction: 'range', probability: parseFloat((rangeProb || 0).toFixed(2)), label: 'Consolidation' }
         ].sort((a, b) => b.probability - a.probability);
 
         // Layer 6: Prediction Expiry
@@ -171,7 +171,7 @@ export class ScenarioEngine {
             type: scenarios[0].direction.toUpperCase(),
             bias: scenarios[0].direction === 'up' ? 'LONG' : scenarios[0].direction === 'down' ? 'SHORT' : 'NEUTRAL',
             label: isWaiting ? `WAITING: ${waitingCondition}` : `Primary: ${scenarios[0].label}`,
-            description: isWaiting ? 'Market is in a waiting state.' : `Highest probability path (${(scenarios[0].probability * 100).toFixed(0)}%) based on current ${marketState.phase}.`,
+            description: isWaiting ? 'Market is in a waiting state.' : `Highest probability path (${((scenarios[0].probability || 0) * 100).toFixed(0)}%) based on current ${marketState.phase}.`,
             style: isWaiting ? 'DOTTED' : 'SOLID',
             isWaiting: isWaiting,
             expiresAt: expiresAt

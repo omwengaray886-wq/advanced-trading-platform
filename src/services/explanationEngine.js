@@ -164,12 +164,12 @@ export class ExplanationEngine {
         if (!analysis.setups || analysis.setups.length === 0) return 'Analyzing structural walls...';
         const setup = analysis.setups[0];
 
-        let explanation = `SIGNAL ACTIVE: The price is currently reacting to an institutional level at ${setup.entryZone?.optimal?.toFixed(5) || 'N/A'}. `;
-        explanation += `Structural invalidation is placed at ${setup.stopLoss?.toFixed(5) || 'N/A'} (Pivot Wall + ATR buffer). `;
+        let explanation = `SIGNAL ACTIVE: The price is currently reacting to an institutional level at ${setup.entryZone?.optimal ? setup.entryZone.optimal.toFixed(5) : 'N/A'}. `;
+        explanation += `Structural invalidation is placed at ${setup.stopLoss ? setup.stopLoss.toFixed(5) : 'N/A'} (Pivot Wall + ATR buffer). `;
 
         if (setup.targets && setup.targets.length > 0) {
             setup.targets.forEach((t, i) => {
-                explanation += `Target ${i + 1} (${t.label || 'Major Pool'}) at ${t.price?.toFixed(5) || 'N/A'} is the primary algorithmic attractor for this session. `;
+                explanation += `Target ${i + 1} (${t.label || 'Major Pool'}) at ${t.price ? t.price.toFixed(5) : 'N/A'} is the primary algorithmic attractor for this session. `;
             });
         }
 
@@ -229,7 +229,7 @@ export class ExplanationEngine {
     buildEntryLogic(analysis, mode = 'ADVANCED') {
         if (!analysis.setups || analysis.setups.length === 0) return 'No entry logic available.';
         const setup = analysis.setups[0];
-        const entryPrice = setup.entryZone?.optimal?.toFixed(4) || 'N/A';
+        const entryPrice = setup.entryZone?.optimal ? setup.entryZone.optimal.toFixed(4) : 'N/A';
 
         if (mode === 'BEGINNER') {
             return `**Action:** Monitor price action around **${entryPrice}**. If you see a strong move away from this level in our direction, that's your signal.`;
@@ -250,7 +250,7 @@ export class ExplanationEngine {
             return `${sizeMsg}Keep your total risk low (**${setup.capitalTag}**). We'll target the first profit level to secure your capital early.`;
         }
 
-        const rr = setup.rr?.toFixed(1) || '2.0';
+        const rr = setup.rr ? setup.rr.toFixed(1) : '2.0';
         return `Setup is tagged as **${setup.capitalTag}**. Risk no more than 1-2% of total equity. Use Target 1 (${rr}:1 R:R) to secure profits early. Avoid moving stops until Target 1 is hit.`;
     }
 
@@ -259,7 +259,7 @@ export class ExplanationEngine {
      */
     buildInvalidationConditions(analysis, mode = 'ADVANCED') {
         const structuralLevel = analysis.marketState.trend.direction === 'BULLISH' ? 'Swing Low' : 'Swing High';
-        const stop = analysis.setups?.[0]?.stopLoss?.toFixed(5) || 'the stop level';
+        const stop = analysis.setups?.[0]?.stopLoss ? analysis.setups[0].stopLoss.toFixed(5) : 'the stop level';
 
         if (mode === 'BEGINNER') {
             return `If the price goes past ${stop}, we'll close the trade to keep our account safe and wait for a better time.`;
@@ -429,7 +429,7 @@ export class ExplanationEngine {
         const majorWalls = analysis.liquidityMap.filter(l => l.intensity > 0.85);
         if (majorWalls.length === 0) return "Order book depth is currently distributed. No significant institutional walls detected.";
 
-        const wallStrings = majorWalls.map(w => `**${w.side} Wall** at ${w.price?.toFixed(2) || 'N/A'}`).join(', ');
+        const wallStrings = majorWalls.map(w => `**${w.side} Wall** at ${w.price ? w.price.toFixed(2) : 'N/A'}`).join(', ');
         return `Depth analysis has identified major **Institutional Walls** at: ${wallStrings}. These levels represent significant "Liquidity Magnets" and areas of high-interest intent. Price is likely to seek or be defended at these clusters.`;
     }
 
@@ -462,7 +462,7 @@ export class ExplanationEngine {
         const visualRef = this.getVisualDescription(zone);
         const isConfirmed = scenarios?.primary?.isConfirmed;
 
-        const entryOptimal = setup?.entryZone?.optimal?.toFixed(5) || 'n/a';
+        const entryOptimal = setup?.entryZone?.optimal ? setup.entryZone.optimal.toFixed(5) : 'n/a';
         let msg = `Execution in the ${visualRef} is allowed **ONLY IF** confirmation occurs at the optimal entry level of **${entryOptimal}**. `;
         if (isConfirmed) {
             msg = `Execution in the ${visualRef} is **NOW VALID** as institutional confirmation has been detected at **${entryOptimal}**. `;
@@ -478,9 +478,9 @@ export class ExplanationEngine {
         const setup = analysis.setups?.[0];
         const annotations = setup?.annotations || [];
         const zone = annotations.find(a => a.invalidationRule);
-        const stop = setup?.stopLoss?.toFixed(5) || 'unconfirmed level';
+        const stop = setup?.stopLoss ? setup.stopLoss.toFixed(5) : 'unconfirmed level';
 
-        const entryOptimal = setup?.entryZone?.optimal?.toFixed(5) || 'n/a';
+        const entryOptimal = setup?.entryZone?.optimal ? setup.entryZone.optimal.toFixed(5) : 'n/a';
         const rule = zone?.invalidationRule || 'structural failure';
         return `This idea is **INVALID** if ${rule} (Projected Level: ${stop}). If price breaches this structural wall, the current institutional thesis is considered "dead" at **${stop}** and we must exit to preserve capital.`;
     }
@@ -492,7 +492,7 @@ export class ExplanationEngine {
         const setup = analysis.setups?.[0];
         if (!setup?.targets || setup.targets.length === 0) return "Targeting nearest liquidity pools.";
 
-        const targets = setup.targets.map(t => `${t.label} at ${t.price?.toFixed(5) || 'N/A'}`).join(', ');
+        const targets = setup.targets.map(t => `${t.label} at ${t.price ? t.price.toFixed(5) : 'N/A'}`).join(', ');
         return `Logical objectives for this move are the **${targets}**. These represent areas where opposing liquidity is likely concentrated, acting as "magnets" for institutional profit-taking.`;
     }
 
@@ -595,7 +595,7 @@ export class ExplanationEngine {
 
         let msg = '';
         if (stress?.var) {
-            msg += `**Portfolio VaR:** ${stress.var.totalVaR.toFixed(2)} (${stress.var.varPct.toFixed(1)}%). `;
+            msg += `**Portfolio VaR:** ${stress.var.totalVaR ? stress.var.totalVaR.toFixed(2) : 'N/A'} (${stress.var.varPct ? stress.var.varPct.toFixed(1) : '0'}%). `;
         }
 
         if (health?.isConcentrated) {
@@ -604,7 +604,7 @@ export class ExplanationEngine {
 
         if (stress?.shocks?.flashCrash) {
             const shock = stress.shocks.flashCrash;
-            msg += `**Stress Test:** In a Flash Crash (-5%), portfolio drawdown estimated at ${shock.estimatedDrawdown.toFixed(2)}. `;
+            msg += `**Stress Test:** In a Flash Crash (-5%), portfolio drawdown estimated at ${shock.estimatedDrawdown ? shock.estimatedDrawdown.toFixed(2) : 'N/A'}. `;
         }
 
         return msg || 'No significant portfolio-level hazards detected.';
@@ -619,9 +619,9 @@ export class ExplanationEngine {
 
         if (!bayes) return null;
 
-        const reliability = (bayes.posterior * 100).toFixed(1);
-        const prior = (bayes.prior * 100).toFixed(1);
-        const shift = ((bayes.posterior - bayes.prior) * 100).toFixed(1);
+        const reliability = (bayes.posterior ? (bayes.posterior * 100).toFixed(1) : '0.0');
+        const prior = (bayes.prior ? (bayes.prior * 100).toFixed(1) : '0.0');
+        const shift = (bayes.posterior !== undefined && bayes.prior !== undefined ? ((bayes.posterior - bayes.prior) * 100).toFixed(1) : '0.0');
 
         let msg = `The **${setup.strategy}** has a **${reliability}%** probability of success in the current ${analysis.marketState.regime} regime. `;
         msg += `Compared to its baseline accuracy of ${prior}%, we see a **${shift > 0 ? '+' : ''}${shift}%** contextual edge shift. `;

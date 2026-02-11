@@ -70,9 +70,9 @@ export class PathProjector {
             const nextTarget = targets[i + 1];
 
             const path = {
-                condition: `IF price ${target.price > currentPrice ? 'breaks above' : 'breaks below'} ${target.price.toFixed(5)}`,
+                condition: `IF price ${target.price > currentPrice ? 'breaks above' : 'breaks below'} ${(target.price || 0).toFixed(5)}`,
                 then: nextTarget ?
-                    `THEN target ${nextTarget.price.toFixed(5)} (${nextTarget.label})` :
+                    `THEN target ${(nextTarget.price || 0).toFixed(5)} (${nextTarget.label})` :
                     `THEN monitor for reversal or continuation`,
                 probability: target.probability,
                 invalidation: this._getPathInvalidation(target, currentPrice, marketState)
@@ -240,14 +240,14 @@ export class PathProjector {
         }
 
         const direction = paths.primaryTarget.price > marketState.currentPrice ? 'upside' : 'downside';
-        const summary = `HTF ${htfBias} bias targeting ${direction} liquidity at ${paths.primaryTarget.price.toFixed(5)} (${paths.primaryTarget.label}). `;
+        const summary = `HTF ${htfBias} bias targeting ${direction} liquidity at ${(paths.primaryTarget.price || 0).toFixed(5)} (${paths.primaryTarget.label}). `;
 
         if (marketState.mtfBiasAligned) {
             return summary + `Institutional convergence detected: High-TF draw is in perfect sync with local setup.`;
         }
 
         if (paths.secondaryTargets.length > 0) {
-            return summary + `Extension targets: ${paths.secondaryTargets.map(t => t.price.toFixed(5)).join(', ')}.`;
+            return summary + `Extension targets: ${paths.secondaryTargets.map(t => (t.price || 0).toFixed(5)).join(', ')}.`;
         }
 
         return summary + 'Monitor for follow-through or rejection.';

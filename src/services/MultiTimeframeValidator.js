@@ -5,6 +5,7 @@
 
 import { newsShockEngine } from './newsShockEngine.js';
 import { EdgeScoringEngine } from './EdgeScoringEngine.js';
+import { TradeManagementEngine } from './TradeManagementEngine.js';
 
 class MultiTimeframeValidator {
     /**
@@ -206,12 +207,14 @@ class MultiTimeframeValidator {
         return Date.now() > signal.expiresAt;
     }
 
-    static updateSignalStatus(signal, currentPrice) {
+    static updateSignalStatus(signal, currentPrice, candles) {
+        // 1. Check Hard Invalidation
         if (this.shouldInvalidate(signal, currentPrice)) {
             signal.status = (currentPrice <= signal.stop || currentPrice >= signal.stop) ? 'STOPPED_OUT' : 'EXPIRED';
             return signal;
         }
 
+        // 2. Check targets
         if (signal.targets && signal.targets.length > 0) {
             const hitTargets = signal.targets.filter(t =>
                 signal.direction === 'LONG' ? currentPrice >= t : currentPrice <= t
@@ -220,8 +223,52 @@ class MultiTimeframeValidator {
                 signal.status = `HIT_TP${hitTargets.length}`;
             }
         }
+
+        // 3. Dynamic Trade Management (Trailing Stops & Partial TP)
+        if (candles && candles.length > 20) {
+            // A. Trailing Stop Calculation
+            // We use the TIGHTER of the current trailing stop or the new calculated one
+            // But never loosen it.
+            const currentTrailing = signal.trailingStop || signal.stop;
+            const advice = TradeManagementEngine.getTrailingStopAdvice(candles, signal.direction, currentTrailing);
+
+            if (advice && advice.shouldUpdate) {
+                // Ensure we are locking in profit (moving in favor)
+                const isImprovement = signal.direction === 'LONG'
+                    ? advice.price > currentTrailing
+                    : advice.price < currentTrailing;
+
+                if (isImprovement) {
+                    signal.trailingStop = advice.price;
+                    const priceStr = advice.price ? advice.price.toFixed(pricePrecision(signal.symbol)) : 'N/A';
+                    const log = `[TRAIL] Moved Stop to ${priceStr} (${advice.type})`;
+                    signal.managementUpdates = signal.managementUpdates ? [...signal.managementUpdates, log] : [log];
+                }
+            }
+
+            // B. Partial Take Profit Check
+            const partialTP = TradeManagementEngine.checkPartialTP(candles, signal.direction, signal.entry);
+            if (partialTP && partialTP.trigger) {
+                // Determine if we already took this action to avoid spamming
+                const lastUpdate = signal.managementUpdates ? signal.managementUpdates[signal.managementUpdates.length - 1] : '';
+                if (!lastUpdate.includes('Partial TP')) {
+                    const log = `[ALERT] ${partialTP.reason}: ${partialTP.recommendation}`;
+                    signal.managementUpdates = signal.managementUpdates ? [...signal.managementUpdates, log] : [log];
+                }
+            }
+        }
+
         return signal;
     }
+
+    static pricePrecision(symbol) {
+        return symbol.includes('JPY') ? 2 : 4; // Simple heuristic, ideally from asset adapter
+    }
+}
+
+// Helper for precision (temporary)
+function pricePrecision(symbol) {
+    return symbol && symbol.includes('JPY') ? 2 : 4;
 }
 
 export default MultiTimeframeValidator;

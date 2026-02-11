@@ -156,6 +156,49 @@ export default function GlobalSignalsPanel({ signals, onSelectSignal }) {
                                 </span>
                             ))}
                         </div>
+
+                        {/* SIGNAL MANAGEMENT UPGRADES (Phase 67) */}
+                        {signal.trailingStop && (
+                            <div style={{
+                                marginTop: '8px',
+                                padding: '4px 8px',
+                                background: 'rgba(59, 130, 246, 0.1)',
+                                borderLeft: '2px solid #3b82f6',
+                                borderRadius: '4px',
+                                fontSize: '10px'
+                            }}>
+                                <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>Active Trail: </span>
+                                <span style={{ color: 'white' }}>{signal.trailingStop.toFixed(4)}</span>
+                            </div>
+                        )}
+
+                        {signal.managementUpdates && signal.managementUpdates.length > 0 && (
+                            <div style={{ marginTop: '4px', fontSize: '9px', color: '#9ca3af', fontStyle: 'italic' }}>
+                                <Clock size={8} style={{ display: 'inline', marginRight: '4px' }} />
+                                {signal.managementUpdates[signal.managementUpdates.length - 1]}
+                            </div>
+                        )}
+
+                        {/* Position Sizing Intelligence (Phase 68) */}
+                        {signal.riskPercentage && (
+                            <div style={{
+                                marginTop: '6px',
+                                padding: '4px 8px',
+                                background: 'rgba(16, 185, 129, 0.1)',
+                                borderLeft: '2px solid #10b981',
+                                borderRadius: '4px',
+                                fontSize: '10px'
+                            }}>
+                                <span style={{ color: '#10b981', fontWeight: 'bold' }}>Risk: </span>
+                                <span style={{ color: 'white' }}>{signal.riskPercentage}%</span>
+                            </div>
+                        )}
+
+                        {signal.sizingWarning && (
+                            <div style={{ marginTop: '4px', fontSize: '9px', color: '#f59e0b', fontStyle: 'italic' }}>
+                                ⚠️ {signal.sizingWarning}
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>

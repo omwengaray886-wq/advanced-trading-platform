@@ -120,7 +120,7 @@ async function getExchangeFlows(symbol) {
             return {
                 netFlow: Math.round(estimatedFlow),
                 confidence: 0.6,
-                volumeRatio: parseFloat(volumeRatio.toFixed(2))
+                volumeRatio: parseFloat((volumeRatio || 0).toFixed(2))
             };
         }
     } catch (error) {
@@ -180,8 +180,8 @@ async function getWhaleActivity(symbol) {
             return {
                 trend,
                 confidence: 0.65,
-                priceChange: parseFloat(priceChange.toFixed(2)),
-                volumeChange: parseFloat(volumeIncrease.toFixed(2))
+                priceChange: parseFloat((priceChange || 0).toFixed(2)),
+                volumeChange: parseFloat((volumeIncrease || 0).toFixed(2))
             };
         }
     } catch (error) {

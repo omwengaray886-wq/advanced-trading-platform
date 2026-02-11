@@ -42,7 +42,7 @@ export class VolatilityEngine {
             volatilityState,
             regime: volatilityState.regime, // Flattened for convenience
             atr: atr14,
-            atrAcceleration: parseFloat((atrAcceleration * 100).toFixed(2)), // As percentage
+            atrAcceleration: parseFloat((atrAcceleration ? (atrAcceleration * 100).toFixed(2) : '0.00')), // As percentage
             reason: this._generateVolatilityReason(volatilityState, atrAcceleration)
         };
     }
@@ -161,9 +161,9 @@ export class VolatilityEngine {
         if (volatilitySpike > 0.5) { // 50%+ ATR increase
             return {
                 detected: true,
-                magnitude: parseFloat((volatilitySpike * 100).toFixed(2)),
+                magnitude: parseFloat((volatilitySpike ? (volatilitySpike * 100).toFixed(2) : '0.00')),
                 type: 'VEGA_SHOCK',
-                warning: `Volatility spike detected: ${(volatilitySpike * 100).toFixed(0)}% increase in ATR. Caution: wider stops required.`
+                warning: `Volatility spike detected: ${volatilitySpike ? (volatilitySpike * 100).toFixed(0) : '0'}% increase in ATR. Caution: wider stops required.`
             };
         }
 

@@ -55,11 +55,11 @@ export class RelativeStrengthEngine {
                 const alpha = (assetChange * 100) - (beta * (benchChange * 100));
 
                 results[tf] = {
-                    outperformance: parseFloat(outperformance.toFixed(2)),
-                    alpha: parseFloat(alpha.toFixed(2)),
-                    beta: parseFloat(beta.toFixed(2)),
-                    volatility: parseFloat(volatility.toFixed(4)),
-                    status: alpha > 0.5 ? 'BULLISH' : alpha < -0.5 ? 'BEARISH' : 'NEUTRAL'
+                    outperformance: parseFloat((outperformance || 0).toFixed(2)),
+                    alpha: parseFloat((alpha || 0).toFixed(2)),
+                    beta: parseFloat((beta || 0).toFixed(2)),
+                    volatility: parseFloat((volatility || 0).toFixed(4)),
+                    status: (alpha || 0) > 0.5 ? 'BULLISH' : (alpha || 0) < -0.5 ? 'BEARISH' : 'NEUTRAL'
                 };
                 totalOutperformance += alpha; // Use Alpha instead of raw outperformance for final score
             }

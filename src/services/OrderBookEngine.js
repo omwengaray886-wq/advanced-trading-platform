@@ -88,7 +88,7 @@ export class OrderBookEngine {
             ? ` with ${bidWalls.length + askWalls.length} significant walls detected`
             : '';
 
-        return `Order book shows a ${Math.abs(imbalance * 100).toFixed(1)}% ${bias} imbalance${wallNote}.`;
+        return `Order book shows a ${Math.abs((imbalance || 0) * 100).toFixed(1)}% ${bias} imbalance${wallNote}.`;
     }
 
     /**
@@ -179,10 +179,10 @@ export class OrderBookEngine {
         }
 
         return {
-            overall: parseFloat(overall.toFixed(3)),
-            near: parseFloat(nearImb.toFixed(3)),
-            mid: parseFloat(midImb.toFixed(3)),
-            far: parseFloat(farImb.toFixed(3)),
+            overall: parseFloat((overall || 0).toFixed(3)),
+            near: parseFloat((nearImb || 0).toFixed(3)),
+            mid: parseFloat((midImb || 0).toFixed(3)),
+            far: parseFloat((farImb || 0).toFixed(3)),
             pressure,
             signals
         };

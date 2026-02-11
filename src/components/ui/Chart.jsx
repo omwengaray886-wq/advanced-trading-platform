@@ -5,6 +5,8 @@ import { normalizeDirection } from '../../utils/normalization';
 import { EntryConfirmationOverlay } from './EntryConfirmationOverlay';
 import { ChartLegend } from './ChartLegend';
 import { HelpOverlay } from './HelpOverlay';
+import { marketData } from '../../services/marketData';
+import { LiquidityMapService } from '../../services/LiquidityMapService';
 
 export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], labels: [] }, externalCrosshair = null, onCrosshairMove = null, analysis = null, setups = [] }) => {
     const chartContainerRef = useRef();
@@ -32,6 +34,10 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
     const [showEntryZones, setShowEntryZones] = useState(true);
     const [showHelp, setShowHelp] = useState(false);
     const [showConfirmationOverlay, setShowConfirmationOverlay] = useState(true);
+
+    // Real-Time DOM State (Phase 69)
+    const [liveLiquidityMap, setLiveLiquidityMap] = useState([]);
+    const symbolRef = useRef(analysis?.symbol || 'BTCUSDT');
 
     // --- Sync Logic ---
     const syncOverlays = useCallback(() => {
@@ -373,6 +379,31 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
     useEffect(() => {
         requestAnimationFrame(syncOverlays);
     }, [overlays, syncOverlays]);
+
+    // --- Real-Time DOM Pressure Subscription (Phase 69) ---
+    useEffect(() => {
+        const symbol = analysis?.symbol || 'BTCUSDT';
+        symbolRef.current = symbol;
+
+        // Subscribe to live order book depth updates
+        const updateDepth = async () => {
+            const depthData = await marketData.fetchOrderBook(symbol, 20);
+            if (depthData) {
+                const maps = LiquidityMapService.generateMap(depthData);
+                setLiveLiquidityMap(maps);
+            }
+        };
+
+        // Initial load
+        updateDepth();
+
+        // Real-time updates every 2 seconds for scalpers
+        const interval = setInterval(updateDepth, 2000);
+
+        return () => {
+            clearInterval(interval);
+        };
+    }, [analysis?.symbol]);
 
     return (
         <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
@@ -738,8 +769,8 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                     ))}
                 </div>
 
-                {/* DOM Imbalance HUD (Phase 59) */}
-                {overlays.liquidityMap && overlays.liquidityMap.length > 0 && (
+                /* DOM Imbalance HUD (Phase 59 + Phase 69 Real-Time) */
+                {(liveLiquidityMap.length > 0 || overlays.liquidityMap?.length > 0) && (
                     <div style={{
                         position: 'absolute',
                         top: '20px',
@@ -748,7 +779,7 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                         backdropFilter: 'blur(8px)',
                         padding: '12px',
                         borderRadius: '12px',
-                        border: '1px solid rgba(255,b255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.1)',
                         zIndex: 20,
                         display: 'flex',
                         flexDirection: 'column',
@@ -766,8 +797,10 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
 
                         <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden', display: 'flex' }}>
                             {(() => {
-                                const total = (overlays.liquidityMap || []).reduce((s, i) => s + (i.volume || 0), 0);
-                                const bids = (overlays.liquidityMap || []).filter(i => i.side === 'BID').reduce((s, i) => s + (i.volume || 0), 0);
+                                // Use live data if available, fallback to static overlay data
+                                const mapToUse = liveLiquidityMap.length > 0 ? liveLiquidityMap : (overlays.liquidityMap || []);
+                                const total = mapToUse.reduce((s, i) => s + (i.volume || 0), 0);
+                                const bids = mapToUse.filter(i => i.side === 'BID').reduce((s, i) => s + (i.volume || 0), 0);
                                 const bidPct = total > 0 ? (bids / total) * 100 : 50;
                                 return (
                                     <>
@@ -780,9 +813,10 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
 
                         <div className="flex-row justify-between" style={{ fontSize: '11px', fontWeight: 'bold' }}>
                             {(() => {
-                                const total = (overlays.liquidityMap || []).reduce((s, i) => s + (i.volume || 0), 0);
-                                const bids = (overlays.liquidityMap || []).filter(i => i.side === 'BID').reduce((s, i) => s + (i.volume || 0), 0);
-                                const asks = (overlays.liquidityMap || []).filter(i => i.side === 'ASK').reduce((s, i) => s + (i.volume || 0), 0);
+                                const mapToUse = liveLiquidityMap.length > 0 ? liveLiquidityMap : (overlays.liquidityMap || []);
+                                const total = mapToUse.reduce((s, i) => s + (i.volume || 0), 0);
+                                const bids = mapToUse.filter(i => i.side === 'BID').reduce((s, i) => s + (i.volume || 0), 0);
+                                const asks = mapToUse.filter(i => i.side === 'ASK').reduce((s, i) => s + (i.volume || 0), 0);
                                 return (
                                     <>
                                         <span style={{ color: '#10b981' }}>{total > 0 ? ((bids / total) * 100).toFixed(1) : '50.0'}%</span>

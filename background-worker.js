@@ -129,22 +129,30 @@ async function updateExistingSignals() {
             // Signal from getGlobalSignals already has id in it
             const docRef = db.collection('globalSignals').doc(signal.id);
 
-            // Get current price
-            const candles = await marketData.fetchHistory(signal.symbol, '1m', 1);
+            // Get current price & history for management
+            // We need enough history for ATR calculation (e.g. 50 candles)
+            const candles = await marketData.fetchHistory(signal.symbol, '1m', 50);
             if (!candles || candles.length === 0) continue;
 
             const currentPrice = candles[candles.length - 1].close;
 
-            // Update status
-            const updatedSignal = MultiTimeframeValidator.updateSignalStatus(signal, currentPrice);
+            // Update status & management
+            const updatedSignal = MultiTimeframeValidator.updateSignalStatus(signal, currentPrice, candles);
 
-            if (updatedSignal.status !== signal.status) {
+            // Check if ANYTHING changed (status, trailing stop, management log)
+            const hasStatusChange = updatedSignal.status !== signal.status;
+            const hasManagementChange = (updatedSignal.trailingStop !== signal.trailingStop) ||
+                (updatedSignal.managementUpdates?.length !== signal.managementUpdates?.length);
+
+            if (hasStatusChange || hasManagementChange) {
                 await docRef.update({
                     status: updatedSignal.status,
+                    trailingStop: updatedSignal.trailingStop || null,
+                    managementUpdates: updatedSignal.managementUpdates || [],
                     updatedAt: new Date().toISOString(),
                     ...(updatedSignal.hitTargets ? { hitTargets: updatedSignal.hitTargets } : {})
                 });
-                console.log(`📊 Updated ${signal.symbol}: ${signal.status} → ${updatedSignal.status}`);
+                console.log(`📊 Updated ${signal.symbol}: ${signal.status} (Trail: ${updatedSignal.trailingStop || '-'})`);
             }
         }
     } catch (error) {

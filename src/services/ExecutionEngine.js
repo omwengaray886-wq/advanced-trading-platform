@@ -123,7 +123,7 @@ export class ExecutionEngine {
                 isSafe: false,
                 spread,
                 spreadToATR,
-                message: `Spread (${spread.toFixed(2)}) is ${(spreadToATR * 100).toFixed(1)}% of ATR. Execution Unsafe.`
+                message: `Spread (${spread ? spread.toFixed(2) : 'N/A'}) is ${spreadToATR ? (spreadToATR * 100).toFixed(1) : '0'}% of ATR. Execution Unsafe.`
             };
         }
 

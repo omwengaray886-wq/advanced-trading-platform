@@ -59,28 +59,28 @@ export class EdgeScoringEngine {
 
         if (reliability >= 80) {
             totalPoints += 40;
-            positives.push(`Premium Strategy Reliability (${reliability.toFixed(0)}%)`);
+            positives.push(`Premium Strategy Reliability (${reliability ? reliability.toFixed(0) : '0'}%)`);
         } else if (reliability >= 65) {
             totalPoints += 25;
-            positives.push(`Strong Strategy Reliability (${reliability.toFixed(0)}%)`);
+            positives.push(`Strong Strategy Reliability (${reliability ? reliability.toFixed(0) : '0'}%)`);
         } else if (reliability < 50) {
-            risks.push(`Low Strategy Reliability (${reliability.toFixed(0)}%)`);
+            risks.push(`Low Strategy Reliability (${reliability ? reliability.toFixed(0) : '0'}%)`);
         }
 
         // 2. R:R Feasibility (up to 20 points) - TIMEFRAME ADJUSTED
         const rr = setup.rr || 0;
         if (rr >= minRR + 1) {
             totalPoints += 20;
-            positives.push(`High yield R:R (${rr.toFixed(1)}) for ${tfProfile}`);
+            positives.push(`High yield R:R (${rr ? rr.toFixed(1) : '0.0'}) for ${tfProfile}`);
         } else if (rr >= minRR) {
             totalPoints += 15;
-            positives.push(`Standard R:R (${rr.toFixed(1)}) for ${tfProfile}`);
+            positives.push(`Standard R:R (${rr ? rr.toFixed(1) : '0.0'}) for ${tfProfile}`);
         } else if (rr >= minRR * 0.7) {
             totalPoints += 8;
-            risks.push(`Below-optimal R:R (${rr.toFixed(1)}) for ${tfProfile} - expected ≥${minRR}`);
+            risks.push(`Below-optimal R:R (${rr ? rr.toFixed(1) : '0.0'}) for ${tfProfile} - expected ≥${minRR}`);
         } else if (rr > 0) {
             totalPoints += 3;
-            risks.push(`Low R:R yield (${rr.toFixed(1)}) - high risk for ${tfProfile}`);
+            risks.push(`Low R:R yield (${rr ? rr.toFixed(1) : '0.0'}) - high risk for ${tfProfile}`);
         }
 
         // 3. Timeframe Stacking (up to 25 points) - HTF WEIGHT APPLIED
@@ -307,7 +307,7 @@ export class EdgeScoringEngine {
             if (patternDir === setupDir) {
                 const boost = (patterns.confidence || 0) * 20;
                 totalPoints += boost;
-                positives.push(`Fractal Confirmation (${((patterns.confidence || 0) * 100).toFixed(0)}%)`);
+                positives.push(`Fractal Confirmation (${patterns.confidence ? (patterns.confidence * 100).toFixed(0) : '0'}%)`);
             } else if ((patterns.confidence || 0) > 0.6) {
                 totalPoints -= 15;
                 risks.push('Fractal Pattern Conflict');
@@ -319,10 +319,10 @@ export class EdgeScoringEngine {
             const confidence = setup.directionalConfidence;
             if (confidence >= 0.7) {
                 totalPoints += 15;
-                positives.push(`High Directional Confidence (${(confidence * 100).toFixed(0)}%)`);
+                positives.push(`High Directional Confidence (${confidence ? (confidence * 100).toFixed(0) : '0'}%)`);
             } else if (confidence < 0.5) {
                 totalPoints -= 20;
-                risks.push(`Low Directional Conviction (${(confidence * 100).toFixed(0)}%)`);
+                risks.push(`Low Directional Conviction (${confidence ? (confidence * 100).toFixed(0) : '0'}%)`);
             }
         }
 

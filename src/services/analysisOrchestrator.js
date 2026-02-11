@@ -413,7 +413,7 @@ export class AnalysisOrchestrator {
                                 type: 'INSTITUTIONAL_SPOOF',
                                 price: e.price,
                                 magnitude: e.magnitude,
-                                label: `⚠️ Spoof: ${e.side} removal (${(e.magnitude * 100).toFixed(0)}%)`,
+                                label: `⚠️ Spoof: ${e.side} removal (${e.magnitude ? (e.magnitude * 100).toFixed(0) : '0'}%)`,
                                 visible: true
                             });
                         });
@@ -426,7 +426,7 @@ export class AnalysisOrchestrator {
                                     price: w.price,
                                     type: w.side === 'BUY' ? 'BUY_SIDE' : 'SELL_SIDE',
                                     strength: 'INSTITUTIONAL',
-                                    label: `Live Wall (${w.strength.toFixed(1)}x)`,
+                                    label: `Live Wall (${w.strength ? w.strength.toFixed(1) : '1.0'}x)`,
                                     isOrderBookWall: true
                                 }))
                             ];
@@ -730,7 +730,7 @@ export class AnalysisOrchestrator {
                     // Phase 3: Pattern Verification Boost
                     // Phase 3: Pattern Verification Boost (Now handled in EdgeScoringEngine)
                     if (marketState.patterns && marketState.patterns.prediction === direction) {
-                        c.rationale += ` + Fractal Confirmation (${(marketState.patterns.confidence * 100).toFixed(0)}%)`;
+                        c.rationale += ` + Fractal Confirmation (${marketState.patterns.confidence ? (marketState.patterns.confidence * 100).toFixed(0) : '0'}%)`;
                     }
 
                     // 4. Execution Trigger: Candle Confirmation
@@ -762,22 +762,28 @@ export class AnalysisOrchestrator {
                     const hasRiskParams = riskParams && riskParams.entry && riskParams.stopLoss;
                     const stopDistance = hasRiskParams ? Math.abs(riskParams.entry.optimal - riskParams.stopLoss) : 0;
 
+                    // --- INSTITUTIONAL POSITION SIZING (Phase 68) ---
+                    // Use TradeManagementEngine for risk-adjusted, context-aware sizing
                     const winRate = (performanceWeights[c.strategy.name] || {}).winRate || 0.45;
                     const riskReward = (riskParams.targets?.length > 0) ? (Math.abs(riskParams.targets[0].price - riskParams.entry.optimal) / stopDistance) : 2.0;
-                    const kellyRisk = ExecutionEngine.calculateKellySize(winRate, riskReward, quantScore / 100);
 
-                    const riskMultiplier = portfolioRiskService.getRiskMultiplier();
-                    const adjustedKellyRisk = kellyRisk * riskMultiplier;
+                    // Context for dynamic risk calculation
+                    const riskContext = {
+                        confidence: quantScore / 100, // 0.0 to 1.0
+                        volatility: marketState.volatility?.level === 'HIGH' ? 2.5 : marketState.volatility?.level === 'MEDIUM' ? 1.5 : 1.0,
+                        eventRisk: marketState.eventRisk || null
+                    };
 
-                    const strategyWeight = (performanceWeights[c.strategy.name] || {}).weight || 1.0;
-                    const suggestedSize = hasRiskParams ? this.calculateInstitutionalSize(
-                        accountSize,
-                        adjustedKellyRisk,
-                        stopDistance,
-                        quantScore,
-                        assetClass,
-                        strategyWeight
-                    ) : 0;
+                    const dynamicRisk = hasRiskParams ? TradeManagementEngine.calculateDynamicRisk(
+                        { equity: accountSize, riskPerTrade: 0.01 }, // Base 1% risk
+                        riskParams.entry.optimal,
+                        riskParams.stopLoss,
+                        riskContext
+                    ) : { units: 0, riskPercent: 0.01, warning: null };
+
+                    const suggestedSize = dynamicRisk.units;
+                    const riskPercentage = dynamicRisk.riskPercent ? (dynamicRisk.riskPercent * 100).toFixed(2) : '1.00';
+                    const sizingWarning = dynamicRisk.warning;
 
                     // Execution Complexity
                     const executionComplexity = this.calculateExecutionComplexity(marketState, assetParams);
@@ -825,12 +831,14 @@ export class AnalysisOrchestrator {
                         capitalScore,
                         capitalTag,
                         suggestedSize,
+                        riskPercentage,
+                        sizingWarning,
                         executionComplexity,
                         executionPrecision,
                         annotations,
                         rationale: `${direction} opportunity detected via ${c.strategy.name}. Trend: ${marketState.mtf.globalBias}. Institutional Volume: ${marketState.volumeAnalysis.isInstitutional ? 'DETECTED' : 'LOW'}.`,
                         monteCarlo: !isLight ? monteCarloService.runSimulation({
-                            winRate: (winRate * 100).toFixed(0),
+                            winRate: winRate ? (winRate * 100).toFixed(0) : '0',
                             profitFactor: riskReward,
                             totalTrades: 100
                         }, 500, 30, accountSize) : null
@@ -893,7 +901,7 @@ export class AnalysisOrchestrator {
                             t.price,
                             `TARGET_${i + 1}`,
                             {
-                                label: `TP ${i + 1} (${t.riskReward.toFixed(1)}R)`,
+                                label: `TP ${i + 1} (${t.riskReward ? t.riskReward.toFixed(1) : '2.0'}R)`,
                                 color: '#10b981',
                                 probability: t.probability || 0.5,
                                 timeframe
@@ -1257,7 +1265,7 @@ export class AnalysisOrchestrator {
                     marketState.primaryMagnet.price,
                     marketState.primaryMagnet.price > marketState.currentPrice ? 'SUPPLY' : 'DEMAND',
                     {
-                        label: `Institutional Magnet (${marketState.primaryMagnet.urgency.toFixed(0)}%)`,
+                        label: `Institutional Magnet (${marketState.primaryMagnet.urgency ? marketState.primaryMagnet.urgency.toFixed(0) : '50'}%)`,
                         isInstitutional: true,
                         isMagnet: true,
                         urgency: marketState.primaryMagnet.urgency
@@ -1743,7 +1751,7 @@ export class AnalysisOrchestrator {
 
                 // Only adjust if it improves our position or safety significantly
                 riskParams.entry.optimal = adjustedEntry;
-                riskParams.entry.reason = `Front-running ${nearestWall.quantity.toFixed(0)} lot wall @ ${nearestWall.price}`;
+                riskParams.entry.reason = `Front-running ${nearestWall.quantity ? nearestWall.quantity.toFixed(0) : '0'} lot wall @ ${nearestWall.price}`;
             }
         }
 
@@ -1854,11 +1862,12 @@ export class AnalysisOrchestrator {
         const confidenceMultiplier = Math.max(0, (quantScore - 50) / 40);
         const actualRisk = balance * baseRiskPercent * confidenceMultiplier * strategyWeight;
 
+        if (actualRisk <= 0) return 0.01;
         if (assetClass === 'FOREX') {
             // Standard Lot = 100,000 units. 1 pip movement = $10 for 1 lot.
             // Simplified pip-based estimation
             return parseFloat((actualRisk / (stopDistance * 100000)).toFixed(2)) || 0;
-        } else if (assetClass === 'CRYPTO') {
+        } else if (assetClass === 'CRYPTO' || assetClass === 'COMMODITIES') {
             return parseFloat((actualRisk / stopDistance).toFixed(4)) || 0;
         }
 

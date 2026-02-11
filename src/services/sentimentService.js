@@ -67,7 +67,7 @@ export async function analyzeSentiment(symbol) {
             score: Math.round(combinedScore),
             label,
             bias,
-            confidence: parseFloat(confidence.toFixed(2)),
+            confidence: parseFloat((confidence || 0).toFixed(2)),
             sources: {
                 news: newsSentiment,
                 social: socialSentiment,

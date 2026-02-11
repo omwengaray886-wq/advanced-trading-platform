@@ -65,7 +65,7 @@ async function getPutCallRatio(symbol) {
         const ratio = 0.85 + (Math.random() * 0.6); // 0.85 to 1.45 range
 
         return {
-            ratio: parseFloat(ratio.toFixed(2)),
+            ratio: parseFloat((ratio || 0).toFixed(2)),
             confidence: 0.5,
             source: 'ESTIMATED'
         };

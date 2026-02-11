@@ -104,7 +104,7 @@ export class FailurePatternDetector {
                     implication: structure.direction === 'up' ? 'BULL_TRAP' : 'BEAR_TRAP',
                     confidence: 0.75,
                     timestamp: structure.time,
-                    reason: `BOS at ${structure.price.toFixed(5)} failed - immediate reversal detected`
+                    reason: `BOS at ${(structure.price || 0).toFixed(5)} failed - immediate reversal detected`
                 });
             }
         });
