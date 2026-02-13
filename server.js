@@ -6,12 +6,49 @@ import crypto from 'crypto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import jwt from 'jsonwebtoken';
 
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import hpp from 'hpp';
+
 dotenv.config();
 
 const app = express();
 const PORT = 3001; // Standardize on 3001 for proxy
 const BINANCE_BASE = 'https://api.binance.com';
 const startTime = Date.now();
+
+// --- SECURITY MIDDLEWARE ---
+
+// 1. Set Secure HTTP Headers
+app.use(helmet());
+
+// 2. Prevent Parameter Pollution
+app.use(hpp());
+
+// 3. Global Rate Limiting
+const limiter = rateLimit({
+    windowMs: 10 * 60 * 1000, // 10 minutes
+    max: 500, // Limit each IP to 500 requests per windowMs
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    message: {
+        error: "Too Many Requests",
+        message: "You have exceeded the request limit. Please try again later."
+    }
+});
+
+// Apply global rate limiter to all requests
+app.use(limiter);
+
+// Specific stricter limiter for Auth endpoints
+const authLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 10, // Limit each IP to 10 login attempts per hour
+    message: { error: "Too many login attempts, please try again after an hour" }
+});
+app.use('/api/auth/', authLimiter);
+
+// --- END SECURITY MIDDLEWARE ---
 
 // In-memory cache for public data
 const cache = {
@@ -45,64 +82,11 @@ const INDICES_MAP = {
     'AUDUSDT': 'tether',
     'NZDUSD': 'tether',
     'NZDUSDT': 'tether',
+    'NZDUSDT': 'tether',
     'USDJPY': 'jpyc',    // JPY stablecoin
     'USDCHF': 'tether',
     'USDCAD': 'tether'
 };
-
-// Request Queue for Rate Limiting (Phase 1: API Stability)
-class RequestQueue {
-    constructor(maxPerMinute = 10) {
-        this.queue = [];
-        this.processing = false;
-        this.requestTimestamps = [];
-        this.maxPerMinute = maxPerMinute;
-    }
-
-    async enqueue(fn) {
-        return new Promise((resolve, reject) => {
-            this.queue.push({ fn, resolve, reject });
-            this.process();
-        });
-    }
-
-    async process() {
-        if (this.processing || this.queue.length === 0) return;
-
-        this.processing = true;
-
-        // Clean old timestamps
-        const now = Date.now();
-        this.requestTimestamps = this.requestTimestamps.filter(t => now - t < 60000);
-
-        // Check rate limit
-        if (this.requestTimestamps.length >= this.maxPerMinute) {
-            const oldestTimestamp = this.requestTimestamps[0];
-            const waitTime = 60000 - (now - oldestTimestamp);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            this.requestTimestamps = [];
-        }
-
-        const { fn, resolve, reject } = this.queue.shift();
-        this.requestTimestamps.push(Date.now());
-
-        try {
-            const result = await fn();
-            resolve(result);
-        } catch (error) {
-            reject(error);
-        } finally {
-            this.processing = false;
-            if (this.queue.length > 0) {
-                this.process();
-            }
-        }
-    }
-}
-
-const coinGeckoQueue = new RequestQueue(30); // 30 requests per minute for improved responsiveness
-const newsQueue = new RequestQueue(100);     // NewsAPI is more generous but still needs buffering
-const newsCache = new Map();                 // Separate map for news to simplify TTL tracking
 
 // Enable CORS for frontend
 const allowedOrigins = [

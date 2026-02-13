@@ -101,6 +101,9 @@ import { liveOrderBookStore } from './LiveOrderBookStore.js';
 import { macroBiasEngine } from './MacroBiasEngine.js';
 import { probabilisticRiskEngine } from './ProbabilisticRiskEngine.js';
 import { RegimeTransitionPredictor } from './RegimeTransitionPredictor.js';
+import { backtestingEngine } from './backtestingEngine.js';
+import { eventBlocker } from './eventBlocker.js';
+import { analysisCacheManager } from './analysisCacheManager.js';
 
 // Phase 6: Autonomous Alpha Integration
 import { SentimentEngine } from './SentimentEngine.js';
@@ -979,11 +982,33 @@ export class AnalysisOrchestrator {
             // Phase 40: Optimize for Trader Profile
             this.optimizeForProfile(setups, marketState.profile);
 
+            // Phase 3: Event Block Check - Prevent trades during high-impact events
+            const eventBlock = eventBlocker.checkEventBlock(symbol, calendarEvents, 30); // 30min buffer
+            if (eventBlock.isBlocked) {
+                // Hard block: Remove all setups and inject warning
+                setups.forEach(s => {
+                    s.isBlocked = true;
+                    s.blockReason = eventBlock.reason;
+                });
+                marketState.eventBlock = eventBlock;
+            } else if (eventBlock.isWarning) {
+                // Soft warning: Keep setups but add warning notice
+                setups.forEach(s => {
+                    s.eventWarning = eventBlock.reason;
+                });
+                marketState.eventWarning = eventBlock;
+            }
+
             // Step 6.1: Generate Scenarios (Phase 5)
             const statsForScenarios = {};
             for (const setup of setups) {
                 statsForScenarios[setup.strategy] = await StrategyPerformanceTracker.getStrategyPerformance(setup.strategy, marketState.regime);
             }
+
+            // Phase 1: Get backtesting performance metrics to influence scenario generation
+            const backtestMetrics = backtestingEngine.getPerformanceMetrics(symbol);
+            const confidenceAdjustment = backtestingEngine.getConfidenceAdjustment(symbol, marketState.regime);
+
             const rawScenarios = ScenarioEngine.generateScenarios(marketState, setups, fundamentals, statsForScenarios);
             const scenarios = rawScenarios;
 
@@ -994,11 +1019,25 @@ export class AnalysisOrchestrator {
             marketState.dominantScenario = dominantScenarioData;
             marketState.prediction = {
                 bias: dominantScenarioData.bias,
-                confidence: dominantScenarioData.confidence,
+                confidence: dominantScenarioData.confidence * confidenceAdjustment, // Apply backtesting adjustment
                 horizon: '24H',
                 nextLikelyRegime: transitionPrediction.expectedRegime,
-                transitionProbability: transitionPrediction.probability
+                transitionProbability: transitionPrediction.probability,
+                backtestMetrics // Include for transparency
             };
+
+            // Phase 1: Record prediction for future backtesting verification
+            backtestingEngine.recordPrediction(symbol, Date.now(), {
+                dominantScenario: dominantScenarioData.bias,
+                probabilities: {
+                    up: rawScenarios.upProb || scenarios.all.find(s => s.direction === 'up')?.probability || 0,
+                    down: rawScenarios.downProb || scenarios.all.find(s => s.direction === 'down')?.probability || 0,
+                    range: rawScenarios.rangeProb || scenarios.all.find(s => s.direction === 'neutral')?.probability || 0
+                },
+                currentPrice: marketState.currentPrice,
+                regime: marketState.regime,
+                setup: setups[0]?.strategy || 'NONE'
+            });
 
             // --- Phase 4: News Intelligence Layer ---
             if (!isLight) this.applyNewsIntelligence(marketState, setups, fundamentals);

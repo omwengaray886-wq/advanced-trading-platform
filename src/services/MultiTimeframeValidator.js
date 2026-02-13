@@ -79,20 +79,73 @@ class MultiTimeframeValidator {
     }
 
     /**
-     * Advanced Confluence Scoring (Phase 53)
+     * Advanced Confluence Scoring (Phase 53 + Phase 2 Enhancement)
      */
     static calculateAdvancedConfluence(setups, direction, symbol) {
         let score = 0;
         const breakdown = [];
         const confirmedTFs = setups.map(s => s.tf);
 
-        // 1. Timeframe Density (30 pts)
+        // 1. Timeframe Density (25 pts) - Reduced to make room for weighted scoring
         const count = setups.length;
-        if (count >= 8) { score += 30; breakdown.push(`Absolute Consensus (${count} TFs)`); }
-        else if (count >= 6) { score += 20; breakdown.push(`Strong Consensus (${count} TFs)`); }
+        if (count >= 8) { score += 25; breakdown.push(`Absolute Consensus (${count} TFs)`); }
+        else if (count >= 6) { score += 18; breakdown.push(`Strong Consensus (${count} TFs)`); }
         else { score += 10; breakdown.push(`Standard Consensus (${count} TFs)`); }
 
-        // 2. POI Cluster Alignment (30 pts)
+        // 2. PHASE 2 NEW: Weighted Timeframe Scoring (25 pts)
+        // Higher timeframes get more weight: Weekly=5, Daily=4, 4H=3, 1H=2, 15M=1
+        const timeframeWeights = {
+            '1w': 5, 'w': 5,
+            '1d': 4, 'd': 4,
+            '4h': 3, '4H': 3,
+            '1h': 2, 'h': 2,
+            '15m': 1, '15M': 1, '5m': 1, '5M': 1, '1m': 1
+        };
+
+        let weightedSum = 0;
+        let maxPossibleWeight = 0;
+
+        setups.forEach(s => {
+            const weight = timeframeWeights[s.tf] || 1;
+            const setup = s.analysis.setups.find(st => st.direction === direction);
+            const isAligned = setup && setup.direction === direction;
+
+            if (isAligned) {
+                weightedSum += weight;
+            }
+            maxPossibleWeight += weight;
+        });
+
+        const weightedScore = (weightedSum / maxPossibleWeight) * 25;
+        score += weightedScore;
+        breakdown.push(`Weighted TF Score: +${weightedScore.toFixed(1)} pts (HTFs prioritized)`);
+
+        // 3. PHASE 2 NEW: Divergence Detection & Penalty (-30 pts)
+        // Detect HTF/LTF conflicts
+        const htfSetups = setups.filter(s => ['1w', 'w', '1d', 'd', '4h', '4H'].includes(s.tf));
+        const ltfSetups = setups.filter(s => ['1h', 'h', '15m', '15M', '5m', '5M', '1m'].includes(s.tf));
+
+        if (htfSetups.length > 0 && ltfSetups.length > 0) {
+            // Get HTF dominant direction
+            const htfLong = htfSetups.filter(s => s.analysis.setups.some(st => st.direction === 'LONG')).length;
+            const htfShort = htfSetups.filter(s => s.analysis.setups.some(st => st.direction === 'SHORT')).length;
+            const htfBias = htfLong > htfShort ? 'LONG' : (htfShort > htfLong ? 'SHORT' : 'NEUTRAL');
+
+            // Get LTF dominant direction
+            const ltfLong = ltfSetups.filter(s => s.analysis.setups.some(st => st.direction === 'LONG')).length;
+            const ltfShort = ltfSetups.filter(s => s.analysis.setups.some(st => st.direction === 'SHORT')).length;
+            const ltfBias = ltfLong > ltfShort ? 'LONG' : (ltfShort > ltfLong ? 'SHORT' : 'NEUTRAL');
+
+            if (htfBias !== 'NEUTRAL' && ltfBias !== 'NEUTRAL' && htfBias !== ltfBias) {
+                score -= 30;
+                breakdown.push(`⚠️ HTF/LTF DIVERGENCE: HTF ${htfBias} vs LTF ${ltfBias} (-30 pts)`);
+            } else if (htfBias === direction && ltfBias === direction) {
+                score += 10;
+                breakdown.push(`✅ Perfect HTF/LTF Alignment (+10 pts)`);
+            }
+        }
+
+        // 4. POI Cluster Alignment (25 pts)
         const clusterBonus = this.calculatePOIConfluence(setups, direction);
         if (clusterBonus > 0) {
             score += clusterBonus;
@@ -102,26 +155,26 @@ class MultiTimeframeValidator {
             breakdown.push('Lack of price-level POI convergence (-10 pts)');
         }
 
-        // 3. Alpha-Weighted Scoring (20 pts)
+        // 5. Alpha-Weighted Scoring (15 pts) - Reduced from 20 to balance
         // Average the Edge scores of all confirming TFs
         const avgEdge = setups.reduce((sum, s) => {
             const setup = s.analysis.setups.find(st => st.direction === direction);
             return sum + (setup?.edgeScore || 0);
         }, 0) / setups.length;
 
-        if (avgEdge >= 8.0) { score += 20; breakdown.push('Premium Edge Alpha'); }
-        else if (avgEdge >= 6.5) { score += 10; breakdown.push('Standard Edge Alpha'); }
+        if (avgEdge >= 8.0) { score += 15; breakdown.push('Premium Edge Alpha'); }
+        else if (avgEdge >= 6.5) { score += 8; breakdown.push('Standard Edge Alpha'); }
 
-        // 4. Institutional Footprint (20 pts)
+        // 6. Institutional Footprint (10 pts) - Reduced from 20 to balance
         const institutionalTFs = setups.filter(s =>
             s.analysis.marketState?.volumeAnalysis?.isInstitutional ||
             s.analysis.marketState?.smtConfluence > 70
         );
         if (institutionalTFs.length >= setups.length * 0.7) {
-            score += 20;
+            score += 10;
             breakdown.push('Deep Institutional Footprint');
         } else if (institutionalTFs.length >= setups.length * 0.4) {
-            score += 10;
+            score += 5;
             breakdown.push('Moderate Institutional Footprint');
         }
 
