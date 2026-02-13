@@ -117,8 +117,10 @@ app.use(cors({
         // Allow same-origin requests (no origin header)
         if (!origin) return callback(null, true);
 
-        // Allow localhost in dev
-        if (allowedOrigins.includes(origin)) return callback(null, true);
+        // Allow localhost in dev (regex for any port)
+        if (/^http:\/\/localhost:\d+$/.test(origin) || /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) {
+            return callback(null, true);
+        }
 
         // Allow all vercel.app subdomains and other production origins
         if (origin.endsWith('.vercel.app') || process.env.NODE_ENV === 'production') {

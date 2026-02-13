@@ -11,7 +11,7 @@ export function AuthProvider({ children }) {
     async function verifyToken(token) {
         try {
             // Verify with backend
-            const response = await axios.post('http://localhost:3001/api/auth/verify', { token });
+            const response = await axios.post('/api/auth/verify', { token });
 
             if (response.data.valid) {
                 const user = {
@@ -28,6 +28,15 @@ export function AuthProvider({ children }) {
             }
         } catch (error) {
             console.error('Token verification failed:', error);
+            if (error.response) {
+                console.error('Data:', error.response.data);
+                console.error('Status:', error.response.status);
+                console.error('Headers:', error.response.headers);
+            } else if (error.request) {
+                console.error('No response received:', error.request);
+            } else {
+                console.error('Error config:', error.message);
+            }
             throw error;
         }
     }

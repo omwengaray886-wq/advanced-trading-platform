@@ -23,25 +23,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api/binance': {
+      '/api': {
         target: 'http://localhost:3001',
-        changeOrigin: true
-      },
-      '/api/coingecko': {
-        target: 'http://localhost:3001',
-        changeOrigin: true
-      },
-      '/api/news': {
-        target: 'http://localhost:3001',
-        changeOrigin: true
-      },
-      '/api/sentiment': {
-        target: 'http://localhost:3001',
-        changeOrigin: true
-      },
-      '/api/ai': {
-        target: 'http://localhost:3001',
-        changeOrigin: true
+        changeOrigin: true,
+        secure: false
       }
     }
   }
