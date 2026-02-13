@@ -53,9 +53,10 @@ export class CorrelationClusterEngine {
      * Identify what ties these assets together (e.g., USD, JPY, Tech)
      */
     static determineDominantFactor(assets) {
-        if (assets.every(a => a.includes('USD'))) return 'USD BASE';
+        if (assets.every(a => a.includes('USD') || a === 'DXY')) return 'USD BASE';
         if (assets.every(a => a.includes('JPY'))) return 'YEN CARRY';
         if (assets.every(a => a.match(/BTC|ETH|SOL/))) return 'CRYPTO BETA';
+        if (assets.every(a => a.includes('US10Y') || a.includes('US30Y'))) return 'YIELD SENSITIVE';
         return 'UNCATEGORIZED EXPOSURE';
     }
 

@@ -9,11 +9,10 @@ import { normalizeDirection, isInversePair as isInversePairUtil } from '../utils
  */
 export class SMTDivergenceEngine {
     static SIBLINGS = {
-        'EURUSD': ['GBPUSD', 'AUDUSD', 'NZDUSD'],
-        'GBPUSD': ['EURUSD', 'AUDUSD', 'NZDUSD'],
-        'AUDUSD': ['EURUSD', 'GBPUSD', 'NZDUSD'],
-        'NZDUSD': ['EURUSD', 'GBPUSD', 'AUDUSD'],
-        'XAUUSD': ['EURUSD', 'BTCUSDT'], // Gold vs Risk/Dollar proxies
+        'EURUSD': ['PAXGUSDT', 'BTCUSDT', 'GBPUSDT'], // EUR vs Gold/BTC as macro proxies
+        'XAUUSD': ['EURUSD', 'BTCUSDT'],
+        'GBPUSD': ['EURUSD', 'BTCUSDT'],
+        'GBPJPY': ['USDJPY', 'GBPUSD'],
         'BTCUSDT': ['ETHUSDT', 'SOLUSDT'],
         'ETHUSDT': ['BTCUSDT', 'SOLUSDT'],
         'SOLUSDT': ['BTCUSDT', 'ETHUSDT']

@@ -769,7 +769,7 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                     ))}
                 </div>
 
-                /* DOM Imbalance HUD (Phase 59 + Phase 69 Real-Time) */
+                {/* DOM Imbalance HUD (Phase 59 + Phase 69 Real-Time) */}
                 {(liveLiquidityMap.length > 0 || overlays.liquidityMap?.length > 0) && (
                     <div style={{
                         position: 'absolute',
@@ -920,7 +920,7 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
             )}
 
             {/* Chart Legend */}
-            {showLegend && <ChartLegend position="bottom-left" />}
+            {showLegend && <ChartLegend position="bottom-left" symbol={analysis?.symbol} />}
 
             {/* Help Overlay */}
             {showHelp && <HelpOverlay onClose={() => setShowHelp(false)} />}

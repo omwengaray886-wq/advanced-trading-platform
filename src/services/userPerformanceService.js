@@ -25,7 +25,40 @@ export class UserPerformanceService {
     /**
      * Calculate User Metrics
      */
-    async getUserMetrics(symbol = 'BTC_USDT') {
+    async getUserMetrics(symbol = 'BTC_USDT', source = 'SIMULATED') {
+        // Source can be 'LIVE' or 'SIMULATED' (default)
+        if (source === 'LIVE') {
+            const { exchangeService } = await import('./exchangeService');
+            // Fetch real trades
+            const trades = await exchangeService.getTradeHistory(symbol);
+
+            // Calculate real metrics
+            const totalTrades = trades.length;
+            const wins = trades.filter(t => parseFloat(t.realizedPnl) > 0).length;
+            const winRate = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(1) : '0.0';
+
+            const totalPnl = trades.reduce((acc, t) => acc + parseFloat(t.realizedPnl), 0);
+            const equityCurve = trades.reduce((acc, t) => {
+                const prev = acc.length > 0 ? acc[acc.length - 1] : 0;
+                acc.push(prev + parseFloat(t.realizedPnl));
+                return acc;
+            }, [0]); // Relative equity curve from 0
+
+            return {
+                totalTrades,
+                winRate,
+                profitFactor: 'N/A', // Hard to calc without full risk data
+                totalReturn: totalPnl.toFixed(2),
+                sharpe: 'N/A',
+                maxDrawdown: 'N/A',
+                finalBalance: totalPnl,
+                equityCurve: equityCurve,
+                edgeAttribution: { premium: 0, strong: 0, tradable: 0 },
+                byStrategy: [],
+                byMarket: [{ name: symbol, setups: totalTrades }]
+            };
+        }
+
         const stats = await PredictionTracker.getStats(symbol);
 
         if (!stats || stats.total === 0) {

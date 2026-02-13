@@ -8,7 +8,10 @@ import { AnalysisOrchestrator } from './analysisOrchestrator';
 class ScannerService {
     constructor() {
         this.orchestrator = new AnalysisOrchestrator();
-        this.symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XAU/USD', 'EUR/USD', 'GBP/USD', 'SPX/USD', 'DXY'];
+        this.symbols = [
+            'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT',
+            'XAU/USD', 'EUR/USD', 'PAXG/USDT', 'DXY', 'GBP/JPY'
+        ];
         this.results = new Map();
         this.isScanning = false;
     }

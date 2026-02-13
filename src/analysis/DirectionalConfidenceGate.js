@@ -54,18 +54,17 @@ export class DirectionalConfidenceGate {
             }
         }
 
-        const isValid = confidence >= 0.65; // Increased from 0.5 for Phase 73
+        const isValid = confidence >= 0.55; // Relaxed from 0.65 for Phase 42 robust signal flow
 
-        // Phase 73: Stagnation Filter
-        // If price velocity is near-zero, the market is dead and directional arrows are unreliable.
+        // Phase 42: Stagnation Penalty
+        // Instead of a hard binary block, we apply a significant penalty to confidence
+        // to allow high-conviction setups in slow but directional markets.
         const velocity = marketState.velocity || 0;
-        if (velocity < 0.3) {
-            return {
-                isValid: false,
-                confidence: Math.min(confidence, 0.3),
-                failedChecks: [...failedChecks, 'Market Stagnation: Price velocity too low for reliable direction'],
-                checkDetails: { ...checks, stagnation: { passed: false, score: 0.1, reason: 'Velocity < 0.3' } }
-            };
+        let stagnationPenalty = 0;
+        if (velocity < 0.25) { // Slightly lowered threshold
+            stagnationPenalty = (0.25 - velocity) * 1.5; // Reduced impact
+            confidence = Math.max(0.1, confidence - stagnationPenalty);
+            failedChecks.push(`Low Velocity (${velocity.toFixed(2)})`);
         }
 
         return {
@@ -109,10 +108,10 @@ export class DirectionalConfidenceGate {
             let score = alignmentRatio;
             let reason = `Multi-TF alignment: ${aligned}/${trends.length} timeframes agree`;
 
-            if (alignmentRatio < 0.75) { // Increased from 0.5 for Phase 73
+            if (alignmentRatio < 0.5) { // Relaxed from 0.75 for earlier entry visibility
                 passed = false;
-                reason = `Multi-TF conflict: Only ${aligned}/${trends.length} timeframes support ${normalizedDirection}. 75% alignment required for 100% precision target.`;
-                score *= 0.4; // Heavier penalty for conflict
+                reason = `Multi-TF conflict: Only ${aligned}/${trends.length} timeframes support ${normalizedDirection}. 50% alignment required.`;
+                score *= 0.5; // Slightly reduced penalty
             }
 
             return { passed, score, reason, details: { aligned, total: trends.length } };

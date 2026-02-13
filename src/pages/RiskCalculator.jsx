@@ -127,6 +127,8 @@ export default function RiskCalculator() {
                             <option value="GBPUSD">GBP/USD</option>
                             <option value="BTCUSDT">Bitcoin (BTC/USDT)</option>
                             <option value="ETHUSDT">Ethereum (ETH/USDT)</option>
+                            <option value="GBPUSDT">GBP/USD</option>
+                            <option value="GBPJPY">GBP/JPY</option>
                             <option value="SOLUSDT">Solana (SOL/USDT)</option>
                             <option value="XAUUSD">GOLD (XAU)</option>
                         </select>

@@ -7,7 +7,7 @@ import { marketData } from './marketData.js';
 export class CorrelationEngine {
     constructor() {
         // Pairs used to simulate DXY (US Dollar Index) if not directly available
-        this.dxyProxies = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF'];
+        this.dxyProxies = ['EURUSD', 'PAXGUSDT', 'BTCUSDT'];
         this.cryptoBenchmarks = ['BTCUSDT', 'ETHUSDT'];
     }
 
@@ -109,9 +109,8 @@ export class CorrelationEngine {
         const correlationGroups = {
             'BTCUSDT': ['ETHUSDT', 'SOLUSDT', 'BNBUSDT'],
             'ETHUSDT': ['BTCUSDT', 'SOLUSDT', 'AVAXUSDT'],
-            'EURUSD': ['GBPUSD', 'AUDUSD', 'NZDUSD'],
-            'GBPUSD': ['EURUSD', 'AUDUSD', 'NZDUSD'],
-            'XAUUSD': ['XAGUSD', 'PAXGUSDT']
+            'EURUSD': ['PAXGUSDT', 'BTCUSDT'], // EUR vs Gold/BTC as macro siblings
+            'XAUUSD': ['EURUSD', 'BTCUSDT']
         };
 
         const siblings = correlationGroups[symbol] || [];

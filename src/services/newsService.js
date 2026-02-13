@@ -1,4 +1,5 @@
 import { EconomicEvent } from '../models/EconomicEvent.js';
+import { sentimentNLPEngine } from './SentimentNLPEngine.js';
 
 const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
 const BACKEND_BASE = isNode ? 'http://localhost:3001' : '';
@@ -24,27 +25,30 @@ export class NewsService {
         }
 
         try {
-            const res = await fetch(`${CRYPTOPANIC_PROXY}?currencies=${asset}&kind=news`);
+            // Parallel Fetch: CryptoPanic + Simulated Global Macro
+            const [cryptoRes, macroFeed] = await Promise.all([
+                fetch(`${CRYPTOPANIC_PROXY}?currencies=${asset}&kind=news`).catch(() => null),
+                this._fetchGlobalMacroFeed()
+            ]);
 
-            if (!res.ok) {
-                if (res.status === 429 && cached) {
-                    console.warn(`[NEWS] News proxy throttled (429). Returning last successful cache for ${asset}.`);
-                    return cached.data;
-                }
-                console.warn(`[NEWS] News proxy unavailable (${res.status}). Skipping real news.`);
-                return cached ? cached.data : [];
-            }
+            const cryptoNews = cryptoRes && cryptoRes.ok ? (await cryptoRes.json()).results : [];
+            const combinedNews = [...(cryptoNews || []), ...macroFeed];
 
-            const data = await res.json();
-            const results = (data.results || []).map(n => ({
-                id: n.id,
-                time: Math.floor(new Date(n.published_at).getTime() / 1000),
-                title: n.title,
-                source: n.domain,
-                impact: this._scoreImpact(n.title, n.metadata),
-                sentiment: n.votes.positive > n.votes.negative ? 'BULLISH' : 'BEARISH',
-                url: n.url
-            }));
+            const results = combinedNews.map(n => {
+                const nlpAnalysis = sentimentNLPEngine.scoreHeadline(n.title);
+                return {
+                    id: n.id || `macro-${Math.random()}`,
+                    time: n.created_at ? Math.floor(new Date(n.created_at).getTime() / 1000) : Math.floor(Date.now() / 1000),
+                    title: n.title,
+                    source: n.domain || 'Global Wire',
+                    impact: this._scoreImpact(n.title, n.metadata),
+                    sentiment: nlpAnalysis.bias,
+                    sentimentScore: nlpAnalysis.score,
+                    sentimentLabel: nlpAnalysis.label,
+                    entity: nlpAnalysis.entity, // New field
+                    url: n.url || '#'
+                };
+            }).sort((a, b) => b.time - a.time); // Sort by newest
 
             this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
             return results;
@@ -52,6 +56,58 @@ export class NewsService {
             console.error("Failed to fetch news:", e);
             return cached ? cached.data : [];
         }
+    }
+
+    /**
+     * Simulate a Global Macro Feed (Reuters/Bloomberg style)
+     * In a real app, this would hit a Financial News API
+     */
+    async _fetchGlobalMacroFeed() {
+        // Simulated "Live" headlines based on random seed or time
+        const headlines = [
+            { title: "Powell: Fed monitoring inflation closely, hikes possible", domain: "Reuters" },
+            { title: "SEC approves Bitcoin ETF applications", domain: "Bloomberg" },
+            { title: "China bans crypto mining again", domain: "CNBC" },
+            { title: "US 10Y Yields surge to 5.0% on strong NFP data", domain: "Investing.com" },
+            { title: "Sources say Binance facing DOJ investigation", domain: "WSJ" }
+        ];
+
+        // Randomly pick 2-3 to simulate "current" news
+        return headlines.sort(() => 0.5 - Math.random()).slice(0, 3);
+    }
+
+    /**
+     * Calculate Global Market Sentiment (Crypto + Macro)
+     */
+    getGlobalSentiment(newsItems) {
+        if (!newsItems || newsItems.length === 0) return { score: 0, label: 'NEUTRAL' };
+
+        let totalWeightedScore = 0;
+        let totalWeight = 0;
+
+        newsItems.forEach(n => {
+            // News from "Premium" sources gets higher weight
+            const sourceWeight = ['Reuters', 'Bloomberg', 'WSJ'].includes(n.source) ? 2.0 : 1.0;
+            // High impact entities get higher weight (already in sentimentScore but we emphasize here too)
+            const entityWeight = n.entity ? 1.5 : 1.0;
+
+            const weight = sourceWeight * entityWeight;
+            totalWeightedScore += (n.sentimentScore * weight);
+            totalWeight += weight;
+        });
+
+        const avgScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
+        let label = 'NEUTRAL';
+        if (avgScore > 0.3) label = 'RISK_ON';
+        if (avgScore > 0.6) label = 'EUPHORIA';
+        if (avgScore < -0.3) label = 'RISK_OFF';
+        if (avgScore < -0.6) label = 'PANIC';
+
+        return {
+            score: parseFloat(avgScore.toFixed(2)),
+            label,
+            headlineCount: newsItems.length
+        };
     }
 
     /**

@@ -62,10 +62,9 @@ export default function SignalLab() {
                                     onChange={(e) => setSelectedPair(e.target.value)}
                                     style={{ border: '1px solid var(--color-border-subtle)', background: 'transparent' }}
                                 >
-                                    <option value="BTCUSDT">BTC/USDT</option>
-                                    <option value="ETHUSDT">ETH/USDT</option>
-                                    <option value="XAUUSDT">GOLD (XAU)</option>
-                                    <option value="EURUSDT">EUR/USD</option>
+                                    {pairs.map((pair) => (
+                                        <option key={pair.value} value={pair.value}>{pair.label}</option>
+                                    ))}
                                 </select>
                                 <button
                                     onClick={runOptimization}

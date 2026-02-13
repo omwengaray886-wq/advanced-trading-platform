@@ -176,6 +176,68 @@ export class OrderFlowAnalyzer {
      * Calculate Heatmap Intensity (Tape Reading)
      * Simulated from price action and volume delta.
      */
+    /**
+     * Detect Iceberg Orders (Hidden Liquidity)
+     * Heuristic: Repeated high volume triggers at a specific price level with minimal displacement.
+     * @param {Array} candles - Recent price action
+     */
+    static detectIceberg(candles) {
+        if (!candles || candles.length < 10) return null;
+
+        const levels = {};
+        const threshold = this.calculateSimpleATR(candles, 14) * 0.2; // 20% of ATR tolerance
+
+        candles.slice(-10).forEach(c => {
+            // Check Highs (Sell Iceberg)
+            const highKey = Math.round(c.high / threshold) * threshold;
+            if (!levels[highKey]) levels[highKey] = { vol: 0, touches: 0, type: 'SELL_ICEBERG' };
+
+            // Check Lows (Buy Iceberg)
+            const lowKey = Math.round(c.low / threshold) * threshold;
+            if (!levels[lowKey]) levels[lowKey] = { vol: 0, touches: 0, type: 'BUY_ICEBERG' };
+
+            // Logic: If close is near high/low and volume is high, add stats
+            if (Math.abs(c.high - c.close) < threshold) {
+                levels[highKey].vol += c.volume;
+                levels[highKey].touches++;
+            }
+            if (Math.abs(c.close - c.low) < threshold) {
+                levels[lowKey].vol += c.volume;
+                levels[lowKey].touches++;
+            }
+        });
+
+        // specific price levels with > 3 touches and high volume
+        const avgVol = candles.reduce((sum, c) => sum + c.volume, 0) / candles.length;
+
+        const icebergs = Object.entries(levels)
+            .filter(([_, data]) => data.touches >= 3 && data.vol > avgVol * 5.0)
+            .map(([price, data]) => ({
+                price: parseFloat(price),
+                type: data.type,
+                volume: data.vol,
+                strength: (data.vol / avgVol).toFixed(1) + 'x'
+            }));
+
+        return icebergs.length > 0 ? icebergs.sort((a, b) => b.volume - a.volume)[0] : null;
+    }
+
+    /**
+     * Calculate Cumulative Volume Delta (CVD)
+     * Tracks the "Tape" sentiment over time.
+     */
+    static calculateCVD(candles) {
+        if (!candles || candles.length === 0) return [];
+
+        let cumulative = 0;
+        return candles.map(c => {
+            const delta = this._calculateDelta(c).net;
+            cumulative += delta;
+            return { time: c.time, cvd: cumulative, delta };
+        });
+    }
+
+    // ... existing helper methods ...
     static calculateHeatmap(candles, rowCount = 50) {
         if (!candles || candles.length === 0) return null;
 

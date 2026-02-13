@@ -1,12 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-    createUserWithEmailAndPassword,
-    signInWithEmailAndPassword,
-    signOut,
-    onAuthStateChanged,
-    updateProfile
-} from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import axios from 'axios';
 
 const AuthContext = createContext();
 
@@ -14,41 +7,57 @@ export function AuthProvider({ children }) {
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // Sign Up
-    function signup(email, password, firstName, lastName) {
-        return createUserWithEmailAndPassword(auth, email, password)
-            .then((userCredential) => {
-                // Update profile immediately after signup
-                return updateProfile(userCredential.user, {
-                    displayName: `${firstName} ${lastName}`
-                });
-            });
-    }
+    // Verify Token (Login)
+    async function verifyToken(token) {
+        try {
+            // Verify with backend
+            const response = await axios.post('http://localhost:3001/api/auth/verify', { token });
 
-    // Login
-    function login(email, password) {
-        return signInWithEmailAndPassword(auth, email, password);
+            if (response.data.valid) {
+                const user = {
+                    token,
+                    ...response.data.payload
+                };
+
+                // Persist session
+                localStorage.setItem('access_token', token);
+                setCurrentUser(user);
+                return user;
+            } else {
+                throw new Error('Invalid Token');
+            }
+        } catch (error) {
+            console.error('Token verification failed:', error);
+            throw error;
+        }
     }
 
     // Logout
     function logout() {
-        return signOut(auth);
+        localStorage.removeItem('access_token');
+        setCurrentUser(null);
     }
 
     useEffect(() => {
-        // Listener for auth state changes
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            setCurrentUser(user);
-            setLoading(false);
-        });
+        // Check for existing token on load
+        const storedToken = localStorage.getItem('access_token');
 
-        return unsubscribe;
+        if (storedToken) {
+            verifyToken(storedToken)
+                .catch(() => {
+                    // If verification fails, clear storage
+                    localStorage.removeItem('access_token');
+                    setCurrentUser(null);
+                })
+                .finally(() => setLoading(false));
+        } else {
+            setLoading(false);
+        }
     }, []);
 
     const value = {
         currentUser,
-        signup,
-        login,
+        verifyToken,
         logout
     };
 
@@ -62,3 +71,5 @@ export function AuthProvider({ children }) {
 export function useAuth() {
     return useContext(AuthContext);
 }
+
+

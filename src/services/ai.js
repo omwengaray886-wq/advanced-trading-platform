@@ -6,6 +6,8 @@
 import { AnalysisOrchestrator } from './analysisOrchestrator.js';
 import { ExplanationEngine } from './explanationEngine.js';
 import { marketData } from './marketData.js';
+import { AssetClassAdapter } from './assetClassAdapter.js';
+
 
 const explanationEngine = new ExplanationEngine();
 const AI_CACHE = new Map();
@@ -144,17 +146,38 @@ export async function generateTradeAnalysis(chartData, symbol, timeframe = '1H',
 async function enhanceExplanationWithAI(analysis, explanation, mode = 'ADVANCED') {
     const cacheKey = `${analysis.symbol}_${analysis.timeframe}_${analysis.timestamp}_${mode}`;
     if (AI_CACHE.has(cacheKey)) {
-        console.log('Returning cached AI enhancement');
-        return AI_CACHE.get(cacheKey);
+        if (AI_CACHE.has(cacheKey)) {
+            // console.log('Returning cached AI enhancement'); // Silent
+            return AI_CACHE.get(cacheKey);
+        }
     }
 
     try {
         // No local VITE_GEMINI_API_KEY check - always use the secure server proxy.
 
+
+        const assetClass = analysis.marketState.assetClass || 'CRYPTO';
+        const contextPrefix = AssetClassAdapter.getExplanationContext(assetClass);
+        const activeSetup = analysis.setups?.[0];
+
+        let riskMetrics = "N/A";
+        if (activeSetup && activeSetup.entryZone && activeSetup.stopLoss) {
+            const riskRaw = Math.abs(activeSetup.entryZone.optimal - activeSetup.stopLoss);
+            // For crypto, we likely want % risk
+            if (assetClass === 'CRYPTO') {
+                riskMetrics = ((riskRaw / activeSetup.entryZone.optimal) * 100).toFixed(2) + "% range";
+            } else {
+                riskMetrics = formatPriceDelta(riskRaw, assetClass);
+            }
+        }
+
         const prompt = `
 You are an **Elite Institutional Algo-Trader & Risk Architect** (ex-Citadel/Bridgewater).
 Your output determines the deployment of significant capital. **Precision is non-negotiable.**
 Your objective is to generate a **High-Fidelity Execution Narrative** for ${analysis.symbol} (${analysis.timeframe}).
+
+### ASSET CONTEXT:
+${contextPrefix}
 
 ### STRICT VALIDATION PROTOCOL:
 1.  **NO FLUFF**: Do not generic phrases like "market is volatile." Be specific: "Volatility expanded 2.0x vs 20-period avg."
@@ -162,17 +185,19 @@ Your objective is to generate a **High-Fidelity Execution Narrative** for ${anal
 3.  **INVALIDATION IS KEY**: A trade without a clear invalidation point is gambling. You MUST define exactly where the thesis fails.
 
 ### INTELLIGENCE INPUTS:
+- **Asset Class**: ${assetClass} ${analysis.selectedStrategy?.isReference ? '(REFERENCE ONLY)' : ''}
 - **Market State**: ${analysis.marketState.regime} / ${analysis.marketState.phase} (${analysis.marketState.condition}).
 - **Quant Conviction**: ${analysis.selectedStrategy?.quantScore || 0}/100.
+- **Risk Corridor**: ${riskMetrics} (implied stop distance).
 - **Liquidity Profile**: ${analysis.marketState.liquiditySweep ? `Recent ${analysis.marketState.liquiditySweep.type} sweep detected.` : 'No recent sweeps.'}
 - **Imbalance**: ${analysis.marketState.relevantGap ? `FVG Quality: ${analysis.marketState.relevantGap.quality.score.toFixed(2)} (${analysis.marketState.relevantGap.cause})` : 'Stable equilibrium.'}
 - **Scenario Probabilities**: UP: ${(analysis.marketState.scenarios?.all?.find(s => s.direction === 'up')?.probability * 100).toFixed(0)}%, DOWN: ${(analysis.marketState.scenarios?.all?.find(s => s.direction === 'down')?.probability * 100).toFixed(0)}%.
 - **News Hazard**: ${analysis.marketState.news_risk || 'LOW'}. Technical Validity: ${analysis.marketState.technical_validity || 'NORMAL'}.
 - **Institutional Alpha (Phase 6 & 7)**: 
-    - Macro Sentiment (COT): ${analysis.marketState.macroSentiment?.bias} (${analysis.marketState.macroSentiment?.reason})
-    - Commodity Correlation: ${analysis.marketState.commodityCorr?.direction} from ${analysis.marketState.commodityCorr?.influencer} (Score: ${analysis.marketState.commodityCorr?.score})
+    - Macro Sentiment (COT): ${analysis.marketState.macroSentiment?.bias || 'N/A'} (${analysis.marketState.macroSentiment?.reason || 'N/A'})
+    - Commodity Correlation: ${analysis.marketState.commodityCorr?.direction || 'N/A'} from ${analysis.marketState.commodityCorr?.influencer || 'N/A'} (Score: ${analysis.marketState.commodityCorr?.score || 0})
     - Dark Pools: ${analysis.marketState.darkPools?.length > 0 ? `Detected ${analysis.marketState.darkPools.length} significant absorption walls.` : 'None detected.'}
-    - Volatility Regime: ${analysis.marketState.volatility?.regime}
+    - Volatility Regime: ${analysis.marketState.volatility?.regime || 'NORMAL'}
     - Portfolio Stress (VaR): ${analysis.stressMetrics?.var?.totalVaR?.toFixed(2) || 'N/A'} (${analysis.stressMetrics?.var?.varPct?.toFixed(1) || '0'}%)
     - Basket Divergence: ${analysis.marketState.basketArbitrage ? `${analysis.marketState.basketArbitrage.signal} (Divergence: ${analysis.marketState.basketArbitrage.divergence.toFixed(2)}%)` : 'Stable.'}
 
@@ -180,8 +205,8 @@ Your objective is to generate a **High-Fidelity Execution Narrative** for ${anal
 1.  **Institutional Theme**: Explain the *Institutional Intent*. Accumulation, distribution, or trapping? link to ${analysis.marketState.phase}.
 2.  **The "Magnet"**: Identify the *Draw on Liquidity*. Where are the resting orders?
 3.  **Macro & Portfolio Context**: How do COT and Commodity correlations validate or invalidate the technical setup? What is the impact on portfolio VaR?
-4.  **Execution Logic**: Why THIS entry?
-5.  **Hard Invalidation**: The exact price where the thesis is dead.
+4.  **Execution Logic**: Why THIS entry? (If this is a **REFERENCE ONLY** asset like SPX/NASDAQ, prioritize macro synthesis over trade execution).
+5.  **Hard Invalidation**: The exact price where the thesis is dead. USE SPECIFIC PRICE LEVELS.
 
 ### RETURN FORMAT (JSON ONLY):
 {
@@ -189,7 +214,7 @@ Your objective is to generate a **High-Fidelity Execution Narrative** for ${anal
   "macroContext": "Synthesis of COT, Commodity Correlations, and Macro Bias",
   "portfolioImpact": "Interpretation of VaR and Portfolio Stress for this setup",
   "strategySelected": "Why this specific strategy is deployed",
-  "entryLogic": "Technical breakdown of Entry/Target/Stop levels",
+  "entryLogic": "Technical breakdown of Entry/Target/Stop levels. USE PROPER PRECISION (Pips for Forex, Points for Indices).",
   "riskManagement": "Position sizing & Portfolio Risk Warnings",
   "invalidationConditions": "Hard Invalidation Point",
   "alternativeScenarios": "The logical pivot if primary fails",
@@ -207,7 +232,7 @@ Your objective is to generate a **High-Fidelity Execution Narrative** for ${anal
                 const response = await fetch('/api/ai/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt, model: 'gemini-flash-latest' })
+                    body: JSON.stringify({ prompt, model: 'gemini-1.5-flash' })
                 });
 
                 if (response.status === 429 && retries < maxRetries) {
@@ -270,6 +295,31 @@ Your objective is to generate a **High-Fidelity Execution Narrative** for ${anal
         console.warn('AI enhancement failed, returning original:', error.message);
         return explanation;
     }
+}
+
+/**
+ * Format price difference based on asset class (Pips, Points, %)
+ */
+function formatPriceDelta(amount, assetClass) {
+    if (!amount) return '0.00';
+    const val = parseFloat(amount);
+
+    if (assetClass === 'FOREX') {
+        // Standard Lot: 0.0001, JPY: 0.01
+        // We act heuristically since we don't have symbol here easily without passing it down
+        // But for generic delta, we usually treat 0.0001 as 1 pip
+        return (val / 0.0001).toFixed(1) + ' pips';
+    }
+
+    if (assetClass === 'INDICES' || assetClass === 'METALS') {
+        return val.toFixed(2) + ' points';
+    }
+
+    if (assetClass === 'CRYPTO') {
+        return val.toFixed(2) + '%'; // Usually we pass percent diffs for crypto, or raw price
+    }
+
+    return val.toFixed(4);
 }
 
 /**

@@ -13,8 +13,11 @@ import Footer from '../components/layout/Footer';
 const orchestrator = new AnalysisOrchestrator();
 
 const SCAN_LIST = [
+    // Major Crypto
     'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT',
-    'EURUSDT', 'GBPUSDT', 'AUDUSDT', 'XAUUSDT', 'XAGUSDT'
+    'DOGEUSDT', 'MATICUSDT', 'DOTUSDT', 'LTCUSDT', 'UNIUSDT', 'ATOMUSDT',
+    // Forex & Commodities (EURUSDT + GBPUSDT tradeable on Binance)
+    'EURUSDT', 'GBPUSDT', 'GBPJPY', 'PAXGUSDT'  // EUR + GBP + Gold
 ];
 
 export default function MarketScanner() {

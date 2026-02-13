@@ -36,7 +36,7 @@ export class BayesianInferenceEngine {
             try {
                 // Phase 55: Robustness - Race against timeout (2s) to prevent analysis hang
                 const timeoutPromise = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Bayesian stats fetch timed out')), 5000)
+                    setTimeout(() => reject(new Error('Bayesian stats fetch timed out')), 15000)
                 );
                 stats = await Promise.race([
                     PredictionTracker.getStats(symbol),

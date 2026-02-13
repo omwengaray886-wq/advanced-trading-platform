@@ -3,10 +3,10 @@ import { motion } from 'framer-motion';
 import { marketData } from '../../services/marketData';
 
 const SECTORS = [
-    { title: 'DeFi Highcaps', assets: ['UNIUSDT', 'AAVEUSDT', 'LINKUSDT', 'MKRUSDT'] },
-    { title: 'Layer 1s', assets: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'ADARUSDT', 'AVAXUSDT'] },
-    { title: 'Forex Majors', assets: ['EURUSDT', 'GBPUSDT', 'JPYUSDT', 'AUDUSDT'] },
-    { title: 'Safe Havens', assets: ['XAUUSDT', 'BTCUSDT'] }
+    { title: 'DeFi Highcaps', assets: ['UNIUSDT', 'AAVEUSDT', 'LINKUSDT'] },
+    { title: 'Layer 1s', assets: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'ADAUSDT', 'AVAXUSDT'] },
+    { title: 'Forex & Commodities', assets: ['EURUSDT', 'PAXGUSDT'] },  // Only valid on Binance
+    { title: 'Memecoins', assets: ['DOGEUSDT', 'SHIBUSDT', 'PEPEUSDT'] }
 ];
 
 export default function MarketHeatmap() {

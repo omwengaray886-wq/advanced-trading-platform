@@ -28,12 +28,10 @@ export const isInversePair = (a, b) => {
         return true;
     }
 
-    // 2. Direct inverse pairs (Forex)
+    // 2. Direct inverse pairs (Forex/Metals)
     const inversePairs = {
-        'EURUSD': ['USDCHF', 'USDCAD', 'USDJPY'],
-        'GBPUSD': ['USDCHF', 'USDCAD', 'USDJPY'],
-        'AUDUSD': ['USDCHF', 'USDCAD', 'USDJPY'],
-        'NZDUSD': ['USDCHF', 'USDCAD', 'USDJPY']
+        'EURUSD': [], // Add valid inverses if any (e.g. DXY handled above)
+        'XAUUSD': ['EURUSD'] // Gold often moves with EUR vs USD
     };
 
     return (inversePairs[pairA] || []).includes(pairB) || (inversePairs[pairB] || []).includes(pairA);

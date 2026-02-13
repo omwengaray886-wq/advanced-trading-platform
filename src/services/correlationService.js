@@ -1,4 +1,4 @@
-import { marketData } from './marketData';
+import { marketData } from './marketData.js';
 
 export class CorrelationService {
     /**

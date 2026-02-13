@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
+import { getSymbolMetadata } from '../../services/marketData';
 
 /**
  * Chart Legend Component
  * Displays color codes and descriptions for all chart overlay elements
  */
-export const ChartLegend = ({ position = 'bottom-left' }) => {
+export const ChartLegend = ({ position = 'bottom-left', symbol }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+    const meta = getSymbolMetadata(symbol);
 
     const legendItems = {
         'Prediction Arrows': [
@@ -134,51 +136,20 @@ export const ChartLegend = ({ position = 'bottom-left' }) => {
                         </div>
                     ))}
 
-                    {/* Keyboard Shortcuts */}
+                    {/* Data Source Transparency */}
                     <div style={{
                         marginTop: '12px',
-                        paddingTop: '8px',
-                        borderTop: '1px solid rgba(148, 163, 184, 0.2)'
+                        padding: '8px',
+                        background: meta.isProxy ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                        border: `1px solid ${meta.isProxy ? 'rgba(245, 158, 11, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
+                        borderRadius: '6px',
+                        fontSize: '9px'
                     }}>
-                        <div style={{
-                            fontSize: '10px',
-                            fontWeight: '600',
-                            color: '#94a3b8',
-                            marginBottom: '6px'
-                        }}>
-                            Keyboard Shortcuts
+                        <div style={{ fontWeight: 'bold', color: meta.isProxy ? '#f59e0b' : '#10b981', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                            {meta.isProxy ? '⚠️ PROXY DATA' : '✅ NATIVE DATA'}
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                            {[
-                                { key: 'L', action: 'Toggle Legend' },
-                                { key: 'V', action: 'Toggle Volume Profile' },
-                                { key: 'E', action: 'Toggle Entry Zones' },
-                                { key: '?', action: 'Show Help' }
-                            ].map(({ key, action }) => (
-                                <div key={key} style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    fontSize: '9px'
-                                }}>
-                                    <kbd style={{
-                                        background: 'rgba(100, 116, 139, 0.2)',
-                                        padding: '2px 6px',
-                                        borderRadius: '4px',
-                                        border: '1px solid rgba(148, 163, 184, 0.3)',
-                                        color: '#e2e8f0',
-                                        fontFamily: 'monospace',
-                                        fontSize: '9px',
-                                        fontWeight: '700',
-                                        minWidth: '16px',
-                                        textAlign: 'center'
-                                    }}>
-                                        {key}
-                                    </kbd>
-                                    <span style={{ color: '#94a3b8' }}>{action}</span>
-                                </div>
-                            ))}
-                        </div>
+                        <div style={{ color: '#94a3b8' }}>Source: {meta.source}</div>
+                        {meta.note && <div style={{ color: '#cbd5e1', fontStyle: 'italic', marginTop: '2px' }}>{meta.note}</div>}
                     </div>
                 </div>
             )}

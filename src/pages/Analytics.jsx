@@ -19,7 +19,7 @@ export default function Analytics() {
                 setLoading(true);
 
                 // Fetch prediction stats across all symbols
-                const symbols = ['BTCUSDT', 'ETHUSDT', 'EURUSDT', 'PAXGUSDT'];
+                const symbols = ['BTCUSDT', 'ETHUSDT', 'EURUSDT', 'GBPUSDT', 'GBPJPY', 'PAXGUSDT'];
                 const allStats = {};
 
                 for (const symbol of symbols) {

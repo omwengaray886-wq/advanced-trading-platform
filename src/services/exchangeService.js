@@ -94,6 +94,48 @@ class ExchangeService {
             return [];
         }
     }
+    /**
+     * Cancel an Order
+     */
+    async cancelOrder(symbol, orderId) {
+        const creds = this._getCredentials();
+        if (!creds) throw new Error('API Keys not configured');
+
+        try {
+            const response = await axios.delete(`${this.apiBase}/order`, {
+                params: { symbol, orderId },
+                headers: {
+                    'X-API-KEY': creds.apiKey,
+                    'X-API-SECRET': creds.apiSecret
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Failed to cancel order:', error);
+            throw error;
+        }
+    }
+    /**
+     * Get Trade History (My Trades)
+     */
+    async getTradeHistory(symbol, limit = 50) {
+        const creds = this._getCredentials();
+        if (!creds) return [];
+
+        try {
+            const response = await axios.get(`${this.apiBase}/my-trades`, {
+                params: { symbol, limit },
+                headers: {
+                    'X-API-KEY': creds.apiKey,
+                    'X-API-SECRET': creds.apiSecret
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Failed to fetch trade history:', error);
+            return [];
+        }
+    }
 }
 
 export const exchangeService = new ExchangeService();

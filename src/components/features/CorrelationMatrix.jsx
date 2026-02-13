@@ -3,7 +3,7 @@ import { correlationService } from '../../services/correlationService';
 import { motion } from 'framer-motion';
 import { AlertCircle, Activity } from 'lucide-react';
 
-const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'EURUSDT', 'GBPUSDT'];
+const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'EURUSDT', 'PAXGUSDT'];
 
 export default function CorrelationMatrix() {
     const [matrix, setMatrix] = useState(null);

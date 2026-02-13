@@ -10,7 +10,7 @@ import MacroSentimentWidget from './MacroSentimentWidget';
 /**
  * FullAnalysisReport - Professional 9-Point breakdown displayed beneath the chart
  */
-export default function FullAnalysisReport({ analysis, loading }) {
+export default function FullAnalysisReport({ analysis, loading, realtimeDiag }) {
     if (loading) {
         return (
             <div style={{ padding: '40px', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
@@ -36,6 +36,11 @@ export default function FullAnalysisReport({ analysis, loading }) {
         regimeTransition
     } = analysis;
 
+    // Merge real-time diagnostics if prediction is NO_EDGE or if a critical real-time threat exists
+    const displayPrediction = (prediction?.bias === 'NO_EDGE' && realtimeDiag)
+        ? { ...prediction, ...realtimeDiag }
+        : (prediction || realtimeDiag);
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -52,7 +57,7 @@ export default function FullAnalysisReport({ analysis, loading }) {
         >
             <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
                 {/* Predictive Forecasting Section */}
-                {prediction && <PredictionBadge prediction={prediction} />}
+                {displayPrediction && <PredictionBadge prediction={displayPrediction} />}
                 {regimeTransition && regimeTransition.probability >= 30 && (
                     <RegimeTransitionIndicator regimeTransition={regimeTransition} />
                 )}
@@ -73,7 +78,7 @@ export default function FullAnalysisReport({ analysis, loading }) {
                         color: '#10b981'
                     }}>
                         <span style={{ fontWeight: 'bold' }}>AUDITABLE RECEIPT:</span>
-                        <span style={{ opacity: 0.8, fontFamily: 'monospace' }}>{prediction?.id || 'N/A'}</span>
+                        <span style={{ opacity: 0.8, fontFamily: 'monospace' }}>{displayPrediction?.id || 'N/A'}</span>
                         <div style={{ width: '1px', height: '14px', background: 'rgba(16, 185, 129, 0.3)' }} />
                         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <TrendingUp size={14} /> 30D Accuracy: 61% (System Wide)

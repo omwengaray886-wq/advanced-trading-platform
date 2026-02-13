@@ -7,7 +7,7 @@
 export class BasketArbitrageEngine {
     constructor() {
         this.baskets = {
-            'USD_MAJORS': ['EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDJPY', 'USDCHF', 'USDCAD'],
+            'USD_MAJORS': ['EURUSD'],
             'CRYPTO_TOP_5': ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'],
             'BIG_TECH': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META']
         };
@@ -71,7 +71,7 @@ export class BasketArbitrageEngine {
      */
     static get baskets() {
         return {
-            'USD_MAJORS': ['EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDJPY', 'USDCHF', 'USDCAD'],
+            'USD_MAJORS': ['EURUSD'],
             'CRYPTO_TOP_5': ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'],
             'BIG_TECH': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META']
         };

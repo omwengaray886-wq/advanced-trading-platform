@@ -5,7 +5,7 @@ import { ScenarioEngine } from '../../services/scenarioEngine';
 /**
  * ExplanationPanel - Displays structured AI analysis explanations
  */
-export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
+export default function ExplanationPanel({ analysis, loading, realtimeDiag, onGenerateNew }) {
     const scrollRef = React.useRef(null);
 
     // Auto-scroll to bottom when analysis changes
@@ -331,132 +331,154 @@ export default function ExplanationPanel({ analysis, loading, onGenerateNew }) {
             )}
 
             {/* Predictive Intelligence Layer [UPGRADED - Phase 51] */}
-            {analysis.prediction && (
-                <div style={{ background: 'var(--color-bg-tertiary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--color-accent-primary)', marginBottom: '16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <h3 style={{ fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Sparkles size={14} color="var(--color-accent-primary)" />
-                            Trust-Grade Intelligence v2
-                        </h3>
-                        <span style={{ fontSize: '9px', opacity: 0.6, fontFamily: 'monospace' }}>ID: {analysis.prediction.id}</span>
-                    </div>
+            {(() => {
+                const displayPrediction = (analysis.prediction?.bias === 'NO_EDGE' && realtimeDiag)
+                    ? { ...analysis.prediction, ...realtimeDiag }
+                    : (analysis.prediction || (realtimeDiag?.show ? realtimeDiag : null));
 
-                    {/* Edge Score Badge */}
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        background: 'rgba(255, 255, 255, 0.03)',
-                        padding: '10px',
-                        borderRadius: '6px',
-                        border: '1px solid rgba(255, 255, 255, 0.05)',
-                        marginBottom: '10px'
-                    }}>
+                if (!displayPrediction) return null;
+
+                return (
+                    <div style={{ background: 'var(--color-bg-tertiary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--color-accent-primary)', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <h3 style={{ fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Sparkles size={14} color="var(--color-accent-primary)" />
+                                Trust-Grade Intelligence v2
+                            </h3>
+                            <span style={{ fontSize: '9px', opacity: 0.6, fontFamily: 'monospace' }}>ID: {displayPrediction.id || 'REALTIME'}</span>
+                        </div>
+
+                        {/* Edge Score Badge */}
                         <div style={{
-                            width: '40px',
-                            height: '40px',
-                            borderRadius: '50%',
-                            border: `2px solid ${analysis.prediction.edgeScore >= 7 ? 'var(--color-success)' : 'var(--color-accent-primary)'}`,
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            fontWeight: 'bold',
-                            fontSize: '14px'
+                            gap: '12px',
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            padding: '10px',
+                            borderRadius: '6px',
+                            border: '1px solid rgba(255, 255, 255, 0.05)',
+                            marginBottom: '10px'
                         }}>
-                            {analysis.prediction.edgeScore}
-                        </div>
-                        <div>
-                            <div style={{ fontSize: '11px', fontWeight: 'bold', letterSpacing: '0.05em' }}>{analysis.prediction.edgeLabel}</div>
-                            <div style={{ fontSize: '9px', opacity: 0.6 }}>Normalized Edge Quality</div>
-                        </div>
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {/* Horizons */}
-                        {analysis.prediction.horizons && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px', marginBottom: '4px' }}>
-                                {Object.entries(analysis.prediction.horizons).map(([k, v]) => (
-                                    <div key={k} style={{ background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '4px', textAlign: 'center' }}>
-                                        <div style={{ fontSize: '7px', opacity: 0.5, textTransform: 'uppercase' }}>{k}</div>
-                                        <div style={{ fontSize: '8px', fontWeight: 'bold' }}>{v}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Continuation vs Reversal */}
-                        {analysis.probabilities && (
-                            <div style={{ position: 'relative', height: '12px', background: 'rgba(239, 68, 68, 0.2)', borderRadius: '6px', overflow: 'hidden', display: 'flex' }}>
-                                <div style={{
-                                    width: `${analysis.probabilities.continuation}%`,
-                                    height: '100%',
-                                    background: 'var(--color-success)',
-                                    transition: 'width 1s ease-out'
-                                }} />
-                                <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'space-between', padding: '0 8px', fontSize: '8px', fontWeight: 'bold', alignItems: 'center', color: 'white' }}>
-                                    <span>CONTINUE {analysis.probabilities.continuation}%</span>
-                                    <span>REVERSE {analysis.probabilities.reversal}%</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Risk Breakdown */}
-                        {analysis.prediction.confidenceBreakdown && (
-                            <div style={{ fontSize: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {analysis.prediction.confidenceBreakdown.positives.slice(0, 1).map((p, i) => (
-                                    <div key={i} style={{ color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <Shield size={10} /> {p}
-                                    </div>
-                                ))}
-                                {analysis.prediction.confidenceBreakdown.risks.slice(0, 1).map((r, i) => (
-                                    <div key={i} style={{ color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <AlertCircle size={10} /> {r}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Regime Transition */}
-                        {analysis.regimeTransition && (
-                            <div style={{ fontSize: '11px', display: 'flex', justifyContent: 'space-between' }}>
-                                <span style={{ color: 'var(--color-text-secondary)' }}>Regime Stability</span>
-                                <span style={{ fontWeight: 'bold', color: analysis.regimeTransition.probability < 30 ? 'var(--color-danger)' : 'var(--color-success)' }}>
-                                    {((100 - (analysis.regimeTransition.probability || 0)))?.toFixed(0) || '0'}% Stable
-                                </span>
-                            </div>
-                        )}
-
-                        {/* Liquidity Run */}
-                        {analysis.probabilities.liquidityRun && analysis.probabilities.liquidityRun.probability > 30 && (
-                            <div style={{ fontSize: '11px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ color: 'var(--color-text-secondary)' }}>Liquidity Draw</span>
-                                <span style={{ fontWeight: 'bold', color: '#a78bfa' }}>
-                                    {analysis.probabilities.liquidityRun.label} ({analysis.probabilities.liquidityRun.probability}%)
-                                </span>
-                            </div>
-                        )}
-
-                        {/* Trap Hazard Warning */}
-                        {analysis.trapZones && analysis.trapZones.warning && (
                             <div style={{
-                                marginTop: '4px',
-                                padding: '8px',
-                                background: 'rgba(245, 158, 11, 0.15)',
-                                borderRadius: '4px',
-                                border: '1px solid rgba(245, 158, 11, 0.3)',
-                                fontSize: '10px',
-                                color: '#f59e0b',
+                                width: '40px',
+                                height: '40px',
+                                borderRadius: '50%',
+                                border: `2px solid ${displayPrediction.edgeScore >= 7 ? 'var(--color-success)' : 'var(--color-accent-primary)'}`,
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '6px'
+                                justifyContent: 'center',
+                                fontWeight: 'bold',
+                                fontSize: '14px'
                             }}>
-                                <AlertCircle size={12} />
-                                <span><b>TRAP HAZARD:</b> {analysis.trapZones.warning}</span>
+                                {displayPrediction.edgeScore || (displayPrediction.bias === 'NO_EDGE' ? 0 : 5)}
                             </div>
-                        )}
+                            <div>
+                                <div style={{ fontSize: '11px', fontWeight: 'bold', letterSpacing: '0.05em' }}>{displayPrediction.edgeLabel || (displayPrediction.bias === 'NO_EDGE' ? 'NO EDGE' : 'ALGO SCAN')}</div>
+                                <div style={{ fontSize: '9px', opacity: 0.6 }}>Normalized Edge Quality</div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {/* Reason for NO_EDGE */}
+                            {displayPrediction.bias === 'NO_EDGE' && (
+                                <div style={{
+                                    padding: '8px',
+                                    background: 'rgba(239, 68, 68, 0.1)',
+                                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    color: '#ef4444'
+                                }}>
+                                    <strong>DIAGNOSTIC:</strong> {displayPrediction.reason}
+                                </div>
+                            )}
+
+                            {/* Horizons */}
+                            {displayPrediction.horizons && (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px', marginBottom: '4px' }}>
+                                    {Object.entries(analysis.prediction.horizons).map(([k, v]) => (
+                                        <div key={k} style={{ background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '4px', textAlign: 'center' }}>
+                                            <div style={{ fontSize: '7px', opacity: 0.5, textTransform: 'uppercase' }}>{k}</div>
+                                            <div style={{ fontSize: '8px', fontWeight: 'bold' }}>{v}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Continuation vs Reversal */}
+                            {analysis.probabilities && (
+                                <div style={{ position: 'relative', height: '12px', background: 'rgba(239, 68, 68, 0.2)', borderRadius: '6px', overflow: 'hidden', display: 'flex' }}>
+                                    <div style={{
+                                        width: `${analysis.probabilities.continuation}%`,
+                                        height: '100%',
+                                        background: 'var(--color-success)',
+                                        transition: 'width 1s ease-out'
+                                    }} />
+                                    <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'space-between', padding: '0 8px', fontSize: '8px', fontWeight: 'bold', alignItems: 'center', color: 'white' }}>
+                                        <span>CONTINUE {analysis.probabilities.continuation}%</span>
+                                        <span>REVERSE {analysis.probabilities.reversal}%</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Risk Breakdown */}
+                            {analysis.prediction.confidenceBreakdown && (
+                                <div style={{ fontSize: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    {analysis.prediction.confidenceBreakdown.positives.slice(0, 1).map((p, i) => (
+                                        <div key={i} style={{ color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <Shield size={10} /> {p}
+                                        </div>
+                                    ))}
+                                    {analysis.prediction.confidenceBreakdown.risks.slice(0, 1).map((r, i) => (
+                                        <div key={i} style={{ color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <AlertCircle size={10} /> {r}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Regime Transition */}
+                            {analysis.regimeTransition && (
+                                <div style={{ fontSize: '11px', display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--color-text-secondary)' }}>Regime Stability</span>
+                                    <span style={{ fontWeight: 'bold', color: analysis.regimeTransition.probability < 30 ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                                        {((100 - (analysis.regimeTransition.probability || 0)))?.toFixed(0) || '0'}% Stable
+                                    </span>
+                                </div>
+                            )}
+
+                            {/* Liquidity Run */}
+                            {analysis.probabilities.liquidityRun && analysis.probabilities.liquidityRun.probability > 30 && (
+                                <div style={{ fontSize: '11px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ color: 'var(--color-text-secondary)' }}>Liquidity Draw</span>
+                                    <span style={{ fontWeight: 'bold', color: '#a78bfa' }}>
+                                        {analysis.probabilities.liquidityRun.label} ({analysis.probabilities.liquidityRun.probability}%)
+                                    </span>
+                                </div>
+                            )}
+
+                            {/* Trap Hazard Warning */}
+                            {analysis.trapZones && analysis.trapZones.warning && (
+                                <div style={{
+                                    marginTop: '4px',
+                                    padding: '8px',
+                                    background: 'rgba(245, 158, 11, 0.15)',
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                                    fontSize: '10px',
+                                    color: '#f59e0b',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}>
+                                    <AlertCircle size={12} />
+                                    <span><b>TRAP HAZARD:</b> {analysis.trapZones.warning}</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             {/* Fundamental Analysis */}
             {fundamentals && fundamentals.events && fundamentals.events.length > 0 && (

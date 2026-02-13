@@ -35,7 +35,12 @@ const Alerts = lazy(() => import('./pages/Alerts'));
 
 // Protected Route wrapper - Bypassed for open access (Phase 70)
 const ProtectedRoute = () => {
-  // Always return the app layout without checking for currentUser
+  const { currentUser } = useAuth();
+
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+
   return <Outlet />;
 };
 
@@ -52,8 +57,8 @@ function App() {
                   {/* Public Routes */}
                   <Route path="/" element={<Home />} />
                   <Route path="/pricing" element={<Pricing />} />
-                  <Route path="/login" element={<Navigate to="/app" replace />} />
-                  <Route path="/signup" element={<Navigate to="/app" replace />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/signup" element={<Navigate to="/login" replace />} />
                   <Route path="/terms" element={<Terms />} />
                   <Route path="/privacy" element={<Privacy />} />
                   <Route path="/risk-disclosure" element={<RiskDisclosure />} />

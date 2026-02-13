@@ -106,6 +106,31 @@ export class TapeReadingEngine {
     }
 
     /**
+     * Monitor Tape for Whale Activity (Large Prints)
+     * @param {Array} candles - Recent candles to establish baseline volume
+     * @param {Object} currentTick - Simulated current tick { price, volume }
+     */
+    static monitorTape(candles, currentTick) {
+        if (!candles || candles.length < 20 || !currentTick) return null;
+
+        // Calculate baseline "Whale Threshold" (e.g., 5x average tick volume)
+        // Since we don't have ticks, we estimate avg tick size as (Candle Vol / 100)
+        const avgTickVol = (candles.reduce((sum, c) => sum + c.volume, 0) / candles.length) / 50;
+        const whaleThreshold = avgTickVol * 10; // 10x normal size
+
+        if (currentTick.volume > whaleThreshold) {
+            return {
+                isWhale: true,
+                size: (currentTick.volume / avgTickVol).toFixed(1) + 'x',
+                side: 'UNKNOWN', // Ticks need side inference, usually from price change
+                price: currentTick.price,
+                message: `WHALE PRINT DETECTED: ${currentTick.volume.toFixed(2)} contracts`
+            };
+        }
+        return null;
+    }
+
+    /**
      * Calculate Value/Volume Efficiency
      * Low efficiency = Fighting/Churning (Tape is thick)
      * High efficiency = Slippage/Fast Move (Tape is thin)

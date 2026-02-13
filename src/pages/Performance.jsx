@@ -10,6 +10,7 @@ import Footer from '../components/layout/Footer';
 import { User, LayoutDashboard, PenLine } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import StrategyJournalModal from '../components/features/StrategyJournalModal';
+import { journalService } from '../services/journalService';
 
 export default function Performance() {
     const [backtest, setBacktest] = React.useState(null);
@@ -19,12 +20,29 @@ export default function Performance() {
     const [selectedPair, setSelectedPair] = React.useState('BTCUSDT');
     const [viewMode, setViewMode] = React.useState('SYSTEM'); // 'SYSTEM' | 'USER'
     const [journalingTrade, setJournalingTrade] = React.useState(null);
+    const [journalEntries, setJournalEntries] = React.useState({});
     const { addToast } = useToast();
 
-    const handleSaveJournal = (journalData) => {
-        // In a real app, this would be saved to Firestore
-        console.log('Saving journal:', journalData);
-        addToast(`Journal for ${journalData.tradeId} archived successfully.`, 'success');
+    // Load Journal Entries
+    React.useEffect(() => {
+        const loadJournal = async () => {
+            const entries = await journalService.getAllEntries();
+            const map = {};
+            entries.forEach(e => { map[e.tradeId] = e; });
+            setJournalEntries(map);
+        };
+        loadJournal();
+    }, []);
+
+    const handleSaveJournal = async (journalData) => {
+        try {
+            await journalService.saveEntry(journalData);
+            addToast(`Journal for ${journalData.tradeId} archived successfully.`, 'success');
+            // Update local state
+            setJournalEntries(prev => ({ ...prev, [journalData.tradeId]: journalData }));
+        } catch (error) {
+            addToast('Failed to save journal entry.', 'error');
+        }
     };
 
     // Load System Backtest
@@ -45,13 +63,14 @@ export default function Performance() {
         const loadUser = async () => {
             if (viewMode === 'USER') {
                 setLoading(true);
-                const stats = await userPerformanceService.getUserMetrics();
+                // In USER mode, we want LIVE execution data
+                const stats = await userPerformanceService.getUserMetrics(selectedPair, 'LIVE');
                 setUserStats(stats);
                 setLoading(false);
             }
         };
         loadUser();
-    }, [viewMode]);
+    }, [viewMode, selectedPair]);
 
     const stats = viewMode === 'SYSTEM' ? (backtest?.stats || {
         totalTrades: 0, winRate: 0, profitFactor: 0, sharpe: 0, maxDrawdown: 0, totalReturn: 0
@@ -121,7 +140,7 @@ export default function Performance() {
                     </div>
 
                     <div className="flex-row justify-center gap-sm" style={{ marginBottom: '32px' }}>
-                        {['BTCUSDT', 'ETHUSDT', 'EURUSDT', 'GBPUSDT'].map(p => (
+                        {['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'EURUSDT', 'GBPUSDT', 'GBPJPY', 'PAXGUSDT'].map(p => (
                             <button
                                 key={p}
                                 onClick={() => setSelectedPair(p)}
@@ -333,9 +352,14 @@ export default function Performance() {
                                                     <button
                                                         onClick={() => setJournalingTrade(p)}
                                                         className="btn btn-ghost"
-                                                        style={{ padding: '4px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}
+                                                        style={{
+                                                            padding: '4px',
+                                                            borderRadius: '4px',
+                                                            border: journalEntries && journalEntries[p.id] ? '1px solid var(--color-accent-primary)' : '1px solid rgba(255,255,255,0.1)',
+                                                            background: journalEntries && journalEntries[p.id] ? 'rgba(99, 102, 241, 0.1)' : 'transparent'
+                                                        }}
                                                     >
-                                                        <PenLine size={14} color="var(--color-accent-primary)" />
+                                                        <PenLine size={14} color={journalEntries && journalEntries[p.id] ? 'var(--color-accent-primary)' : 'rgba(255,255,255,0.5)'} />
                                                     </button>
                                                 </td>
                                                 <td style={{ padding: '12px', textAlign: 'right', fontSize: '11px', opacity: 0.6 }}>{p.time || new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) + ' UTC'}</td>

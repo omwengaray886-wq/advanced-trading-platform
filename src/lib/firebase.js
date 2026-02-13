@@ -1,7 +1,12 @@
 // src/lib/firebase.js
 import { initializeApp as initializeClientApp } from "firebase/app";
 import { getAuth as getClientAuth } from "firebase/auth";
-import { getFirestore as getClientFirestore } from "firebase/firestore";
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  getFirestore as getClientFirestore
+} from "firebase/firestore";
 
 const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
 
@@ -44,7 +49,19 @@ if (isNode) {
   try {
     app = initializeClientApp(firebaseConfig);
     auth = getClientAuth(app);
-    db = getClientFirestore(app, DATABASE_ID !== '(default)' ? DATABASE_ID : undefined);
+
+    // Robust Firestore Init with Fallback
+    try {
+      db = initializeFirestore(app, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager()
+        }),
+        databaseId: DATABASE_ID !== '(default)' ? DATABASE_ID : undefined
+      });
+    } catch (persistenceError) {
+      console.warn("Firestore Persistence failed, falling back to memory cache:", persistenceError);
+      db = getClientFirestore(app, DATABASE_ID !== '(default)' ? DATABASE_ID : undefined);
+    }
   } catch (error) {
     console.warn("Firebase initialization failed (likely missing env vars). Using mock services.");
     app = {};

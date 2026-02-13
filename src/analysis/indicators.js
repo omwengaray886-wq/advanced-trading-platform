@@ -63,6 +63,46 @@ export function calculateRSI(candles, period = 14) {
 }
 
 /**
+ * Calculate Average True Range (ATR)
+ * Measures market volatility
+ */
+export function calculateATR(candles, period = 14) {
+    if (candles.length <= period) return [];
+
+    const atr = [];
+    const tr = [];
+
+    // First TR
+    tr[0] = candles[0].high - candles[0].low;
+
+    for (let i = 1; i < candles.length; i++) {
+        const high = candles[i].high;
+        const low = candles[i].low;
+        const prevClose = candles[i - 1].close;
+
+        const hl = high - low;
+        const hpc = Math.abs(high - prevClose);
+        const lpc = Math.abs(low - prevClose);
+
+        tr[i] = Math.max(hl, hpc, lpc);
+    }
+
+    // Initial ATR (SMA of TR)
+    let sumTR = 0;
+    for (let i = 0; i < period; i++) {
+        sumTR += tr[i];
+    }
+    atr[period - 1] = sumTR / period;
+
+    // Subsequent ATR (Wilder's Smoothing)
+    for (let i = period; i < candles.length; i++) {
+        atr[i] = (atr[i - 1] * (period - 1) + tr[i]) / period;
+    }
+
+    return atr;
+}
+
+/**
  * Calculate MACD (Moving Average Convergence Divergence)
  */
 export function calculateMACD(candles, fast = 12, slow = 26, signal = 9) {

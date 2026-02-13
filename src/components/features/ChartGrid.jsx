@@ -11,10 +11,10 @@ const orchestrator = new AnalysisOrchestrator();
 export default function ChartGrid({ initialPair = 'BTCUSDT' }) {
     const [gridSize, setGridSize] = useState(1); // 1, 2, or 4
     const [charts, setCharts] = useState([
-        { id: 0, pair: initialPair, timeframe: '1H', data: [], analysis: null },
-        { id: 1, pair: 'ETHUSDT', timeframe: '1H', data: [], analysis: null },
-        { id: 2, pair: 'EURUSDT', timeframe: '1H', data: [], analysis: null },
-        { id: 3, pair: 'GBPUSDT', timeframe: '1H', data: [], analysis: null }
+        { id: 1, pair: 'BTCUSDT', timeframe: '1H', data: [], analysis: null },
+        { id: 2, pair: 'ETHUSDT', timeframe: '4H', data: [], analysis: null },
+        { id: 3, pair: 'EURUSDT', timeframe: '1H', data: [], analysis: null },
+        { id: 4, pair: 'SOLUSDT', timeframe: '1D', data: [], analysis: null }
     ]);
 
     const [syncCrosshair, setSyncCrosshair] = useState(null);
@@ -111,9 +111,13 @@ export default function ChartGrid({ initialPair = 'BTCUSDT' }) {
                             >
                                 <option value="BTCUSDT">BTC</option>
                                 <option value="ETHUSDT">ETH</option>
+                                <option value="SOLUSDT">SOL</option>
+                                <option value="BNBUSDT">BNB</option>
+                                <option value="DOGEUSDT">DOGE</option>
+                                <option value="MATICUSDT">MATIC</option>
                                 <option value="EURUSDT">EUR</option>
-                                <option value="GBPUSDT">GBP</option>
-                                <option value="XAUUSDT">GOLD</option>
+                                <option value="PAXGUSDT">GOLD</option>
+                                <option value="GBPJPY">GBP/JPY</option>
                             </select>
                         </div>
 

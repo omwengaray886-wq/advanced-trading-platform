@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
 import Chart from '../components/ui/Chart';
 import FullAnalysisReport from '../components/features/FullAnalysisReport';
-import { marketData } from '../services/marketData.js';
-import { TrendingUp, AlertTriangle, ShieldCheck, Activity, BarChart3, HelpCircle, LayoutGrid, Square, Sparkles, Layout, Target, BookOpen, PanelRightOpen, PanelLeftOpen } from 'lucide-react';
+import { marketData, getSymbolMetadata } from '../services/marketData.js';
+import { TrendingUp, AlertTriangle, ShieldCheck, Activity, BarChart3, HelpCircle, LayoutGrid, Square, Sparkles, Layout, Target, BookOpen, PanelRightOpen, PanelLeftOpen, Search, History } from 'lucide-react';
 import { generateTradeAnalysis } from '../services/ai.js';
 import { saveTradeSetups, getMarketAnalysis, subscribeToGlobalSignals } from '../services/db.js';
 import { useToast } from '../context/ToastContext';
@@ -14,9 +14,11 @@ import Footer from '../components/layout/Footer';
 import PortfolioRiskDashboard from '../components/features/PortfolioRiskDashboard';
 import SMTCorrelationHeatmap from '../components/features/SMTCorrelationHeatmap';
 import TradeExecution from '../components/features/TradeExecution';
+import PortfolioWidget from '../components/features/PortfolioWidget';
 import DOMWidget from '../components/features/DOMWidget';
 import BacktestPanel from '../components/features/BacktestPanel';
 import { AnnotationMapper } from '../services/annotationMapper.js';
+import { realtimeDiagnosticService } from '../services/RealtimeDiagnosticService.js';
 import FullscreenControls from '../components/features/FullscreenControls';
 import FullscreenDOMPanel from '../components/features/FullscreenDOMPanel';
 import NewsContextPanel from '../components/features/NewsContextPanel';
@@ -32,7 +34,7 @@ import GlobalSignalsPanel from '../components/features/GlobalSignalsPanel';
 export default function Markets() {
     const assetRegistry = {
         'Crypto': ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'ADA/USDT', 'DOT/USDT', 'MATIC/USDT', 'AVAX/USDT', 'LINK/USDT', 'OP/USDT', 'ARB/USDT'],
-        'Forex': ['EUR/USD', 'GBP/USD', 'AUD/USD', 'NZD/USD', 'USD/TRY', 'USD/ZAR', 'USD/MXN', 'USD/BRL', 'USD/RUB'],
+        'Forex': ['EUR/USD', 'GBP/USD', 'GBP/JPY', 'AUD/USD', 'NZD/USD', 'USD/TRY', 'USD/ZAR', 'USD/MXN', 'USD/BRL', 'USD/RUB'],
         'Metals': ['XAU/USD']
     };
 
@@ -116,9 +118,12 @@ export default function Markets() {
         return strips;
     };
 
-    const [selectedPair, setSelectedPair] = useState('BTCUSDT');
+    const [selectedPair, setSelectedPair] = useState('BTC/USDT');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [recentPairs, setRecentPairs] = useState(['BTC/USDT', 'ETH/USDT', 'XAU/USD', 'GBP/JPY']);
+    const [isSearching, setIsSearching] = useState(false);
     const [activeCategory, setActiveCategory] = useState('Crypto');
-    const [timeframe, setTimeframe] = useState('1H');
+    const [timeframe, setTimeframe] = useState('15m');
     const [viewMode, setViewMode] = useState('SINGLE'); // SINGLE or GRID
     const [showReport, setShowReport] = useState(true);
     const { addToast } = useToast();
@@ -129,6 +134,18 @@ export default function Markets() {
     const [isCleanView, setIsCleanView] = useState(false);
     const [globalSignals, setGlobalSignals] = useState([]);
 
+
+    const [realtimeDiag, setRealtimeDiag] = useState(null);
+
+    // Initialize Real-time Diagnostics (Phase 75)
+    useEffect(() => {
+        const symbol = resolveSymbol(selectedPair);
+        realtimeDiagnosticService.init(symbol);
+        const unsubscribe = realtimeDiagnosticService.subscribe(diag => {
+            setRealtimeDiag(diag);
+        });
+        return unsubscribe;
+    }, [selectedPair]);
 
     const handleScreenshot = () => {
         setIsCleanView(true);
@@ -142,6 +159,8 @@ export default function Markets() {
     const [showLeftPanel, setShowLeftPanel] = useState(true);
     const [showRightPanel, setShowRightPanel] = useState(true);
     const [isMonitoring, setIsMonitoring] = useState(proactiveMonitor.isRunning);
+    const [tickers, setTickers] = useState([]); // Live 24h ticker data for search
+
 
     // Monitoring listener for cross-asset alerts (Phase 4)
     useEffect(() => {
@@ -163,6 +182,75 @@ export default function Markets() {
         });
         return unsubscribe;
     }, [selectedPair, addToast]);
+
+    // Live Ticker Polling (only when searching)
+    useEffect(() => {
+        if (!isSearching) return;
+
+        const fetchTickers = async () => {
+            try {
+                const res = await fetch('/api/binance/ticker/24hr');
+                const data = await res.json();
+                // Filter and normalize if needed, but Binance returns a massive array
+                setTickers(Array.isArray(data) ? data : []);
+            } catch (e) {
+                console.warn('Ticker fetch failed:', e);
+            }
+        };
+
+        fetchTickers();
+        const interval = setInterval(fetchTickers, 30000); // 30s refresh while searching
+        return () => clearInterval(interval);
+    }, [isSearching]);
+
+    // Derived Search Results
+    const searchResults = React.useMemo(() => {
+        if (!searchQuery || searchQuery.length < 1) return [];
+
+        const normalizedQuery = searchQuery.toUpperCase().replace('/', '');
+
+        // Filter from all Binance tickers
+        const results = tickers
+            .filter(t => t.symbol.includes(normalizedQuery))
+            .slice(0, 8)
+            .map(t => ({
+                symbol: t.symbol,
+                display: t.symbol.includes('USDT') ? `${t.symbol.replace('USDT', '')}/USDT` : t.symbol,
+                price: parseFloat(t.lastPrice),
+                change: parseFloat(t.priceChangePercent)
+            }));
+
+        // Inject proxies if they match query
+        const proxies = ['XAU/USD', 'GBP/JPY', 'EUR/USD', 'DXY', 'SPX', 'NDX'];
+        proxies.forEach(p => {
+            const cleanP = p.replace('/', '').toUpperCase();
+            if (cleanP.includes(normalizedQuery) && !results.find(r => r.symbol === cleanP)) {
+                results.push({
+                    symbol: cleanP,
+                    display: p,
+                    price: 0,
+                    change: 0,
+                    isProxy: true
+                });
+            }
+        });
+
+        return results.slice(0, 10);
+    }, [searchQuery, tickers]);
+
+    // Derived Top Movers
+    const topMovers = React.useMemo(() => {
+        return [...tickers]
+            .filter(t => t.symbol.endsWith('USDT'))
+            .sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
+            .slice(0, 5)
+            .map(t => ({
+                symbol: t.symbol,
+                display: t.symbol.includes('USDT') ? `${t.symbol.replace('USDT', '')}/USDT` : t.symbol,
+                price: parseFloat(t.lastPrice),
+                change: parseFloat(t.priceChangePercent)
+            }));
+    }, [tickers]);
 
     // Global Signals Subscription
     useEffect(() => {
@@ -679,7 +767,33 @@ export default function Markets() {
                             <Activity size={20} color="white" />
                         </div>
                         <div>
-                            <div style={{ fontSize: '16px', fontWeight: '800', letterSpacing: '-0.5px' }}>{selectedPair}</div>
+                            <div style={{ fontSize: '16px', fontWeight: '800', letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {selectedPair}
+                                {(() => {
+                                    const meta = getSymbolMetadata(selectedPair);
+                                    return (
+                                        <div
+                                            title={meta.note}
+                                            style={{
+                                                fontSize: '10px',
+                                                padding: '2px 6px',
+                                                borderRadius: '4px',
+                                                background: meta.isProxy ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                                                color: meta.isProxy ? '#f59e0b' : '#10b981',
+                                                border: `1px solid ${meta.isProxy ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)'}`,
+                                                fontWeight: 'bold',
+                                                whiteSpace: 'nowrap',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                        >
+                                            {meta.isProxy ? <AlertTriangle size={10} /> : <ShieldCheck size={10} />}
+                                            {meta.source}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
                             <div style={{
                                 fontSize: '10px',
                                 color: health.isConnected ? '#10b981' : '#ef4444',
@@ -820,16 +934,69 @@ export default function Markets() {
 
                 {/* 🧭 LEFT COLUMN: SLIM ASSET NAVIGATOR */}
                 <nav style={{
-                    width: '70px',
+                    width: '80px',
                     background: 'rgba(15, 23, 42, 0.4)',
                     borderRight: '1px solid rgba(255, 255, 255, 0.05)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    padding: '20px 0',
-                    gap: '20px',
-                    overflowY: 'auto'
+                    padding: '10px 0',
+                    gap: '12px',
+                    overflowY: 'auto',
+                    scrollbarWidth: 'none'
                 }}>
+                    {/* 🔍 SEARCH TRIGGER */}
+                    <button
+                        onClick={() => setIsSearching(!isSearching)}
+                        style={{
+                            width: '44px',
+                            height: '44px',
+                            borderRadius: '12px',
+                            background: isSearching ? 'rgba(37, 99, 235, 0.3)' : 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            color: isSearching ? 'white' : 'rgba(255,255,255,0.5)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            marginBottom: '10px',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        <Search size={20} />
+                    </button>
+
+                    {/* RECENT / SEARCHED PAIRS */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
+                        <div style={{ fontSize: '8px', fontWeight: 'bold', color: 'rgba(255,255,255,0.3)' }}>REC</div>
+                        {recentPairs.slice(0, 5).map(pair => (
+                            <button
+                                key={pair}
+                                onClick={() => setSelectedPair(pair)}
+                                title={pair}
+                                style={{
+                                    width: '40px',
+                                    height: '40px',
+                                    borderRadius: '10px',
+                                    border: '1px solid',
+                                    borderColor: selectedPair === pair ? 'var(--color-accent-primary)' : 'rgba(255,255,255,0.1)',
+                                    background: selectedPair === pair ? 'rgba(37, 99, 235, 0.1)' : 'rgba(255,255,255,0.03)',
+                                    color: selectedPair === pair ? 'white' : 'rgba(255,255,255,0.6)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    fontSize: '9px',
+                                    fontWeight: 'bold'
+                                }}
+                            >
+                                {pair.split('/')[0].substring(0, 3)}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div style={{ width: '30px', height: '1px', background: 'rgba(255,255,255,0.1)', margin: '5px 0' }} />
+
                     {Object.keys(assetRegistry).map(cat => (
                         <div key={cat} style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
                             <div style={{
@@ -1076,7 +1243,7 @@ export default function Markets() {
                     {/* Full Analysis Report Section */}
                     {showReport && (
                         <div style={{ padding: '0 20px 20px 20px' }}>
-                            <FullAnalysisReport analysis={analysis} loading={loading} />
+                            <FullAnalysisReport analysis={analysis} loading={loading} realtimeDiag={realtimeDiag} />
                         </div>
                     )}
                 </main>
@@ -1115,6 +1282,7 @@ export default function Markets() {
                             <ExplanationPanel
                                 analysis={analysis}
                                 loading={loading}
+                                realtimeDiag={realtimeDiag}
                                 onGenerateNew={() => handleGenerateAnalysis(true)}
                             />
 
@@ -1751,61 +1919,15 @@ export default function Markets() {
                                             currentPrice={chartData[chartData.length - 1]?.close || 50000}
                                         />
 
-                                        {/* Quick Trade Panel */}
-                                        <div style={{
-                                            background: 'rgba(0,0,0,0.4)',
-                                            borderRadius: '12px',
-                                            border: '1px solid rgba(255,255,255,0.1)',
-                                            padding: '16px'
-                                        }}>
-                                            <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'rgba(255,255,255,0.7)', marginBottom: '12px' }}>
-                                                QUICK TRADE
-                                            </div>
-                                            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                                                <button style={{
-                                                    flex: 1,
-                                                    padding: '12px',
-                                                    borderRadius: '8px',
-                                                    border: '1px solid rgba(16, 185, 129, 0.3)',
-                                                    background: 'rgba(16, 185, 129, 0.1)',
-                                                    color: '#10b981',
-                                                    cursor: 'pointer',
-                                                    fontWeight: 'bold',
-                                                    fontSize: '12px'
-                                                }}>
-                                                    BUY
-                                                </button>
-                                                <button style={{
-                                                    flex: 1,
-                                                    padding: '12px',
-                                                    borderRadius: '8px',
-                                                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                                                    background: 'rgba(239, 68, 68, 0.1)',
-                                                    color: '#ef4444',
-                                                    cursor: 'pointer',
-                                                    fontWeight: 'bold',
-                                                    fontSize: '12px'
-                                                }}>
-                                                    SELL
-                                                </button>
-                                            </div>
-                                            <input
-                                                type="text"
-                                                placeholder="Amount (USDT)"
-                                                style={{
-                                                    width: '100%',
-                                                    padding: '10px',
-                                                    borderRadius: '6px',
-                                                    border: '1px solid rgba(255,255,255,0.1)',
-                                                    background: 'rgba(255,255,255,0.05)',
-                                                    color: 'white',
-                                                    fontSize: '12px',
-                                                    marginBottom: '8px'
-                                                }}
-                                            />
-                                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)' }}>
-                                                Available: $10,000 USDT
-                                            </div>
+                                        <TradeExecution
+                                            symbol={selectedPair}
+                                            currentPrice={chartData[chartData.length - 1]?.close || 0}
+                                            analysis={analysis}
+                                            candles={chartData}
+                                        />
+
+                                        <div style={{ flex: 1, minHeight: '300px' }}>
+                                            <PortfolioWidget symbol={selectedPair} />
                                         </div>
                                     </motion.div>
                                 )}
@@ -1814,6 +1936,199 @@ export default function Markets() {
                     </motion.div>
                 )}
             </AnimatePresence >
-        </div >
+            {/* 🔍 SEARCH OVERLAY */}
+            <AnimatePresence>
+                {isSearching && (
+                    <motion.div
+                        initial={{ opacity: 0, backdropFilter: 'blur(0px)' }}
+                        animate={{ opacity: 1, backdropFilter: 'blur(20px)' }}
+                        exit={{ opacity: 0, backdropFilter: 'blur(0px)' }}
+                        style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            background: 'rgba(0,0,0,0.8)',
+                            zIndex: 1000,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            style={{
+                                width: '450px',
+                                background: 'rgba(30, 41, 59, 0.95)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                borderRadius: '24px',
+                                padding: '32px',
+                                boxShadow: '0 50px 100px rgba(0,0,0,0.8)'
+                            }}
+                        >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                                <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '800' }}>Search Assets</h3>
+                                <button
+                                    onClick={() => setIsSearching(false)}
+                                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            <div style={{ position: 'relative', marginBottom: '24px' }}>
+                                <Search style={{ position: 'absolute', left: '16px', top: '16px', color: 'rgba(255,255,255,0.3)' }} size={20} />
+                                <input
+                                    autoFocus
+                                    placeholder="Ticker (e.g. PEPE, SOL, SPX)"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            const bestResult = searchResults[0]?.display || searchQuery;
+                                            setSelectedPair(bestResult);
+                                            setRecentPairs(prev => [bestResult, ...prev.filter(p => p !== bestResult)].slice(0, 10));
+                                            setIsSearching(false);
+                                            setSearchQuery('');
+                                        }
+                                    }}
+                                    style={{
+                                        width: '100%',
+                                        height: '52px',
+                                        background: 'rgba(0,0,0,0.3)',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: '12px',
+                                        padding: '0 16px 0 48px',
+                                        color: 'white',
+                                        fontSize: '16px',
+                                        fontWeight: 'bold',
+                                        outline: 'none'
+                                    }}
+                                />
+                            </div>
+
+                            {/* 🎯 LIVE SEARCH RESULTS */}
+                            {searchResults.length > 0 && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '24px' }}>
+                                    {searchResults.map(res => (
+                                        <button
+                                            key={res.symbol}
+                                            onClick={() => {
+                                                setSelectedPair(res.display);
+                                                setRecentPairs(prev => [res.display, ...prev.filter(p => p !== res.display)].slice(0, 10));
+                                                setIsSearching(false);
+                                                setSearchQuery('');
+                                            }}
+                                            style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '12px 16px',
+                                                background: 'rgba(255,255,255,0.05)',
+                                                border: '1px solid rgba(255,255,255,0.1)',
+                                                borderRadius: '12px',
+                                                cursor: 'pointer',
+                                                width: '100%',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                                        >
+                                            <div style={{ textAlign: 'left' }}>
+                                                <div style={{ fontWeight: '800', fontSize: '14px', color: 'white' }}>{res.display}</div>
+                                                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', fontWeight: 'bold' }}>LIVE SPOT</div>
+                                            </div>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontWeight: 'bold', color: 'white' }}>
+                                                    ${res.price.toLocaleString(undefined, { minimumFractionDigits: res.price < 1 ? 6 : 2 })}
+                                                </div>
+                                                <div style={{ fontWeight: 'bold', fontSize: '12px', color: res.change >= 0 ? '#10b981' : '#ef4444' }}>
+                                                    {res.change >= 0 ? '+' : ''}{res.change.toFixed(2)}%
+                                                </div>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.3)', marginBottom: '16px' }}>
+                                <History size={14} />
+                                <span style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>{searchQuery ? 'Top Results' : 'Recent Searches'}</span>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                {recentPairs.slice(0, 6).map(pair => (
+                                    <button
+                                        key={pair}
+                                        onClick={() => {
+                                            setSelectedPair(pair);
+                                            setIsSearching(false);
+                                        }}
+                                        style={{
+                                            padding: '12px',
+                                            borderRadius: '12px',
+                                            background: 'rgba(255,255,255,0.03)',
+                                            border: '1px solid rgba(255,255,255,0.05)',
+                                            color: 'white',
+                                            textAlign: 'left',
+                                            fontSize: '13px',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s'
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                                    >
+                                        {pair}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Top Movers Section */}
+                            <div style={{ marginTop: '20px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.3)', marginBottom: '16px' }}>
+                                    <TrendingUp size={14} />
+                                    <span style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>Top Movers (24h)</span>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                    {topMovers.map(mover => (
+                                        <button
+                                            key={mover.symbol}
+                                            onClick={() => {
+                                                setSelectedPair(mover.display);
+                                                setIsSearching(false);
+                                            }}
+                                            style={{
+                                                padding: '12px',
+                                                borderRadius: '12px',
+                                                background: 'rgba(16, 185, 129, 0.05)',
+                                                border: '1px solid rgba(16, 185, 129, 0.1)',
+                                                color: 'white',
+                                                textAlign: 'left',
+                                                fontSize: '13px',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.1)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.05)'}
+                                        >
+                                            <span>{mover.display.split('/')[0]}</span>
+                                            <span style={{ color: '#10b981', fontSize: '11px' }}>+{mover.change.toFixed(2)}%</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
     );
 }

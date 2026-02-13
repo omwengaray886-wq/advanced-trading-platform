@@ -43,6 +43,10 @@ export class PredictionCompressor {
         const id = this._generatePredictionId(analysis.symbol, analysis.timeframe);
         const expiresAt = this._calculateExpiry(analysis.timeframe);
 
+        // 9. Diagnostic Requirements (Phase 75)
+        // We get the show status again for final reporting
+        const diagnostics = this.shouldShowPrediction(marketState, probabilities);
+
         return {
             id,
             bias, // 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'NO_EDGE' | 'WAIT'
@@ -52,6 +56,10 @@ export class PredictionCompressor {
             edgeScore: edge.score,
             edgeLabel: EdgeScoringEngine.getScoreLabel(edge.score),
             reason,
+            diagnostics: {
+                code: diagnostics.code,
+                requirements: this._getRequirements(marketState, diagnostics)
+            },
             horizons,
             timestamp: Date.now(),
             expiresAt,
@@ -613,12 +621,17 @@ export class PredictionCompressor {
      * Check if prediction should be suppressed (guardrails)
      * @param {Object} marketState - Current market state
      * @param {Object} probabilities - Probability calculations
-     * @returns {boolean} True if prediction should be shown
+     * @returns {Object} Diagnostic report { show: boolean, code: string, reason: string, requirements: Array }
      */
     static shouldShowPrediction(marketState, probabilities) {
         // 1. Suppress if high-impact news pending
         if (marketState.activeShock?.severity === 'HIGH') {
-            return false;
+            return {
+                show: false,
+                code: 'NEWS_IMMINENT',
+                reason: 'High-impact news volatility makes technical analysis unreliable.',
+                requirements: ['Wait for news release', 'Await volatility stabilization']
+            };
         }
 
         // 2. Suppress if HTF/LTF conflict
@@ -626,19 +639,25 @@ export class PredictionCompressor {
         const ltfBias = marketState.trend?.direction || 'NEUTRAL';
 
         if (htfBias !== 'NEUTRAL' && ltfBias !== 'NEUTRAL' && htfBias !== ltfBias) {
-            // STRICT PRECISION: In Phase 73, we kill all conflicting signals regardless of reversal prob
-            // unless there is a massive Market Obligation (handled in Step 3 below).
-            return false;
+            return {
+                show: false,
+                code: 'HTF_CONFLICT',
+                reason: `HTF Bias (${htfBias}) conflicts with LTF Trend (${ltfBias}).`,
+                requirements: [`Wait for ${htfBias} structural break on LTF`, 'Await MTF alignment']
+            };
         }
 
         // 3a. Suppress if in Trap Zone (Phase 52)
         if (marketState.trapZones && marketState.trapZones.warning) {
-            // console.log(`[ACCURACY] Suppressing prediction due to Trap Zone: ${marketState.trapZones.warning}`);
-            return false;
+            return {
+                show: false,
+                code: 'TRAP_ZONE',
+                reason: `Risk of ${marketState.trapZones.warning} is high in this area.`,
+                requirements: ['Price clearance of trap zone', 'Institutional sweep confirmation']
+            };
         }
 
         // 3. Strategic Conflict Check: Market Magnet (Phase 59)
-        // If there is a massive magnet (Urgency > 85) in the opposite direction, DO NOT PREDICT.
         const primaryOb = marketState.obligations?.primaryObligation;
         if (primaryOb && primaryOb.urgency > 85) {
             const magnetDir = primaryOb.price > marketState.currentPrice ? 'BULLISH' : 'BEARISH';
@@ -646,8 +665,12 @@ export class PredictionCompressor {
             const predDir = continuation > reversal ? ltfBias : (ltfBias === 'BULLISH' ? 'BEARISH' : 'BULLISH');
 
             if (magnetDir !== predDir) {
-                // console.log(`[ACCURACY] Suppressing prediction due to Magnet Conflict: Magnet ${magnetDir} vs Pred ${predDir}`);
-                return false;
+                return {
+                    show: false,
+                    code: 'MAGNET_CONFLICT',
+                    reason: `Powerful HTF Magnet (${magnetDir}) is opposing technical setup.`,
+                    requirements: [`Liquidation of ${magnetDir} magnet price`, 'Magnet neutrality']
+                };
             }
         }
 
@@ -658,16 +681,10 @@ export class PredictionCompressor {
             probabilities.consolidation || 0
         );
 
-        // Phase 52 Upgrade: Obligation Gating
         const isObligated = marketState.obligations?.state === 'OBLIGATED';
-
-        // ACCURACY UPGRADE (Phase 80): Increased thresholds for higher precision
-        // If we are just trend following without a clear "Need" to move, require 85% confidence.
         const minThreshold = isObligated ? 65 : 85;
 
-        // Phase 80: Opposing Liquidity Gating
-        // If we predict a move, but there is a massive HTF Liquidity Pool in the opposite direction
-        // that has NOT been swept, it's safer to wait.
+        // 5. Opposing Liquidity Gating
         const htfLiquidity = (marketState.liquidityPools || []).filter(p => p.strength === 'HIGH' && p.isHTF);
         if (htfLiquidity.length > 0) {
             const currentPrice = marketState.currentPrice || marketState.price;
@@ -679,18 +696,48 @@ export class PredictionCompressor {
             );
 
             if (hasMajorOpposingPool && !isObligated) {
-                // console.log(`[PRECISION] Suppressing due to major opposing HTF liquidity`);
-                return false;
+                return {
+                    show: false,
+                    code: 'LIQUIDITY_OBSTACLE',
+                    reason: 'Major HTF Liquidity Pool opposes the predicted direction.',
+                    requirements: ['Sweep of opposing liquidity', 'Structural re-confirmation']
+                };
             }
         }
 
         if (maxProb < minThreshold) {
-            // console.log(`[PRECISION] Suppressing low-prob prediction: ${maxProb}% < ${minThreshold}% threshold`);
-            return false;
+            return {
+                show: false,
+                code: 'LOW_PROBABILITY',
+                reason: `Statistical conviction (${maxProb}%) is below institutional threshold (${minThreshold}%).`,
+                requirements: ['Await confluence cluster', `Momentum expansion > ${minThreshold}%`]
+            };
         }
 
-        return true;
+        return { show: true, code: 'EDGE_CONFIRMED', reason: 'Institutional edge detected.', requirements: [] };
     }
+
+    /**
+     * Get dynamic requirements for regaining edge based on recent market context
+     * @private
+     */
+    static _getRequirements(marketState, diag) {
+        if (diag.show) return [];
+
+        const base = diag.requirements || [];
+
+        // Add specific price requirements if possible
+        if (diag.code === 'HTF_CONFLICT') {
+            const htfBias = marketState.mtf?.globalBias;
+            const keyLevel = htfBias === 'BULLISH' ? marketState.lastSwingHigh : marketState.lastSwingLow;
+            if (keyLevel) {
+                base.push(`Price close ${htfBias === 'BULLISH' ? 'above' : 'below'} ${keyLevel.toFixed(2)}`);
+            }
+        }
+
+        return base;
+    }
+
 
     /**
      * Build dynamic validity conditions (Phase 5)

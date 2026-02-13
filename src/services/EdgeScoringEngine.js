@@ -141,6 +141,34 @@ export class EdgeScoringEngine {
             }
         }
 
+        // 5. Inst. Flow & Whale Watch (Phase 5)
+        const whaleActivity = marketState.tape?.whale;
+        const iceberg = marketState.orderFlow?.iceberg;
+        const cvd = marketState.orderFlow?.cvdBias; // BULLISH / BEARISH
+
+        if (whaleActivity) {
+            // If Whale is printing at our level, it's support/resistance
+            totalPoints += 15;
+            positives.push(`Whale Activity Detected (${whaleActivity.size})`);
+        }
+        if (iceberg) {
+            const type = iceberg.type; // BUY_ICEBERG or SELL_ICEBERG
+            const isAligned = (type === 'BUY_ICEBERG' && setupDir === 'BULLISH') ||
+                (type === 'SELL_ICEBERG' && setupDir === 'BEARISH');
+
+            if (isAligned) {
+                totalPoints += 20;
+                positives.push(`Iceberg Defense Detected (${iceberg.strength})`);
+            } else {
+                totalPoints -= 15;
+                risks.push(`Opposing Iceberg Wall Detected (${iceberg.strength})`);
+            }
+        }
+        if (cvd && cvd === setupDir.toUpperCase()) {
+            totalPoints += 10;
+            positives.push('Cumulative Volume Delta (CVD) Aligned');
+        }
+
         // 6. Volume Profile & DOM Confluence
         const vp = marketState.volumeProfile;
         const entryPrice = setup.entryZone?.optimal || marketState.currentPrice;
@@ -166,24 +194,39 @@ export class EdgeScoringEngine {
             positives.push('Entry supported by DOM Liquidity Wall');
         }
 
-        // 7. Cross-Asset Consensus (Macro Alignment)
-        const macroAlignment = marketState.macroSentiment || marketState.macroCorrelation;
-        if (macroAlignment && macroAlignment.bias && macroAlignment.bias !== 'NEUTRAL') {
-            const macroBias = normalizeDirection(macroAlignment.bias);
-            const isInverse = isInversePair(symbol, 'DXY');
+        // 7. Cross-Asset Consensus (Macro Alignment - Phase 2 Upgrade)
+        const macroBias = marketState.macroBias; // Uses the new Engine result directly
+        if (macroBias && macroBias.bias !== 'NEUTRAL') {
+            const biasDir = normalizeDirection(macroBias.bias);
+            const isAligned = biasDir === setupDir.toUpperCase();
+            const action = macroBias.action; // BOOST, VETO, NONE
 
-            let isAligned = macroBias === setupDir;
-            if (isInverse) isAligned = (macroBias !== setupDir && macroBias !== 'NEUTRAL');
-
-            const isVolatile = marketState.regime === 'VOLATILE';
-            const weightMultiplier = isVolatile ? 2.0 : 1.0;
-
-            if (isAligned) {
-                totalPoints += (15 * weightMultiplier);
-                positives.push(`Macro Correlation alignment (${macroAlignment.bias}${isInverse ? ' - Inverse' : ''})${isVolatile ? ' [CRITICAL IN VOLATILITY]' : ''}`);
+            if (action === 'VETO' && !isAligned) {
+                totalPoints -= 50; // Critical Penalty
+                risks.push(`CRITICAL MACRO VETO: ${macroBias.reason}`);
+            } else if (action === 'BOOST' && isAligned) {
+                totalPoints += 25;
+                positives.push(`Macro Turbo Boost: ${macroBias.reason}`);
+            } else if (isAligned) {
+                totalPoints += 15;
+                positives.push(`Macro Alignment (${macroBias.bias})`);
             } else {
-                totalPoints -= (15 * weightMultiplier);
-                risks.push(`Macro Conflict: Benchmark is ${macroAlignment.bias}${isInverse ? ' (Inverse)' : ''}${isVolatile ? ' [HIGH RISK IN VOLATILITY]' : ''}`);
+                totalPoints -= 15;
+                risks.push(`Macro Bias Headwind (${macroBias.bias})`);
+            }
+        }
+
+        // 7.5 Correlation Cluster Risk (Phase 2)
+        if (marketState.clusters) {
+            const cluster = marketState.clusters.clusters.find(c => c.assets.includes(marketState.symbol || ''));
+            if (cluster) {
+                if (cluster.riskLevel === 'EXTREME') {
+                    totalPoints -= 25;
+                    risks.push(`EXTREME Correlation Risk (Cluster: ${cluster.dominantFactor})`);
+                } else if (cluster.riskLevel === 'HIGH') {
+                    totalPoints -= 10;
+                    risks.push(`High Correlation Risk (Cluster: ${cluster.dominantFactor})`);
+                }
             }
         }
 

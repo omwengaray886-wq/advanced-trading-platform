@@ -16,13 +16,29 @@ export default function StrategyJournalModal({ trade, onClose, onSave }) {
         { id: 'FOMO', icon: Zap, label: 'FOMO', color: '#3b82f6' }
     ];
 
+    // Load existing entry if available
+    React.useEffect(() => {
+        const loadEntry = async () => {
+            const journalService = (await import('../../services/journalService')).journalService;
+            const existing = await journalService.getEntry(trade.id);
+            if (existing) {
+                setEmotion(existing.emotion || 'CALM');
+                setFollowedRules(existing.followedRules !== false);
+                setConfidence(existing.confidence || 3);
+                setNotes(existing.notes || '');
+            }
+        };
+        loadEntry();
+    }, [trade.id]);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsSaving(true);
         // Simulate save delay
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise(r => setTimeout(r, 500));
         onSave({
             tradeId: trade.id,
+            symbol: trade.symbol, // Save symbol for easier indexing
             emotion,
             followedRules,
             confidence,

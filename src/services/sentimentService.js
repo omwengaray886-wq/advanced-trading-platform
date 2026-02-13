@@ -3,6 +3,7 @@
  * Aggregates market sentiment from news, social media, and fear/greed indices
  * Uses real APIs for production-grade intelligence
  */
+import { sentimentNLPEngine } from './SentimentNLPEngine.js';
 
 // In-memory cache for sentiment results
 const sentimentCache = new Map();
@@ -96,7 +97,7 @@ export async function analyzeSentiment(symbol) {
 async function getNewsSentiment(symbol) {
     try {
         const query = encodeURIComponent(`${symbol} cryptocurrency OR ${symbol} forex`);
-        const url = `${BACKEND_BASE}/api/news/v2/everything?q=${query}&sortBy=publishedAt&language=en&pageSize=20`;
+        const url = `${BACKEND_BASE}/api/news?q=${query}&sortBy=publishedAt&language=en&pageSize=20`;
 
         const response = await fetch(url, {
             headers: { 'Accept': 'application/json' }
@@ -119,30 +120,14 @@ async function getNewsSentiment(symbol) {
             return { score: 0, confidence: 0.5, source: 'NEWS_API' };
         }
 
-        // Simple keyword-based sentiment scoring
-        let sentimentScore = 0;
-        const bullishKeywords = ['surge', 'rally', 'bullish', 'breakout', 'gains', 'up', 'rise', 'positive', 'strong'];
-        const bearishKeywords = ['crash', 'plunge', 'bearish', 'decline', 'losses', 'down', 'fall', 'negative', 'weak'];
+        const analyses = data.articles.map(article =>
+            sentimentNLPEngine.scoreHeadline(article.title + ' ' + (article.description || ''))
+        );
 
-        data.articles.forEach(article => {
-            const text = (article.title + ' ' + (article.description || '')).toLowerCase();
-            const words = text.split(/\s+/);
+        const avgScore = analyses.reduce((acc, s) => acc + s.score, 0) / analyses.length;
 
-            words.forEach((word, i) => {
-                const prevWord = i > 0 ? words[i - 1] : '';
-                const isNegated = ['not', 'no', 'never', 'none', 'neither', 'nor', 'dont', 'without'].includes(prevWord);
-
-                if (bullishKeywords.includes(word)) {
-                    sentimentScore += isNegated ? -1 : 1;
-                }
-                if (bearishKeywords.includes(word)) {
-                    sentimentScore += isNegated ? 1 : -1;
-                }
-            });
-        });
-
-        // Normalize to -100 to +100
-        const normalizedScore = Math.max(-100, Math.min(100, (sentimentScore / data.articles.length) * 50));
+        // Normalize -1 to 1 into -100 to 100
+        const normalizedScore = avgScore * 100;
 
         return {
             score: Math.round(normalizedScore),

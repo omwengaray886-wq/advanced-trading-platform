@@ -1,5 +1,8 @@
 import { StrategyRegistry } from './StrategyRegistry.js';
 import { AssetClassAdapter } from '../services/assetClassAdapter.js';
+import { macroBiasEngine } from '../services/MacroBiasEngine.js';
+import { CorrelationClusterEngine } from '../services/CorrelationClusterEngine.js';
+import { strategyPerformanceTracker } from '../services/StrategyPerformanceTracker.js';
 
 /**
  * Strategy Selector
@@ -243,8 +246,40 @@ export class StrategySelector {
                     if (targetingNPOC) suitability *= 1.15;
                 }
 
-                // T. Strategy Performance
-                const strategyWeight = (perfWeights && perfWeights[name]) ? perfWeights[name] : 1.0;
+                // T. Intermarket Macro Bias (Phase 2 Expansion)
+                const macroBias = marketState.macroBias;
+                if (macroBias) {
+                    const setup = { direction: normalizedDir, suitability, rationale: '' };
+                    macroBiasEngine.applyVeto(setup, macroBias);
+                    suitability = setup.suitability;
+                    // Note: Rationale is added to the setup object in orchestrator after selection
+                }
+
+                // V. Correlation Cluster Risk (Phase 2)
+                if (marketState.clusters) {
+                    const cluster = marketState.clusters.clusters.find(c => c.assets.includes(marketState.symbol || ''));
+                    if (cluster) {
+                        if (cluster.riskLevel === 'EXTREME') {
+                            suitability *= 0.6; // Heavy penalty for concentrated risk
+                            // warning logic handled in orchestrator
+                        } else if (cluster.riskLevel === 'HIGH') {
+                            suitability *= 0.8;
+                        }
+                    }
+                }
+
+                // U. Strategy Performance (Dynamic Weighting)
+                let strategyWeight = 1.0;
+
+                // 1. Check for overrides passed in args
+                if (perfWeights && perfWeights[name]) {
+                    strategyWeight = perfWeights[name];
+                }
+                // 2. Otherwise, check real-time tracker
+                else {
+                    strategyWeight = strategyPerformanceTracker.getDynamicWeight(name);
+                }
+
                 suitability *= strategyWeight;
 
                 allEvaluations.push({
@@ -258,11 +293,11 @@ export class StrategySelector {
 
         // 2. Extract Top 2 Longs and Top 2 Shorts
         const longCandidates = allEvaluations
-            .filter(e => e.direction === 'LONG' && e.suitability > 0.35)
+            .filter(e => e.direction === 'LONG' && e.suitability > 0.25)
             .sort((a, b) => b.suitability - a.suitability);
 
         const shortCandidates = allEvaluations
-            .filter(e => e.direction === 'SHORT' && e.suitability > 0.35)
+            .filter(e => e.direction === 'SHORT' && e.suitability > 0.25)
             .sort((a, b) => b.suitability - a.suitability);
 
         return {

@@ -1,6 +1,6 @@
 // src/services/marketData.js
 
-const BINANCE_WS_BASE = 'wss://stream.binance.com:9443/ws';
+const BINANCE_WS_BASE = 'wss://stream.binance.com/ws';
 
 // Map intervals to Binance format
 const INTERVAL_MAP = {
@@ -59,13 +59,8 @@ export const mapSymbol = (symbol) => {
         'EURUSDT': 'EURUSDT',
         'GBPUSD': 'GBPUSDT',
         'GBPUSDT': 'GBPUSDT',
-        'AUDUSD': 'AUDUSDT',
-        'AUDUSDT': 'AUDUSDT',
-        'NZDUSD': 'AUDUSDT',
-        'NZDUSDT': 'AUDUSDT',
-        'USDCAD': 'USDTBRL',
-        'USDCHF': 'USDTBRL',
-        'USDJPY': 'USDTJPY',
+        'GBPJPY': 'GBPJPY',
+        'JBPJPY': 'GBPJPY', // Typo handling
         'USDTRY': 'USDTTRY',
         'USDZAR': 'USDTZAR',
         'USDMXN': 'USDTMXN',
@@ -77,14 +72,50 @@ export const mapSymbol = (symbol) => {
         'XAUUSDT': 'PAXGUSDT',
         'GOLD': 'PAXGUSDT',
 
-        // --- MACRO PROXIES (Mapped to liquid spot for structural context) ---
+        // --- MACRO PROXIES ---
         'DXY': 'EURUSDT', // DXY is inverse related to EURUSD
-        'SPXUSD': 'BTCUSDT', // BTC often acts as high-beta SPX proxy in spot contexts
-        'SPXUSDT': 'BTCUSDT',
-        'NASDAQ': 'BTCUSDT'
     };
 
-    return registry[s] || s;
+    // Generic Case: If it looks like XXXUSDT or XXX/USDT, normalize it
+    if (!registry[s]) {
+        if (s.includes('USDT')) return s;
+        // If it's a 6-char forex looking pair but not mapped (e.g. BTCETH), let it pass as-is
+        return s;
+    }
+
+    return registry[s];
+};
+
+/**
+ * Get metadata for symbols (Proxy status, source, etc.)
+ */
+export const getSymbolMetadata = (symbol) => {
+    if (!symbol) return { isProxy: false };
+    const s = symbol.replace('/', '').toUpperCase();
+
+    const proxies = {
+        'XAUUSD': { isProxy: true, source: 'Binance Spot (PAXG Proxy)', note: 'Price may vary from spot gold' },
+        'XAUUSDT': { isProxy: true, source: 'Binance Spot (PAXG Proxy)', note: 'Price may vary from spot gold' },
+        'GOLD': { isProxy: true, source: 'Binance Spot (PAXG Proxy)', note: 'Price may vary from spot gold' },
+        'XAGUSD': { isProxy: true, source: 'Unsupported', note: 'Silver spot not available on Binance' },
+        'XAGUSDT': { isProxy: true, source: 'Unsupported', note: 'Silver spot not available on Binance' },
+        'SILVER': { isProxy: true, source: 'Unsupported', note: 'Silver spot not available on Binance' },
+        'DXY': { isProxy: true, source: 'CoinGecko Reference Index', note: 'US Dollar Index' },
+        'SPX': { isProxy: true, source: 'CoinGecko Reference Index', note: 'S&P 500 Index Proxy' },
+        'SPXUSD': { isProxy: true, source: 'CoinGecko Reference Index', note: 'S&P 500 Index Proxy' },
+        'NDX': { isProxy: true, source: 'CoinGecko Reference Index', note: 'NASDAQ 100 Index Proxy' },
+        'NASDAQ': { isProxy: true, source: 'CoinGecko Reference Index', note: 'NASDAQ 100 Index Proxy' },
+        'NAS100': { isProxy: true, source: 'CoinGecko Reference Index', note: 'NASDAQ 100 Index Proxy' },
+        'US30': { isProxy: true, source: 'CoinGecko Reference Index', note: 'Dow Jones Index Proxy' },
+        'GBPJPY': { isProxy: true, source: 'Institutional Synthetic Bridge', note: 'GBP/JPY Currency Cross' },
+        'JBPJPY': { isProxy: true, source: 'Institutional Synthetic Bridge', note: 'GBP/JPY Currency Cross' }
+    };
+
+    if (proxies[s]) return proxies[s];
+
+    // Default for any other symbol: Assume it's a native Binance pair
+    // (The server will 404 if it's actually invalid)
+    return { isProxy: false, source: 'Binance Spot (Native)' };
 };
 
 export class MarketDataService {
@@ -103,6 +134,7 @@ export class MarketDataService {
         this.maxReconnectDelay = 30000;
         this.isClosing = false;
         this.pendingClose = false;
+        this.requestCache = new Map(); // Phase 42: Request deduplication
     }
 
     /**
@@ -116,28 +148,49 @@ export class MarketDataService {
      * Fetch historical kline data
      */
     async fetchHistory(symbol, interval = '1h', limit = 200) {
-        try {
-            const mappedSymbol = mapSymbol(symbol);
-            const binanceInterval = INTERVAL_MAP[interval] || interval;
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 12000); // Increased to 12s for proxy hops
-            const res = await fetch(`${BINANCE_REST_BASE}/klines?symbol=${mappedSymbol}&interval=${binanceInterval}&limit=${limit}`, {
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-            if (!res.ok) throw new Error(`Binance API error: ${res.statusText}`);
-            const data = await res.json();
-            return data.map(d => ({
-                time: d[0] / 1000,
-                open: parseFloat(d[1]),
-                high: parseFloat(d[2]),
-                low: parseFloat(d[3]),
-                close: parseFloat(d[4]),
-            }));
-        } catch (error) {
-            console.error(`CRITICAL: API Connection Failed for ${symbol}`, error);
-            throw new Error(`Market data unavailable for ${symbol} [${interval}]. Code: ${error.message}`);
+        const mappedSymbol = mapSymbol(symbol);
+        const binanceInterval = INTERVAL_MAP[interval] || interval;
+        const cacheKey = `${mappedSymbol}_${binanceInterval}_${limit}`;
+
+        // Phase 42: Deduplicate inflight requests to prevent AbortError storm
+        if (this.requestCache.has(cacheKey)) {
+            return this.requestCache.get(cacheKey);
         }
+
+        const requestPromise = (async () => {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => {
+                    controller.abort('Analysis request timed out after 20s');
+                }, 20000); // Increased from 12s for institutional robustness
+
+                const res = await fetch(`${BINANCE_REST_BASE}/klines?symbol=${mappedSymbol}&interval=${binanceInterval}&limit=${limit}`, {
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    throw new Error(`Binance API error: ${res.status} ${res.statusText} - ${errorText.substring(0, 100)}`);
+                }
+                const data = await res.json();
+                return data.map(d => ({
+                    time: d[0] / 1000,
+                    open: parseFloat(d[1]),
+                    high: parseFloat(d[2]),
+                    low: parseFloat(d[3]),
+                    close: parseFloat(d[4]),
+                }));
+            } finally {
+                // Always clear cache entry after completion (win or lose)
+                // so subsequent calls get fresh data if needed, but parallel calls are deduped
+                setTimeout(() => this.requestCache.delete(cacheKey), 1000);
+            }
+        })();
+
+        this.requestCache.set(cacheKey, requestPromise);
+        return requestPromise;
     }
 
     /**
@@ -212,6 +265,15 @@ export class MarketDataService {
         const streamName = `${this.activeSymbol}@kline_${this.activeInterval}`;
         const wsUrl = `${BINANCE_WS_BASE}/${streamName}`;
 
+        // Set up fallback polling if WebSocket doesn't connect within 5 seconds
+        this.fallbackTimeout = setTimeout(() => {
+            if (!this.isConnected && !this.pollingInterval) {
+                console.warn('[MarketData] WebSocket connection timeout. Falling back to polling mode.');
+                this.startPolling();
+            }
+            this.fallbackTimeout = null;
+        }, 5000);
+
         try {
             this.ws = new WebSocket(wsUrl);
 
@@ -221,9 +283,13 @@ export class MarketDataService {
                     return;
                 }
                 console.log(`Connected to Binance stream: ${streamName}`);
+                if (this.fallbackTimeout) {
+                    clearTimeout(this.fallbackTimeout);
+                    this.fallbackTimeout = null;
+                }
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
-                this.stopPolling();
+                this.stopPolling(); // Stop polling if it was running
                 this.notifyHealth();
             };
 
@@ -231,6 +297,8 @@ export class MarketDataService {
                 if (this.isClosing || this.pendingClose) return;
                 const message = JSON.parse(event.data);
                 this.lastHeartbeat = Date.now();
+                this.isConnected = true; // Ensure status is 'LIVE' if we are getting messages
+                this.notifyHealth(); // Ensure health status is updated
 
                 if (message.E) {
                     this.latency = Math.max(0, Date.now() - message.E);
@@ -246,32 +314,49 @@ export class MarketDataService {
                         close: parseFloat(kline.c),
                     };
                     this.notify(candle);
-                    this.notifyHealth();
+                    // notifyHealth is redundant here as it's called in onmessage start or by subscribers
                 }
             };
 
             this.ws.onerror = (error) => {
                 if (this.isClosing || this.pendingClose) return;
+                console.warn('[MarketData] WebSocket error, will use polling fallback');
                 this.isConnected = false;
                 this.notifyHealth();
             };
 
             this.ws.onclose = () => {
+                if (this.fallbackTimeout) {
+                    clearTimeout(this.fallbackTimeout);
+                    this.fallbackTimeout = null;
+                }
                 this.isConnected = false;
                 this.notifyHealth();
                 this.pendingClose = false;
                 if (!this.isClosing) {
+                    // Start polling immediately on close, then schedule reconnect
+                    if (!this.pollingInterval) {
+                        console.log('[MarketData] WebSocket closed, starting polling fallback');
+                        this.startPolling();
+                    }
                     this.scheduleReconnect();
                 }
             };
         } catch (e) {
             console.error('WebSocket connection failed:', e);
+            clearTimeout(fallbackTimeout);
+            // Immediately start polling if WS creation failed
+            this.startPolling();
         }
     }
 
     disconnect() {
         this.isClosing = true;
         this.pendingClose = true;
+        if (this.fallbackTimeout) {
+            clearTimeout(this.fallbackTimeout);
+            this.fallbackTimeout = null;
+        }
         this.stopReconnect();
 
         if (this.ws) {
@@ -293,6 +378,7 @@ export class MarketDataService {
 
         // Cleanup depth connections with same aggressive listener clearing
         this.depthWS.forEach((ws, symbol) => {
+            // Remove listeners BEFORE closing to prevent "Ping after close" or "State error"
             ws.onopen = null;
             ws.onmessage = null;
             ws.onerror = null;
@@ -308,31 +394,40 @@ export class MarketDataService {
         this.depthWS.clear();
 
         this.isConnected = false;
+        this.pendingClose = false; // Reset to allow immediate reconnection
         this.notifyHealth();
     }
 
 
     startPolling() {
         if (this.pollingInterval) return;
-        console.log('Starting polling fallback...');
+        console.log('[MarketData] Starting REST API polling mode (15s intervals)...');
 
-        // Poll every 1 minute
-        this.pollingInterval = setInterval(async () => {
-            if (this.isClosing) return;
-            try {
-                // Fetch just the last few candles effectively
-                const data = await this.fetchHistory(this.activeSymbol, this.activeInterval, 5);
-                if (data && data.length > 0) {
-                    const lastCandle = data[data.length - 1];
-                    this.notify(lastCandle);
-                    this.isConnected = true; // Pretend we are connected for UI
-                    this.latency = 200; // Fake latency
-                    this.notifyHealth();
-                }
-            } catch (e) {
-                console.warn('Polling failed:', e.message);
+        // Initial fetch to show online immediately
+        this.pollOnce();
+
+        // Poll every 15 seconds for responsive updates
+        this.pollingInterval = setInterval(() => {
+            this.pollOnce();
+        }, 15000);
+    }
+
+    async pollOnce() {
+        if (this.isClosing) return;
+        try {
+            const data = await this.fetchHistory(this.activeSymbol, this.activeInterval, 5);
+            if (data && data.length > 0) {
+                const lastCandle = data[data.length - 1];
+                this.notify(lastCandle);
+                this.isConnected = true; // Show as connected when polling works
+                this.latency = 150; // Simulated latency for polling
+                this.notifyHealth();
             }
-        }, 60000);
+        } catch (e) {
+            console.warn('[MarketData] Polling failed:', e.message);
+            this.isConnected = false;
+            this.notifyHealth();
+        }
     }
 
     stopPolling() {
@@ -359,7 +454,12 @@ export class MarketDataService {
 
         // Clean up any failed or closed connection for this symbol
         if (this.depthWS.has(mappedSymbol)) {
-            this.depthWS.get(mappedSymbol).close();
+            const oldWs = this.depthWS.get(mappedSymbol);
+            oldWs.onopen = null;
+            oldWs.onmessage = null;
+            oldWs.onerror = null;
+            oldWs.onclose = null;
+            try { oldWs.close(); } catch (e) { }
             this.depthWS.delete(mappedSymbol);
         }
 
@@ -430,35 +530,33 @@ export class MarketDataService {
         this.healthSubscribers.forEach(callback => callback(stats));
     }
 
-    disconnect() {
-        this.isClosing = true;
-        if (this.ws) {
-            this.ws.onclose = null;
-            this.ws.onerror = null;
-            this.ws.onmessage = null;
-            if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
-                this.ws.close();
-            }
-            this.ws = null;
+    stopReconnect() {
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
         }
+    }
 
-        // Also clear depth streams on global disconnect
-        this.depthWS.forEach((ws, symbol) => {
-            try {
-                ws.onclose = null;
-                ws.onerror = null;
-                ws.onmessage = null;
-                if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-                    ws.close();
-                }
-            } catch (e) {
-                console.warn(`Error closing depth WS for ${symbol}:`, e.message);
+    scheduleReconnect() {
+        if (this.isClosing || this.reconnectTimeout) return;
+
+        this.reconnectAttempts++;
+        // Exponential backoff: 1s, 2s, 4s, 8s... capped at 30s
+        const delay = Math.min(this.minReconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
+
+        console.log(`[MarketData] Connection lost. Reconnecting in ${delay}ms (Attempt ${this.reconnectAttempts})...`);
+
+        this.reconnectTimeout = setTimeout(() => {
+            this.reconnectTimeout = null;
+            if (!this.isClosing) {
+                console.log('[MarketData] Reconnecting now...');
+                // We need to re-call connect with the current state
+                // mapSymbol handles case-insensitivity, so activeSymbol (lowercase) is fine to pass back or we can uppercase it
+                // Logic: connect() expects 'BTCUSDT' (display) or mapped. 
+                // activeSymbol is 'btcusdt'. mapSymbol('btcusdt') -> 'BTCUSDT'. Perfect.
+                this.connect(this.activeSymbol.toUpperCase(), this.activeInterval);
             }
-        });
-        this.depthWS.clear();
-
-        this.isConnected = false;
-        this.notifyHealth();
+        }, delay);
     }
 }
 

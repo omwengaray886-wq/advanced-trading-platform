@@ -1,0 +1,30 @@
+{
+  "SMC Smart Money Concepts": {
+    "wins": 5,
+    "losses": 0,
+    "streak": 5,
+    "winRate": 1,
+    "recentResults": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "lastUpdated": 1770938410543
+  },
+  "ICT Concepts": {
+    "wins": 0,
+    "losses": 5,
+    "streak": -5,
+    "winRate": 0,
+    "recentResults": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "lastUpdated": 1770938410553
+  }
+}

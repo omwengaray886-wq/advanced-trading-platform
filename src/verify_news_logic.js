@@ -1,67 +1,73 @@
-/**
- * Verification Script: News-Scenario Integration
- * Tests if high-impact news correctly flips scenarios and penalizes setups.
- */
+import { sentimentNLPEngine } from './services/SentimentNLPEngine.js';
+import { newsService } from './services/newsService.js';
 
-import { AnalysisOrchestrator } from './services/analysisOrchestrator.js';
+async function verifyNewsIntelligence() {
+    console.log("🚀 Verifying News Intelligence System...");
 
-async function verifyNewsIntegration() {
-    console.log("🚀 Verifying News-Scenario Integration...");
+    // 1. Entity Recognition Test
+    console.log("\n[TEST 1] Entity Weighting (Powell vs Random Analyst)");
 
-    const orchestrator = new AnalysisOrchestrator();
+    const headlineA = "Analyst says Bitcoin might be bearish";
+    const headlineB = "Powell confirms Fed will be hawkish and hike rates";
 
-    // 1. Mock Bullish Candles
-    const candles = Array(50).fill(0).map((_, i) => ({
-        time: 1700000000 + i * 3600,
-        open: 50000 + i * 10,
-        high: 50000 + i * 10 + 5,
-        low: 50000 + i * 10 - 5,
-        close: 50000 + (i + 1) * 10,
-        volume: 1000
-    }));
+    const scoreA = sentimentNLPEngine.scoreHeadline(headlineA);
+    const scoreB = sentimentNLPEngine.scoreHeadline(headlineB);
 
-    // 2. Normal Analysis (No News)
-    console.log("\nCase 1: Normal Bullish Trend (No imminent news)...");
-    const normalAnalysis = await orchestrator.analyze(candles, "BTC/USDT", "1h");
+    console.log(`Headline A (Analyst): "${headlineA}"`);
+    console.log(` -> Score: ${scoreA.score}, Confidence: ${scoreA.confidence.toFixed(2)}, Entity: ${scoreA.entity || 'None'}`);
 
-    console.log(`- Primary Bias: ${normalAnalysis.marketState.scenarios.primary.bias}`);
-    console.log(`- Primary Prob: ${normalAnalysis.marketState.scenarios.primary.probability}`);
+    console.log(`Headline B (Powell): "${headlineB}"`);
+    console.log(` -> Score: ${scoreB.score}, Confidence: ${scoreB.confidence.toFixed(2)}, Entity: ${scoreB.entity || 'None'}`);
 
-    // 3. Imminent High-Impact Bearish News
-    // We'll mock the FundamentalAnalyzer behavior or check if it picks it up
-    // Note: fundamentalAnalyzer is hardcoded with mock events. We'll verify if one is imminent.
-    console.log("\nCase 2: Checking Scenario Response to High-Impact News...");
-
-    // Since FundamentalAnalyzer has hardcoded mocks, we'll check if any are 'imminent'
-    // in its current mocked state. If not, we've at least verified the plumbing.
-
-    const analysisWithNews = await orchestrator.analyze(candles, "EUR/USD", "1h");
-    const proximity = analysisWithNews.fundamentals.proximityAnalysis;
-
-    if (proximity) {
-        console.log(`- Detected ${proximity.event.type} in ${Math.round(proximity.minutesToEvent)}m`);
-        console.log(`- Event Impact: ${proximity.event.impact}`);
-        console.log(`- Scenario Primary Bias: ${analysisWithNews.marketState.scenarios.primary.bias}`);
-        console.log(`- Scenario Primary Style: ${analysisWithNews.marketState.scenarios.primary.style}`);
-        console.log(`- Scenario Alternate Style: ${analysisWithNews.marketState.scenarios.alternate.style}`);
-        console.log(`- Scenario Primary Prob: ${analysisWithNews.marketState.scenarios.primary.probability}`);
-
-        const isFlipped = analysisWithNews.marketState.scenarios.primary.probability < 0.5;
-        if (isFlipped) {
-            console.log("✅ SCENARIO FLIP: SUCCESS (Probability dropped below 0.5 due to news conflict)");
-        } else if (proximity.isImminent) {
-            console.log("⚠️ News detected but no flip. Check if aligned.");
-        }
-
-        // Check for Consolidation/Retest in output
-        if (analysisWithNews.marketState.consolidations?.length > 0) {
-            console.log(`✅ Consolidation Detected: ${analysisWithNews.marketState.consolidations.length} zones found.`);
-        }
+    if (Math.abs(scoreB.score) > Math.abs(scoreA.score) && scoreB.entity === 'POWELL') {
+        console.log("✅ PASS: Powell carries significantly more weight than generic analyst.");
     } else {
-        console.log("⚠️ No imminent news found in mocks for EUR/USD. Check fundamentalAnalyzer mocks.");
+        console.error("❌ FAIL: Entity weighting not applied correctly.");
     }
 
-    console.log("\n✨ Ultimate Platform Logic Verification Complete!");
+    // 2. Context Detection Test
+    console.log("\n[TEST 2] Context Detection (Rumor vs Official)");
+
+    const headlineC = "Rumors circulate that SEC might ban staking";
+    const headlineD = "SEC official statement: Staking ban confirms enforcement action";
+
+    const scoreC = sentimentNLPEngine.scoreHeadline(headlineC);
+    const scoreD = sentimentNLPEngine.scoreHeadline(headlineD);
+
+    console.log(`Headline C (Rumor): "${headlineC}"`);
+    console.log(` -> Score: ${scoreC.score}, Context: ${scoreC.context}`);
+
+    console.log(`Headline D (Official): "${headlineD}"`);
+    console.log(` -> Score: ${scoreD.score}, Context: ${scoreD.context}`);
+
+    if (Math.abs(scoreD.score) > Math.abs(scoreC.score)) {
+        console.log("✅ PASS: Official statement has higher impact than rumor.");
+    } else {
+        console.error("❌ FAIL: Context weighting not applied.");
+    }
+
+    // 3. Global Macro Aggregation Test
+    console.log("\n[TEST 3] Global Macro Feed Aggregation");
+
+    // We mock the fetch so we don't need real network
+    // But newsService._fetchGlobalMacroFeed IS the mock, so we can call fetchRealNews directly
+    // checking if it merges mock macro headlines.
+
+    const news = await newsService.fetchRealNews("BTCUSDT");
+    console.log(`Fetched ${news.length} news items.`);
+
+    const macroItem = news.find(n => n.source === 'Reuters' || n.source === 'Bloomberg');
+    if (macroItem) {
+        console.log(`✅ PASS: Found Macro Headline: "${macroItem.title}" from ${macroItem.source}`);
+    } else {
+        console.warn("⚠️ WARN: No simulated macro news found (might be random chance or fetch issue).");
+    }
+
+    // 4. Global Sentiment Calculation
+    const globalSentiment = newsService.getGlobalSentiment(news);
+    console.log(`Global Sentiment: ${globalSentiment.score} (${globalSentiment.label})`);
+
+    console.log("\n✨ News Intelligence Verification Complete!");
 }
 
-verifyNewsIntegration().catch(console.error);
+verifyNewsIntelligence().catch(console.error);

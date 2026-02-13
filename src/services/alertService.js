@@ -5,7 +5,11 @@ const orchestrator = new AnalysisOrchestrator();
 
 export class AlertService {
     constructor() {
-        this.watchlist = ['BTCUSDT', 'ETHUSDT', 'EURUSDT', 'GBPUSDT', 'XAUUSDT'];
+        // Hybrid watchlist: Crypto (tradeable) + Forex (EURUSDT tradeable, others reference-only)
+        this.watchlist = [
+            'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT',  // Major Crypto
+            'EURUSDT', 'PAXGUSDT'  // EUR (forex) + Gold
+        ];
         this.timeframe = '1H';
         this.isScanning = false;
         this.lastAlerts = new Map(); // asset -> last alert timestamp
@@ -38,7 +42,7 @@ export class AlertService {
         for (const symbol of this.watchlist) {
             try {
                 const candles = await marketData.fetchHistory(symbol, this.timeframe, 100);
-                const analysis = await orchestrator.analyze(candles, symbol, this.timeframe);
+                const analysis = await orchestrator.analyze(candles, symbol, this.timeframe, null, null, true);
 
                 // Trigger alert for high-confidence setups (> 80)
                 const topSetup = analysis.setups.find(s => s.quantScore > 80);
