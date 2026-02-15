@@ -125,18 +125,35 @@ export default function Markets() {
     const [isSearching, setIsSearching] = useState(false);
     const [activeCategory, setActiveCategory] = useState('Crypto');
     const [timeframe, setTimeframe] = useState('15m');
-    const [viewMode, setViewMode] = useState('SINGLE'); // SINGLE or GRID
+    const [viewMode, setViewMode] = useState('SINGLE');
     const [showReport, setShowReport] = useState(true);
     const { addToast } = useToast();
     const [loading, setLoading] = useState(false);
-    const [complexityMode, setComplexityMode] = useState('ADVANCED'); // BEGINNER or ADVANCED
+    const [complexityMode, setComplexityMode] = useState('ADVANCED');
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [accountSize, setAccountSize] = useState(10000);
     const [isCleanView, setIsCleanView] = useState(false);
     const [globalSignals, setGlobalSignals] = useState([]);
-
-
     const [realtimeDiag, setRealtimeDiag] = useState(null);
+    const [showLeftPanel, setShowLeftPanel] = useState(true);
+    const [showRightPanel, setShowRightPanel] = useState(true);
+    const [isMonitoring, setIsMonitoring] = useState(proactiveMonitor.isRunning);
+    const [tickers, setTickers] = useState([]);
+    const [activeDrawTool, setActiveDrawTool] = useState(null);
+    const [indicators, setIndicators] = useState({
+        volumeProfile: true,
+        sessionZones: false,
+        liquidityHeatmap: false,
+        institutionalLevels: true
+    });
+    const [chartData, setChartData] = useState([]);
+    const [manualStrategy, setManualStrategy] = useState(null);
+    const [analysis, setAnalysis] = useState(null);
+    const [activeSetupId, setActiveSetupId] = useState('A');
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+    const analysisRef = useRef(false);
+    const location = useLocation();
 
     // Initialize Real-time Diagnostics (Phase 75)
     useEffect(() => {
@@ -156,11 +173,6 @@ export default function Markets() {
         }, 5000);
     };
 
-    // Fullscreen state
-    const [showLeftPanel, setShowLeftPanel] = useState(true);
-    const [showRightPanel, setShowRightPanel] = useState(true);
-    const [isMonitoring, setIsMonitoring] = useState(proactiveMonitor.isRunning);
-    const [tickers, setTickers] = useState([]); // Live 24h ticker data for search
 
 
     // Monitoring listener for cross-asset alerts (Phase 4)
@@ -290,17 +302,7 @@ export default function Markets() {
         });
     };
 
-    const [activeDrawTool, setActiveDrawTool] = useState(null);
-    const [indicators, setIndicators] = useState({
-        volumeProfile: true,
-        sessionZones: false,
-        liquidityHeatmap: false,
-        institutionalLevels: true
-    });
 
-    const [chartData, setChartData] = useState([]);
-    const [manualStrategy, setManualStrategy] = useState(null); // null means "Auto"
-    const location = useLocation();
 
     // Handle incoming state from Command Center
     useEffect(() => {
@@ -433,19 +435,7 @@ export default function Markets() {
         };
     }, [selectedPair, timeframe]);
 
-    // Phase 14: Auto-Regeneration of Stale Analysis
-    useEffect(() => {
-        if (!analysis && !loading && chartData.length >= 50 && !analysisRef.current) {
-            console.log('[Markets] Auto-triggering fresh analysis (stale or missing)');
-            handleGenerateAnalysis(true);
-        }
-    }, [analysis, loading, chartData]);
 
-    const [analysis, setAnalysis] = useState(null);
-    const [activeSetupId, setActiveSetupId] = useState('A');
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-
-    const analysisRef = useRef(false);
 
     const handleGenerateAnalysis = async (force = false) => {
         if (!chartData || chartData.length < 50) return;
