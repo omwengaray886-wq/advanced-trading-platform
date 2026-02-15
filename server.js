@@ -267,14 +267,31 @@ app.get('/api/binance/klines', async (req, res) => {
             // --- GBPJPY: Direct Yahoo Finance (Real Market Data) ---
             if (mappedSymbol === 'GBPJPY' || mappedSymbol === 'JBPJPY') {
                 try {
-                    console.log(`[PROXY] Fetching REAL GBPJPY from Yahoo Finance...`);
-                    const range = interval === '1h' ? '7d' : '1mo';
-                    const yParams = {
-                        interval: interval === '4h' ? '60m' : '60m',
-                        range: range
+                    console.log(`[PROXY] Fetching REAL GBPJPY from Yahoo Finance for interval: ${interval}...`);
+
+                    // Interval Mapping: Platform -> Yahoo (Institutional Grade)
+                    const yahooIntervalMap = {
+                        '1m': { interval: '1m', range: '1d' },
+                        '3m': { interval: '2m', range: '1d' },
+                        '5m': { interval: '5m', range: '1d' },
+                        '15m': { interval: '15m', range: '5d' },
+                        '30m': { interval: '30m', range: '5d' },
+                        '1h': { interval: '60m', range: '7d' },
+                        '2h': { interval: '60m', range: '7d' },
+                        '4h': { interval: '60m', range: '15d' },
+                        '1d': { interval: '1d', range: '1mo' },
+                        '1w': { interval: '1wk', range: '1y' },
+                        '1M': { interval: '1mo', range: 'max' }
                     };
 
-                    const yRes = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/GBPJPY=X`, { params: yParams });
+                    const mapping = yahooIntervalMap[interval] || { interval: '60m', range: '1mo' };
+
+                    const yRes = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/GBPJPY=X`, {
+                        params: {
+                            interval: mapping.interval,
+                            range: mapping.range
+                        }
+                    });
                     const result = yRes.data?.chart?.result?.[0];
 
                     if (!result) throw new Error('No Yahoo data');
@@ -286,12 +303,17 @@ app.get('/api/binance/klines', async (req, res) => {
                     const candles = timestamps.map((t, i) => {
                         if (quote.open[i] === null || quote.close[i] === null) return null;
 
+                        const open = quote.open[i];
+                        const high = quote.high[i];
+                        const low = quote.low[i];
+                        const close = quote.close[i];
+
                         return [
                             t * 1000,
-                            quote.open[i].toFixed(3),
-                            quote.high[i].toFixed(3),
-                            quote.low[i].toFixed(3),
-                            quote.close[i].toFixed(3),
+                            open.toFixed(3),
+                            high.toFixed(3),
+                            low.toFixed(3),
+                            close.toFixed(3),
                             "10000",
                             (t * 1000) + 3599999,
                             "100000",
