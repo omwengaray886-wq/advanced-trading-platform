@@ -62,6 +62,49 @@ const cache = {
 
 const CACHE_TTL = 60 * 1000; // 60 seconds
 
+// --- MISSING CACHES & QUEUES (ADDED Phase 9) ---
+const newsCache = new Map();
+
+// Simple Queue Implementation to prevent ReferenceError
+class SimpleQueue {
+    constructor(concurrency = 1, interval = 1000) {
+        this.queue = [];
+        this.processing = false;
+        this.interval = interval;
+    }
+
+    async enqueue(fn) {
+        return new Promise((resolve, reject) => {
+            this.queue.push({ fn, resolve, reject });
+            this.process();
+        });
+    }
+
+    async process() {
+        if (this.processing || this.queue.length === 0) return;
+        this.processing = true;
+
+        const { fn, resolve, reject } = this.queue.shift();
+        try {
+            const result = await fn();
+            resolve(result);
+        } catch (err) {
+            reject(err);
+        } finally {
+            setTimeout(() => {
+                this.processing = false;
+                this.process();
+            }, this.interval);
+        }
+    }
+}
+
+const newsQueue = new SimpleQueue(1, 1000); // 1 request / second
+const coinGeckoQueue = new SimpleQueue(1, 1500); // 1.5s delay to be safe
+// ------------------------------------------------
+
+
+
 // Indices & Forex Reference Mapping (CoinGecko IDs for reference data)
 const INDICES_MAP = {
     // Indices

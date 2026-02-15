@@ -805,8 +805,8 @@ export class AnalysisOrchestrator {
                         Gate.validateDirection({ ...c, direction, ...riskParams }, marketState, candles, symbol)
                     ]);
 
-                    // Skip low confidence
-                    if (!validation.isValid && validation.confidence < 0.3) return null;
+                    // Skip low confidence OR invalid direction
+                    if (!validation.isValid || validation.confidence < 0.3) return null;
 
                     // 3. Scoring
                     const edgeAnalysis = EdgeScoringEngine.calculateScore(
@@ -1535,8 +1535,8 @@ export class AnalysisOrchestrator {
                 // Performance metadata
                 performanceWeights,
 
-                // Economic News Overlays (Phase 4)
-                newsEvents: newsService.getEvents(symbol, candles[0].time, lastCandle.time + 86400)
+                // Economic News Overlays (Phase 9 Integration)
+                newsEvents: [...realNews, ...calendarEvents].sort((a, b) => (b.timestamp || b.time) - (a.timestamp || a.time))
             };
 
             // 5. Inject News Shocks (Phase 22) - Reusing pre-fetched calendarEvents (Phase 55)
@@ -2107,8 +2107,8 @@ export class AnalysisOrchestrator {
         const proximity = fundamentals.proximityAnalysis;
         if (!proximity?.isImminent) return;
 
-        const isHighImpact = proximity.event.impact === 'high';
-        const minutesToEvent = proximity.minutesToEvent;
+        const isHighImpact = proximity.event.impact === 'HIGH';
+        const minutesToEvent = proximity.minutesToEvent || 60;
 
         if (isHighImpact && minutesToEvent < 15) {
             marketState.news_risk = 'EXTREME';
@@ -2118,12 +2118,19 @@ export class AnalysisOrchestrator {
             // Mark all setups as high risk
             setups.forEach(s => {
                 s.quantScore *= 0.4;
-                s.rationale = `[NEWS HAZARD] Technical validity suspended due to ${proximity.event.type} in ${Math.round(minutesToEvent)}m. ${s.rationale}`;
+                s.rationale = `⚠️ [EXTREME NEWS HAZARD] Technical validity suspended due to ${proximity.event.type || proximity.event.title} in ${Math.round(minutesToEvent)}m. ${s.rationale}`;
+                s.isBlocked = true;
+                s.blockReason = 'Imminent High-Impact Economic Event';
             });
-        } else if (isHighImpact || minutesToEvent < 30) {
+        } else if (isHighImpact || minutesToEvent < 45) {
             marketState.news_risk = 'HIGH';
             marketState.technical_validity = 'DEGRADED';
             marketState.confidence *= 0.6;
+
+            setups.forEach(s => {
+                s.quantScore *= 0.7;
+                s.rationale = `⚡ [HIGH VOLATILITY WARNING] ${proximity.event.type || proximity.event.title} in ${Math.round(minutesToEvent)}m. Expect slippage. ${s.rationale}`;
+            });
         }
     }
 

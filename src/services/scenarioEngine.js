@@ -169,7 +169,7 @@ export class ScenarioEngine {
         const primary = {
             ...scenarios[0],
             type: scenarios[0].direction.toUpperCase(),
-            bias: scenarios[0].direction === 'up' ? 'LONG' : scenarios[0].direction === 'down' ? 'SHORT' : 'NEUTRAL',
+            bias: scenarios[0].direction === 'up' ? 'BULLISH' : scenarios[0].direction === 'down' ? 'BEARISH' : 'NEUTRAL',
             label: isWaiting ? `WAITING: ${waitingCondition}` : `Primary: ${scenarios[0].label}`,
             description: isWaiting ? 'Market is in a waiting state.' : `Highest probability path (${((scenarios[0].probability || 0) * 100).toFixed(0)}%) based on current ${marketState.phase}.`,
             style: isWaiting ? 'DOTTED' : 'SOLID',
@@ -180,7 +180,7 @@ export class ScenarioEngine {
         const secondary = {
             ...scenarios[1],
             type: scenarios[1].direction.toUpperCase(),
-            bias: scenarios[1].direction === 'up' ? 'LONG' : scenarios[1].direction === 'down' ? 'SHORT' : 'NEUTRAL',
+            bias: scenarios[1].direction === 'up' ? 'BULLISH' : scenarios[1].direction === 'down' ? 'BEARISH' : 'NEUTRAL',
             label: `Secondary: ${scenarios[1].label}`,
             description: `Pivot path if ${scenarios[0].direction} structure fails.`,
             style: 'DASHED'

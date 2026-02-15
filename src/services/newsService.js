@@ -219,11 +219,7 @@ export class NewsService {
         return 'TIER 3';
     }
 
-    // Legacy method for backward compatibility
-    getEvents(symbol, startTime, endTime) {
-        // This will be replaced by async calls in Orchestrator
-        return [];
-    }
+}
 }
 
 export const newsService = new NewsService();
