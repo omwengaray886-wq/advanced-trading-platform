@@ -257,10 +257,16 @@ export class MarketDataService {
 
         if (isSynthetic) {
             console.log(`[MarketData] ${symbol} is synthetic/proxy. Using polling mode only.`);
+
+            // Disconnect any existing connections first (before setting new state)
+            this.disconnect();
+
+            // Now set up for polling mode
+            this.isClosing = false;
             this.activeSymbol = (mappedSymbol || symbol).toLowerCase();
             this.activeInterval = INTERVAL_MAP[interval] || '1h';
-            this.isClosing = false;
-            this.disconnect(); // Clean up any existing connections
+
+            // Start polling (which will set isConnected=true and notify health)
             this.startPolling();
             return;
         }
