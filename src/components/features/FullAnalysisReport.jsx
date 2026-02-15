@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Activity, Shield, Target, TrendingUp, AlertCircle, Zap, BookOpen, Clock, BarChart2, Layers, Database } from 'lucide-react';
+import { normalizeDirection } from '../../utils/normalization.js';
 import PredictionBadge from './PredictionBadge';
 import PathProjection from './PathProjection';
 import TrapZoneWarning from './TrapZoneWarning';
@@ -505,7 +506,8 @@ export default function FullAnalysisReport({ analysis, loading, realtimeDiag }) 
                             onMouseEnter={(e) => {
                                 e.currentTarget.style.transform = 'translateY(-4px)';
                                 e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)';
-                                e.currentTarget.style.borderColor = setup.direction === 'LONG' ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+                                const isBull = normalizeDirection(setup.direction) === 'BULLISH';
+                                e.currentTarget.style.borderColor = isBull ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)';
                             }}
                             onMouseLeave={(e) => {
                                 e.currentTarget.style.transform = 'translateY(0)';
@@ -516,7 +518,7 @@ export default function FullAnalysisReport({ analysis, loading, realtimeDiag }) 
                             {/* Card Header */}
                             <header style={{
                                 padding: '16px',
-                                background: setup.direction === 'LONG' ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)',
+                                background: normalizeDirection(setup.direction) === 'BULLISH' ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)',
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
@@ -528,8 +530,8 @@ export default function FullAnalysisReport({ analysis, loading, realtimeDiag }) 
                                         borderRadius: '4px',
                                         fontSize: '10px',
                                         fontWeight: 'bold',
-                                        background: setup.direction === 'LONG' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                                        color: setup.direction === 'LONG' ? '#10b981' : '#ef4444',
+                                        background: normalizeDirection(setup.direction) === 'BULLISH' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                                        color: normalizeDirection(setup.direction) === 'BULLISH' ? '#10b981' : '#ef4444',
                                         textTransform: 'uppercase'
                                     }}>
                                         {setup.direction}
@@ -677,7 +679,7 @@ export default function FullAnalysisReport({ analysis, loading, realtimeDiag }) 
                                     }}>
                                         {setup.capitalTag}
                                     </span>
-                                    <span style={{ fontSize: '11px', color: setup.direction === 'LONG' ? 'var(--color-success)' : 'var(--color-danger)', fontWeight: 'bold' }}>
+                                    <span style={{ fontSize: '11px', color: normalizeDirection(setup.direction) === 'BULLISH' ? 'var(--color-success)' : 'var(--color-danger)', fontWeight: 'bold' }}>
                                         HTF CONFLUENCE: {marketState?.mtf?.globalBias}
                                     </span>
                                 </footer>

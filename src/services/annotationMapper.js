@@ -1,7 +1,4 @@
-/**
- * Annotation Mapper Service
- * Unifies visual mapping for all institutional analysis types across the platform.
- */
+import { normalizeDirection } from '../utils/normalization.js';
 
 export class AnnotationMapper {
     /**
@@ -67,7 +64,7 @@ export class AnnotationMapper {
                     config.icon = '⚡ ENTRY';
                     break;
                 case 'ORDER_BLOCK':
-                    const isBullishOB = anno.direction === 'BULLISH';
+                    const isBullishOB = normalizeDirection(anno.direction) === 'BULLISH';
                     config.background = isBullishOB ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
                     config.icon = '🧱';
                     break;
@@ -280,7 +277,7 @@ export class AnnotationMapper {
                     time: Math.floor(coords.time),
                     y: coords.price,
                     label: anno.metadata.label,
-                    color: anno.metadata.direction === 'BULLISH' ? '#10b981' : '#ef4444'
+                    color: normalizeDirection(anno.metadata.direction) === 'BULLISH' ? '#10b981' : '#ef4444'
                 });
             }
 
@@ -320,7 +317,7 @@ export class AnnotationMapper {
                 overlays.paths.push({
                     id: anno.id,
                     points: mappedPoints,
-                    color: anno.direction === 'LONG' ? '#10b981' : anno.direction === 'SHORT' ? '#ef4444' : '#94a3b8',
+                    color: normalizeDirection(anno.direction) === 'BULLISH' ? '#10b981' : (normalizeDirection(anno.direction) === 'BEARISH' ? '#ef4444' : '#94a3b8'),
                     style: anno.style || 'SOLID', // Pass SOLID/DASHED/DOTTED
                     direction: anno.direction,
                     isWaiting: anno.isWaiting,

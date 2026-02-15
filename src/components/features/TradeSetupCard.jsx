@@ -2,12 +2,13 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, Target, AlertTriangle, CheckCircle, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { normalizeDirection } from '../../utils/normalization.js';
 import { useToast } from '../../context/ToastContext';
 
 const TradeSetupCard = ({ setup, index = 0, onClick }) => {
     const navigate = useNavigate();
     const { addToast } = useToast();
-    const isLong = setup.direction === 'LONG';
+    const isBullish = normalizeDirection(setup.direction) === 'BULLISH';
 
     const handleViewChart = () => {
         addToast(`Opening chart for ${setup.symbol}...`, 'info');
@@ -34,7 +35,7 @@ const TradeSetupCard = ({ setup, index = 0, onClick }) => {
                                 <span style={{ fontSize: '10px', fontWeight: 'bold' }}>SCALP</span>
                             </span>
                         )}
-                        <span className={`badge ${isLong ? 'badge-success' : 'badge-danger'}`}>
+                        <span className={`badge ${isBullish ? 'badge-success' : 'badge-danger'}`}>
                             {setup.direction}
                         </span>
                         {setup.smtConfluence > 0 && (

@@ -1,11 +1,12 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Target, Shield, AlertTriangle, TrendingUp, Calendar, ArrowRight, Zap, Layers, Activity } from 'lucide-react';
+import { normalizeDirection } from '../../utils/normalization.js';
 
 const SetupDetailView = ({ setup, onClose }) => {
     if (!setup) return null;
 
-    const isLong = setup.direction === 'LONG';
+    const isBullish = normalizeDirection(setup.direction) === 'BULLISH';
     const riskReward = Math.abs((setup.targets[0]?.price || setup.targets[0]) - setup.entryZone.optimal) / Math.abs(setup.entryZone.optimal - setup.stopLoss);
 
     // Scenario probabilities
@@ -56,12 +57,12 @@ const SetupDetailView = ({ setup, onClose }) => {
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'flex-start',
-                        background: isLong ? 'linear-gradient(to right, rgba(16, 185, 129, 0.1), transparent)' : 'linear-gradient(to right, rgba(239, 68, 68, 0.1), transparent)'
+                        background: isBullish ? 'linear-gradient(to right, rgba(16, 185, 129, 0.1), transparent)' : 'linear-gradient(to right, rgba(239, 68, 68, 0.1), transparent)'
                     }}>
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
                                 <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{setup.symbol}</h2>
-                                <span className={`badge ${isLong ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '14px', padding: '4px 12px' }}>
+                                <span className={`badge ${isBullish ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '14px', padding: '4px 12px' }}>
                                     {setup.direction}
                                 </span>
                                 <span className="badge badge-neutral" style={{ fontSize: '12px' }}>{setup.timeframe}</span>

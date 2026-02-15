@@ -1,4 +1,5 @@
 import React from 'react';
+import { normalizeDirection } from '../../utils/normalization';
 import './PredictionBadge.css';
 
 /**
@@ -51,21 +52,19 @@ const PredictionBadge = ({ prediction }) => {
 
 
     const getBiasColor = (bias) => {
-        switch (bias) {
-            case 'BULLISH': return '#00ff88';
-            case 'BEARISH': return '#ff4466';
-            case 'NEUTRAL': return '#ffaa00';
-            default: return '#666';
-        }
+        const norm = normalizeDirection(bias);
+        if (norm === 'BULLISH') return '#00ff88';
+        if (norm === 'BEARISH') return '#ff4466';
+        if (norm === 'NEUTRAL') return '#ffaa00';
+        return '#666';
     };
 
     const getBiasIcon = (bias) => {
-        switch (bias) {
-            case 'BULLISH': return '🚀';
-            case 'BEARISH': return '📉';
-            case 'NEUTRAL': return '⚖️';
-            default: return '❓';
-        }
+        const norm = normalizeDirection(bias);
+        if (norm === 'BULLISH') return '🚀';
+        if (norm === 'BEARISH') return '📉';
+        if (norm === 'NEUTRAL') return '⚖️';
+        return '❓';
     };
 
     const getConfidenceLevel = (confidence) => {

@@ -4,9 +4,10 @@
  */
 export const normalizeDirection = (d) => {
     if (!d) return 'NEUTRAL';
+    if (typeof d !== 'string') return 'NEUTRAL';
     const upper = d.toUpperCase();
-    if (upper.includes('BULLISH') || upper.includes('LONG') || upper === 'UP') return 'BULLISH';
-    if (upper.includes('BEARISH') || upper.includes('SHORT') || upper === 'DOWN') return 'BEARISH';
+    if (upper.includes('BULL') || upper.includes('LONG') || upper === 'UP' || upper === 'BUY') return 'BULLISH';
+    if (upper.includes('BEAR') || upper.includes('SHORT') || upper === 'DOWN' || upper === 'SELL') return 'BEARISH';
     return 'NEUTRAL';
 };
 

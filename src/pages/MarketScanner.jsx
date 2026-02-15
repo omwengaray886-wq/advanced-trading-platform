@@ -8,6 +8,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { marketData } from '../services/marketData';
 import { AnalysisOrchestrator } from '../services/analysisOrchestrator';
+import { normalizeDirection } from '../utils/normalization';
 import Footer from '../components/layout/Footer';
 
 const orchestrator = new AnalysisOrchestrator();
@@ -84,8 +85,9 @@ export default function MarketScanner() {
     });
 
     const getBiasColor = (bias) => {
-        if (bias === 'BULLISH' || bias === 'LONG') return 'var(--color-success)';
-        if (bias === 'BEARISH' || bias === 'SHORT') return 'var(--color-danger)';
+        const norm = normalizeDirection(bias);
+        if (norm === 'BULLISH') return 'var(--color-success)';
+        if (norm === 'BEARISH') return 'var(--color-danger)';
         return 'var(--color-text-tertiary)';
     };
 
