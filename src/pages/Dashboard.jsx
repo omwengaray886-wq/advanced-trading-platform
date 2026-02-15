@@ -29,6 +29,7 @@ import { CorrelationClusterEngine } from '../services/CorrelationClusterEngine';
 import { AnnotationMapper } from '../services/annotationMapper';
 import { signalManager } from '../services/SignalManager';
 import { subscribeToGlobalSignals } from '../services/db';
+import AlphaMonitor from '../components/features/AlphaMonitor';
 
 const getSession = () => {
     const hour = new Date().getUTCHours();
@@ -331,6 +332,7 @@ export default function Dashboard() {
                         <ActivePositions />
                     </div>
                     <MarketTicker />
+                    <AlphaMonitor />
                 </div>
 
                 <div className="flex-col gap-md">

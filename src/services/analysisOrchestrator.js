@@ -895,6 +895,13 @@ export class AnalysisOrchestrator {
                     if (newsAdvice === 'BUY' && direction === 'SHORT') newsPenalty += 0.2;
                     if (newsAdvice === 'SELL' && direction === 'LONG') newsPenalty += 0.2;
 
+                    // News Shock Force-Veto (Phase 15 Upgrade)
+                    const newsShockPenalty = await newsShockEngine.calculateSuitabilityPenalty(symbol, direction);
+                    if (newsShockPenalty > 0) {
+                        newsPenalty += newsShockPenalty;
+                        c.rationale += ` | NEWS SHOCK: Imminent Institutional Volatility (-${(newsShockPenalty * 100).toFixed(0)}%)`;
+                    }
+
                     const finalSuitability = Math.max(0.1, c.suitability - newsPenalty);
                     const finalQuantScore = Math.max(0, quantScore - (newsPenalty * 100));
 

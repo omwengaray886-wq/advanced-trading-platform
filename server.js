@@ -263,116 +263,129 @@ app.get('/api/binance/klines', async (req, res) => {
             const mappedSymbol = symbol.toUpperCase().replace('/', '');
 
             // --- GBPJPY: Direct CoinGecko Forex (Binance GBPUSDT is delisted) ---
+            // --- GBPJPY: Synthetic Calculation (Institutional Grade) ---
+            // --- GBPJPY: Direct Yahoo Finance (Real Market Data) ---
             if (mappedSymbol === 'GBPJPY' || mappedSymbol === 'JBPJPY') {
-                console.log(`[PROXY] Fetching GBPJPY from CoinGecko Forex API...`);
-                // CoinGecko doesn't provide OHLC for forex pairs, so we'll use a stable fallback
-                // with real-time ticker data from their simple price endpoint
-                // For now, return ghost candles with realistic GBPJPY pricing
-                const nowUTC = Date.now();
-                const startOfHour = Math.floor(nowUTC / 3600000) * 3600000;
-                const ghostCandles = [];
-                const count = parseInt(limit) || 100;
-                const fallbackPrice = "190.5"; // Approximate GBPJPY institutional rate
-
-                console.log(`[PROXY] Generating ${count} realistic candles for GBPJPY with variation. Reason: GBPUSDT delisted on Binance.`);
-
-                // Generate realistic-looking candles with small price movement
-                let currentPrice = 190.5;
-                for (let i = 0; i < count; i++) {
-                    const t = startOfHour - (i * 3600000);
-
-                    // Add small random variation to simulate market movement
-                    const variation = (Math.random() - 0.5) * 0.6; // +/- 0.3 typical hourly movement
-                    currentPrice += variation;
-
-                    const open = currentPrice.toFixed(4);
-                    const high = (currentPrice + Math.random() * 0.4).toFixed(4);
-                    const low = (currentPrice - Math.random() * 0.4).toFixed(4);
-                    const close = (currentPrice + (Math.random() - 0.5) * 0.3).toFixed(4);
-
-                    ghostCandles.push([t, open, high, low, close, "1000", t + 3599999, "190500", 50, "500", "95250", "0"]);
-                }
-                return res.json(ghostCandles.reverse());
-            }
-
-            const indexConfig = typeof INDICES_MAP[mappedSymbol] === 'string'
-                ? { id: INDICES_MAP[mappedSymbol], vs: 'usd' }
-                : INDICES_MAP[mappedSymbol];
-
-            if (indexConfig) {
-                console.log(`[PROXY] Routing ${symbol} to CoinGecko Reference (${indexConfig.id} vs ${indexConfig.vs})...`);
                 try {
-                    const cgRes = await coinGeckoQueue.enqueue(() =>
-                        axios.get(`https://api.coingecko.com/api/v3/coins/${indexConfig.id}/ohlc`, {
-                            params: { vs_currency: indexConfig.vs, days: 1 },
-                            headers: {
-                                'x-cg-demo-api-key': process.env.COINGECKO_API_KEY || '',
-                                'User-Agent': 'Institutional-Platform/1.0'
-                            },
-                            timeout: 10000
-                        })
-                    );
+                    console.log(`[PROXY] Fetching REAL GBPJPY from Yahoo Finance...`);
+                    const range = interval === '1h' ? '7d' : '1mo'; 
+                    const yParams = {
+                        interval: interval === '4h' ? '60m' : '60m', 
+                        range: range
+                    };
+                    
+                    const yRes = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/GBPJPY=X`, { params: yParams });
+                    const result = yRes.data?.chart?.result?.[0];
 
-                    // Map CG OHLC [time, o, h, l, c] to Binance [time, o, h, l, c, v, closeTime, ...]
-                    const mapped = cgRes.data.map(p => [
-                        p[0], p[1].toString(), p[2].toString(), p[3].toString(), p[4].toString(), "0", p[0] + 3600000, "0", 0, "0", "0", "0"
-                    ]);
-                    return res.json(mapped);
-                } catch (cgErr) {
-                    console.error(`[PROXY ERROR] CoinGecko fallback fail for ${symbol}:`, cgErr.message);
+                    if (!result) throw new Error('No Yahoo data');
+
+                    const timestamps = result.timestamp;
+                    const quote = result.indicators.quote[0];
+                    
+                    // Map to Binance Format
+                    const candles = timestamps.map((t, i) => {
+                        if (quote.open[i] === null || quote.close[i] === null) return null;
+                        
+                        return [
+                            t * 1000, 
+                            quote.open[i].toFixed(3),
+                            quote.high[i].toFixed(3),
+                            quote.low[i].toFixed(3),
+                            quote.close[i].toFixed(3),
+                            "10000", 
+                            (t * 1000) + 3599999,
+                            "100000",
+                            100,
+                            "5000",
+                            "50000",
+                            "0"
+                        ];
+                    }).filter(c => c !== null);
+
+                    return res.json(candles.reverse().slice(0, parseInt(limit) || 100).reverse()); // Ensure limit
+
+                } catch (yErr) {
+                    console.error(`[PROXY ERROR] Yahoo Finance fail for GBPJPY:`, yErr.message);
                 }
             }
+                        const indexConfig = typeof INDICES_MAP[mappedSymbol] === 'string'
+                            ? { id: INDICES_MAP[mappedSymbol], vs: 'usd' }
+                            : INDICES_MAP[mappedSymbol];
 
-            // Also return Ghost Candles for known invalid Forex pairs or failed indices to stop 404 spam
-            const INVALID_FOREX = new Set(['AUDUSDT', 'NZDUSDT', 'USDCHF', 'USDJPY', 'USDCAD', 'SPXUSD', 'DXY', 'GBPJPY', 'JBPJPY']);
-            if (INVALID_FOREX.has(mappedSymbol) || indexConfig) {
-                // Coherent Timestamp Logic (Phase 2): Use current UTC time and subtract i hours
-                const nowUTC = Date.now();
-                const startOfHour = Math.floor(nowUTC / 3600000) * 3600000;
-                const ghostCandles = [];
-                const count = parseInt(limit) || 100;
+                        if (indexConfig) {
+                            console.log(`[PROXY] Routing ${symbol} to CoinGecko Reference (${indexConfig.id} vs ${indexConfig.vs})...`);
+                            try {
+                                const cgRes = await coinGeckoQueue.enqueue(() =>
+                                    axios.get(`https://api.coingecko.com/api/v3/coins/${indexConfig.id}/ohlc`, {
+                                        params: { vs_currency: indexConfig.vs, days: 1 },
+                                        headers: {
+                                            'x-cg-demo-api-key': process.env.COINGECKO_API_KEY || '',
+                                            'User-Agent': 'Institutional-Platform/1.0'
+                                        },
+                                        timeout: 10000
+                                    })
+                                );
 
-                // Determine a realistic fallback price based on the symbol
-                let fallbackPrice = "1.0";
-                if (mappedSymbol === 'GBPJPY' || symbol.includes('JPY')) fallbackPrice = "190.0";
-                if (symbol.includes('US30') || symbol.includes('SPX') || symbol.includes('NDX')) fallbackPrice = "5000.0";
-                if (mappedSymbol === 'JPYGBP') fallbackPrice = "0.0053";
+                                // Map CG OHLC [time, o, h, l, c] to Binance [time, o, h, l, c, v, closeTime, ...]
+                                const mapped = cgRes.data.map(p => [
+                                    p[0], p[1].toString(), p[2].toString(), p[3].toString(), p[4].toString(), "0", p[0] + 3600000, "0", 0, "0", "0", "0"
+                                ]);
+                                return res.json(mapped);
+                            } catch (cgErr) {
+                                console.error(`[PROXY ERROR] CoinGecko fallback fail for ${symbol}:`, cgErr.message);
+                            }
+                        }
 
-                console.log(`[PROXY] Generating ${count} Ghost Candles for ${symbol} @ ${fallbackPrice}. Server UTC: ${new Date(nowUTC).toISOString()}`);
+                        // Also return Ghost Candles for known invalid Forex pairs or failed indices to stop 404 spam
+                        const INVALID_FOREX = new Set(['AUDUSDT', 'NZDUSDT', 'USDCHF', 'USDJPY', 'USDCAD', 'SPXUSD', 'DXY', 'GBPJPY', 'JBPJPY']);
+                        if (INVALID_FOREX.has(mappedSymbol) || indexConfig) {
+                            // Coherent Timestamp Logic (Phase 2): Use current UTC time and subtract i hours
+                            const nowUTC = Date.now();
+                            const startOfHour = Math.floor(nowUTC / 3600000) * 3600000;
+                            const ghostCandles = [];
+                            const count = parseInt(limit) || 100;
 
-                for (let i = 0; i < count; i++) {
-                    const t = startOfHour - (i * 3600000);
-                    ghostCandles.push([t, fallbackPrice, fallbackPrice, fallbackPrice, fallbackPrice, "0", t + 3599999, "0", 0, "0", "0", "0"]);
-                }
-                return res.json(ghostCandles.reverse());
-            }
+                            // Determine a realistic fallback price based on the symbol
+                            let fallbackPrice = "1.0";
+                            if (mappedSymbol === 'GBPJPY' || symbol.includes('JPY')) fallbackPrice = "190.0";
+                            if (symbol.includes('US30') || symbol.includes('SPX') || symbol.includes('NDX')) fallbackPrice = "5000.0";
+                            if (mappedSymbol === 'JPYGBP') fallbackPrice = "0.0053";
 
-            console.warn(`[PROXY] Requested unsupported symbol: ${symbol}`);
-            return res.status(404).json({
-                error: 'Unsupported Symbol',
-                message: `The symbol ${symbol} is not found on Binance Spot or is currently not trading.`,
-            });
-        }
+                            console.log(`[PROXY] Generating ${count} Ghost Candles for ${symbol} @ ${fallbackPrice}. Server UTC: ${new Date(nowUTC).toISOString()}`);
+
+                            for (let i = 0; i < count; i++) {
+                                const t = startOfHour - (i * 3600000);
+                                ghostCandles.push([t, fallbackPrice, fallbackPrice, fallbackPrice, fallbackPrice, "0", t + 3599999, "0", 0, "0", "0", "0"]);
+                            }
+                            return res.json(ghostCandles.reverse());
+                        }
+
+                        console.warn(`[PROXY] Requested unsupported symbol: ${symbol}`);
+                        return res.status(404).json({
+                            error: 'Unsupported Symbol',
+                            message: `The symbol ${symbol} is not found on Binance Spot or is currently not trading.`,
+                        });
+                    }
 
         const response = await fetchWithRetry(`${BINANCE_BASE}/api/v3/klines`, {
-            symbol: binanceSymbol,
-            interval,
-            limit: limit || 100
-        });
-        res.json(response.data);
-    } catch (error) {
-        const status = error.response?.status || 500;
-        console.error(`[PROXY ERROR] Klines ${status} for ${req.query.symbol}: ${error.message}`);
-        if (error.response) {
-            return res.status(status).json(error.response.data);
-        }
-        res.status(status).json({
-            error: 'Binance Proxy Connection Failed',
-            details: error.message,
-            target: `${BINANCE_BASE}/api/v3/klines`
-        });
-    }
-});
+                        symbol: binanceSymbol,
+                        interval,
+                        limit: limit || 100
+                    });
+                    res.json(response.data);
+                } catch (error) {
+                    const status = error.response?.status || 500;
+                    console.error(`[PROXY ERROR] Klines ${status} for ${req.query.symbol}: ${error.message}`);
+                    if (error.response) {
+                        return res.status(status).json(error.response.data);
+                    }
+                    res.status(status).json({
+                        error: 'Binance Proxy Connection Failed',
+                        details: error.message,
+                        target: `${BINANCE_BASE}/api/v3/klines`
+                    });
+                }
+            });
 
 // 1.1 Proxy for Binance Depth (Public)
 app.get('/api/binance/depth', async (req, res) => {

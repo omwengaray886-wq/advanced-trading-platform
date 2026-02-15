@@ -151,6 +151,7 @@ export default function Markets() {
     const [analysis, setAnalysis] = useState(null);
     const [activeSetupId, setActiveSetupId] = useState('A');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [activeShock, setActiveShock] = useState(null);
 
     const analysisRef = useRef(false);
     const location = useLocation();
@@ -162,7 +163,20 @@ export default function Markets() {
         const unsubscribe = realtimeDiagnosticService.subscribe(diag => {
             setRealtimeDiag(diag);
         });
-        return unsubscribe;
+
+        // Phase 15: News Shock Monitoring
+        const checkShock = async () => {
+            const shock = await newsShockEngine.getActiveShock(selectedPair);
+            setActiveShock(shock);
+        };
+
+        checkShock();
+        const interval = setInterval(checkShock, 60000); // Check every minute
+
+        return () => {
+            unsubscribe();
+            clearInterval(interval);
+        };
     }, [selectedPair]);
 
     const handleScreenshot = () => {
@@ -1060,6 +1074,46 @@ export default function Markets() {
                     position: 'relative',
                     overflowY: 'auto'
                 }}>
+                    {/* Phase 15: News Shock Alert Banner (Symbol-Specific) */}
+                    <AnimatePresence>
+                        {activeShock && (
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                style={{ overflow: 'hidden' }}
+                            >
+                                <div style={{
+                                    background: activeShock.severity === 'HIGH' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                    border: `1px solid ${activeShock.severity === 'HIGH' ? '#ef4444' : '#f59e0b'}`,
+                                    padding: '12px 24px',
+                                    margin: '16px 24px 0 24px',
+                                    borderRadius: '8px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    backdropFilter: 'blur(8px)',
+                                    zIndex: 100
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <AlertTriangle size={20} color={activeShock.severity === 'HIGH' ? '#ef4444' : '#f59e0b'} />
+                                        <div>
+                                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: activeShock.severity === 'HIGH' ? '#ef4444' : '#f59e0b' }}>
+                                                INSTITUTIONAL VOLATILITY ALERT: {activeShock.event.toUpperCase()}
+                                            </div>
+                                            <div style={{ fontSize: '11px', opacity: 0.8, color: 'white' }}>
+                                                {activeShock.message}. Capital protection active: Suitability penalized by {(activeShock.severity === 'HIGH' ? 50 : 20)}%.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style={{ fontSize: '10px', fontWeight: 'bold', letterSpacing: '1px', opacity: 0.6, color: 'white' }}>
+                                        {activeShock.phase} PHASE
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
                     {/* Integrated Chart HUD */}
                     <div style={{
                         flex: 1,

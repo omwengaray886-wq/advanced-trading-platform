@@ -77,17 +77,31 @@ class StrategyPerformanceTracker {
     }
 
     /**
-     * Get dynamic weights for all strategies (Phase 5 Upgrade)
+     * Get dynamic weights for all strategies (Phase 15 Upgrade)
      */
     static async getAllStrategyWeights(regime) {
-        // In a real env, this would aggregate stats. 
-        // For now, we return the dynamic multipliers based on local state if available.
-        return {
-            'Institutional Continuation': { multiplier: 1.0 },
-            'Liquidity Hunter': { multiplier: 1.0 },
-            'Market Maker Reversal': { multiplier: 1.0 },
-            'Fair Value Gap': { multiplier: 1.0 }
-        };
+        const tracker = strategyPerformanceTracker;
+        const weights = {};
+
+        // List of core strategies we want to track
+        const strategies = [
+            'Institutional Continuation',
+            'Liquidity Hunter',
+            'Market Maker Reversal',
+            'Fair Value Gap',
+            'Structure Break & Retest',
+            'Order Flow Imbalance'
+        ];
+
+        strategies.forEach(name => {
+            weights[name] = {
+                multiplier: tracker.getDynamicWeight(name),
+                winRate: tracker._initStats(name).winRate,
+                streak: tracker._initStats(name).streak
+            };
+        });
+
+        return weights;
     }
 
     /**
