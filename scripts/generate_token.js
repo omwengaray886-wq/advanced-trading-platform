@@ -1,39 +1,23 @@
+
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
+dotenv.config();
 
-// Load environment variables
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '../.env') });
+const SECRET_ENV = process.env.JWT_SECRET || 's3cr3t_7rad1ng_p1a7f0rm_k3y_2026_v2';
+const SECRET_FALLBACK = 'your-secret-key-change-this'; // From server.js fallback
 
-const SECRET_KEY = process.env.JWT_SECRET || 'your-secret-key-change-this';
-
-if (SECRET_KEY === 'your-secret-key-change-this') {
-    console.warn('⚠️  WARNING: Using default JWT_SECRET. Please set JWT_SECRET in .env for production security.');
-}
-
-const generateToken = (role = 'premium', days = 365) => {
-    const payload = {
-        role,
-        issued: Date.now(),
-        type: 'access_key'
-    };
-
-    const token = jwt.sign(payload, SECRET_KEY, { expiresIn: `${days}d` });
-
-    console.log('\n==================================================');
-    console.log('🔑  NEW ACCESS KEY GENERATED');
-    console.log('==================================================');
-    console.log(`Role:       ${role}`);
-    console.log(`Expires:    ${days} days`);
-    console.log('--------------------------------------------------');
-    console.log(token);
-    console.log('==================================================\n');
+const payload = {
+    role: 'admin',
+    name: 'Authorized User',
+    access_level: 'unrestricted',
+    ts: Date.now() // Add timestamp to make it unique
 };
 
-// Get args
-const args = process.argv.slice(2);
-const role = args[0] || 'premium';
+const tokenEnv = jwt.sign(payload, SECRET_ENV, { expiresIn: '30d' });
+const tokenFallback = jwt.sign(payload, SECRET_FALLBACK, { expiresIn: '30d' });
 
-generateToken(role);
+console.log('\n=== TOKEN 1 (ENV SECRET) ===');
+console.log(tokenEnv);
+console.log('\n=== TOKEN 2 (FALLBACK SECRET) ===');
+console.log(tokenFallback);
+console.log('==============================\n');

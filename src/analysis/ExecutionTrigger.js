@@ -10,15 +10,37 @@ export class ExecutionTrigger {
      * Verify Candle Confirmation
      * @param {Object} lastCandle - The most recent closed candle
      * @param {string} direction - 'LONG' | 'SHORT'
+     * @param {number} averageVolume - Optional: Average volume for relative comparison
      * @returns {Object} { isConfirmed, confidence, reason }
      */
-    static verifyCandleConfirmation(lastCandle, direction) {
+    static verifyCandleConfirmation(lastCandle, direction, averageVolume = null) {
         if (!lastCandle) return { isConfirmed: false, reason: 'No candle data' };
 
         const bodySize = Math.abs(lastCandle.close - lastCandle.open);
         const totalRange = lastCandle.high - lastCandle.low;
         const upperWick = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
         const lowerWick = Math.min(lastCandle.open, lastCandle.close) - lastCandle.low;
+
+        // 0. Volume Validation (New Phase 75 Gate)
+        // If averageVolume provided, we require at least 80% of average to confirm a trigger
+        // Weak volume on a trigger candle = FAKEOUT risk
+        let volumeConfidence = 1.0;
+        let volumeReason = '';
+
+        if (averageVolume && lastCandle.volume) {
+            const rvol = lastCandle.volume / averageVolume;
+            if (rvol < 0.8) {
+                // Critical Failure: Weak Volume
+                return {
+                    isConfirmed: false,
+                    confidence: 0.2,
+                    reason: `Low Volume Trigger (RVOL: ${rvol.toFixed(1)}x) - Fakeout Risk`
+                };
+            } else if (rvol > 1.5) {
+                volumeConfidence = 1.2; // Boost for high volume
+                volumeReason = ' + High Vol';
+            }
+        }
 
         // 1. Rejection Wick Check
         // We want to see a wick rejecting our zone.
@@ -56,11 +78,11 @@ export class ExecutionTrigger {
         // If we have a small wick, we need color alignment.
 
         if (wickConfidence > 0.5) {
-            return { isConfirmed: true, confidence: 0.9, reason: `Strong ${reason}` };
+            return { isConfirmed: true, confidence: 0.9 * volumeConfidence, reason: `Strong ${reason}${volumeReason}` };
         }
 
         if (wickConfidence > 0.3 && isColorAligned) {
-            return { isConfirmed: true, confidence: 0.7, reason: `${reason} + Color Aligned` };
+            return { isConfirmed: true, confidence: 0.7 * volumeConfidence, reason: `${reason} + Color Aligned${volumeReason}` };
         }
 
         return {

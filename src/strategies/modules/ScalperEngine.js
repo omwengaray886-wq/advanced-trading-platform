@@ -28,16 +28,31 @@ export class ScalperEngine {
 
             // Logic: Require CONFLUENCE of Imbalance + Wall
             if (wallSetup && obi.direction === wallSetup.direction) {
-                const amdBoost = (marketState?.amdCycle?.phase === 'DISTRIBUTION') ? 0.1 : 0;
-                return {
-                    type: 'SCALP_V1',
-                    direction: wallSetup.direction,
-                    entry: wallSetup.entry,
-                    stopLoss: wallSetup.stopLoss,
-                    target: wallSetup.target,
-                    rationale: `Scalp: ${obi.direction} Flow (${obi.ratio.toFixed(1)}x) front-running wall at ${wallSetup.wallPrice}`,
-                    confidence: Math.min(0.95, 0.5 + (obi.ratio / 10) + amdBoost)
-                };
+                let confidence = 0.5 + Math.min(0.4, obi.ratio / 10);
+
+                // Trend Filter (Phase 73 Fix)
+                if (marketState?.currentTrend) {
+                    const trend = marketState.currentTrend;
+                    if (trend === 'BEARISH' && wallSetup.direction === 'LONG') confidence -= 0.6;
+                    if (trend === 'BULLISH' && wallSetup.direction === 'SHORT') confidence -= 0.6;
+                }
+
+                // AMDBoost: Only boost if Phase aligns with Direction
+                if (marketState?.amdCycle?.phase === 'ACCUMULATION' && wallSetup.direction === 'LONG') confidence += 0.15;
+                if (marketState?.amdCycle?.phase === 'DISTRIBUTION' && wallSetup.direction === 'SHORT') confidence += 0.15;
+
+                // Threshold Check: Rejects weak counter-trend setups
+                if (confidence > 0.6) {
+                    return {
+                        type: 'SCALP_V1',
+                        direction: wallSetup.direction,
+                        entry: wallSetup.entry,
+                        stopLoss: wallSetup.stopLoss,
+                        target: wallSetup.target,
+                        rationale: `Scalp: ${obi.direction} Flow (${obi.ratio.toFixed(1)}x) front-running wall at ${wallSetup.wallPrice}`,
+                        confidence: Math.min(0.95, confidence)
+                    };
+                }
             }
         }
 

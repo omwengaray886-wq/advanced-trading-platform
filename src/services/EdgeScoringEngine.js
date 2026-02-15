@@ -1,6 +1,7 @@
 import { normalizeDirection, isInversePair } from '../utils/normalization.js';
 import { SentimentEngine } from './SentimentEngine.js';
 import { OrderBookEngine } from './OrderBookEngine.js';
+import { strategyPerformanceTracker } from './StrategyPerformanceTracker.js';
 
 /**
  * Edge Scoring Engine (Phase 51)
@@ -38,20 +39,46 @@ export class EdgeScoringEngine {
 
         if (['1m', '5m', '15m'].includes(tf)) {
             tfProfile = 'SCALPER';
-            killzoneWeight = 1.3; // Scalping prioritizes session timing
-            htfWeight = 0.7; // Lower HTF requirement for scalps
-            minRR = 1.5; // Scalps accept lower R:R
+            killzoneWeight = 1.3;
+            htfWeight = 0.7;
+            minRR = 1.5;
         } else if (['30m', '1h', '2h'].includes(tf)) {
-
             tfProfile = 'DAY_TRADER';
-            killzoneWeight = 1.0; // Balanced
+            killzoneWeight = 1.0;
             htfWeight = 1.0;
             minRR = 2.0;
         } else if (['4h', '1d', 'w', '1w'].includes(tf)) {
             tfProfile = 'SWING';
-            killzoneWeight = 0.6; // Swing less dependent on session
-            htfWeight = 1.4; // Swing requires strong HTF alignment
-            minRR = 3.0; // Swing needs higher R:R
+            killzoneWeight = 0.6;
+            htfWeight = 1.4;
+            minRR = 3.0;
+        }
+
+        // === REGIME ADAPTATION (Phase 55 Upgrade) ===
+        // Dynamic weight shifting based on market condition
+        const regime = marketState.regime || 'TRENDING';
+        let trendWeight = 1.0;
+        let oscillatorWeight = 1.0;
+
+        if (regime === 'TRENDING') {
+            trendWeight = 1.5; // Boost trend alignment points
+            oscillatorWeight = 0.5; // Reduce oscillator importance (they fake out in trends)
+        } else if (regime === 'RANGING') {
+            trendWeight = 0.5; // Reduce trend reliance
+            oscillatorWeight = 1.5; // Boost mean reversion signals
+        }
+
+        // === GOLDEN CONFLUENCE CHECK ===
+        const isGolden = (
+            normalizeDirection(marketState.mtf?.globalBias) === setupDir && // HTF Alignment
+            normalizeDirection(marketState.currentTrend) === setupDir &&    // LTF Alignment
+            normalizeDirection(marketState.sentiment?.label) === setupDir && // Sentiment Alignment
+            marketState.volumeAnalysis?.isInstitutional        // Volume Support
+        );
+
+        if (isGolden) {
+            totalPoints += 50;
+            positives.push('🌟 GOLDEN CONFLUENCE (HTF + Trend + Sentiment + Volume)');
         }
 
         // 1. Bayesian Strategy Reliability (up to 40 points)
@@ -65,6 +92,19 @@ export class EdgeScoringEngine {
             positives.push(`Strong Strategy Reliability (${reliability ? reliability.toFixed(0) : '0'}%)`);
         } else if (reliability < 50) {
             risks.push(`Low Strategy Reliability (${reliability ? reliability.toFixed(0) : '0'}%)`);
+        }
+
+        // 1.5 Adaptive Performance (Phase 5: Self-Correction)
+        // If this strategy is currently losing money, penalize it.
+        const strategyName = setup.strategy?.name || 'Unknown';
+        const perfMultiplier = strategyPerformanceTracker.getDynamicWeight(strategyName);
+
+        if (perfMultiplier > 1.1) {
+            totalPoints += 15;
+            positives.push(`🔥 HOT HAND: Strategy is winning (${perfMultiplier.toFixed(1)}x boost)`);
+        } else if (perfMultiplier < 0.9) {
+            totalPoints -= 25;
+            risks.push(`❄️ COLD STREAK: Strategy is struggling (${perfMultiplier.toFixed(1)}x penalty)`);
         }
 
         // 2. R:R Feasibility (up to 20 points) - TIMEFRAME ADJUSTED
@@ -90,11 +130,11 @@ export class EdgeScoringEngine {
         if (globalBias === 'NEUTRAL') {
             totalPoints += 5;
         } else if (mtfAligned) {
-            const htfBonus = Math.round(25 * htfWeight);
+            const htfBonus = Math.round(25 * htfWeight * trendWeight);
             totalPoints += htfBonus;
             positives.push(`HTF Context alignment (${tfProfile === 'SWING' ? 'CRITICAL' : 'CONFIRMED'})`);
         } else {
-            const htfPenalty = Math.round(15 * htfWeight);
+            const htfPenalty = Math.round(15 * htfWeight * trendWeight);
             totalPoints -= htfPenalty;
             risks.push(`HTF Bias conflict${tfProfile === 'SWING' ? ' - HIGH RISK FOR SWING' : ''}`);
         }
@@ -108,12 +148,29 @@ export class EdgeScoringEngine {
         if (hasInstitutionalVolume) {
             totalPoints += 10;
             positives.push('Institutional volume participation');
+        } else if (regime === 'TRENDING') {
+            totalPoints -= 15;
+            risks.push('Low Volume in Tracking Phase (Validation Risk)');
         }
         if (hasSMT) {
+            const smt = marketState.smtDivergence; // The specific divergence found
             const smtStrength = marketState.smtConfluence || 50;
-            const smtBonus = smtStrength >= 80 ? 25 : 15;
-            totalPoints += smtBonus;
-            positives.push(`Inter-market divergence (SMT) ${smtStrength >= 80 ? 'PREMIUM' : 'DETECTED'}`);
+
+            if (smt) {
+                const smtDir = normalizeDirection(smt.type);
+                if (smtDir === setupDir) {
+                    totalPoints += 35; // HUGELY Important signal
+                    positives.push(`🌟 SMT Divergence Confirmation (${smt.type} with ${smt.metadata?.sibling || 'Correlated Asset'})`);
+                } else {
+                    totalPoints -= 20;
+                    risks.push(`SMT Divergence Conflict (${smt.type})`);
+                }
+            } else {
+                // Fallback if we just have the array but no specific dominant one assigned
+                const smtBonus = smtStrength >= 80 ? 25 : 15;
+                totalPoints += smtBonus;
+                positives.push(`Inter-market divergence (SMT) ${smtStrength >= 80 ? 'PREMIUM' : 'DETECTED'}`);
+            }
         }
         if (inKillzone) {
             const hour = marketState.session?.hour ?? new Date().getUTCHours();
@@ -141,32 +198,66 @@ export class EdgeScoringEngine {
             }
         }
 
-        // 5. Inst. Flow & Whale Watch (Phase 5)
-        const whaleActivity = marketState.tape?.whale;
-        const iceberg = marketState.orderFlow?.iceberg;
+        // 5. Inst. Flow & Whale Watch (Phase 4 Upgrade)
+        const icebergs = marketState.orderFlow?.icebergs || [];
+        const absorption = marketState.orderFlow?.absorption;
         const cvd = marketState.orderFlow?.cvdBias; // BULLISH / BEARISH
 
-        if (whaleActivity) {
-            // If Whale is printing at our level, it's support/resistance
-            totalPoints += 15;
-            positives.push(`Whale Activity Detected (${whaleActivity.size})`);
-        }
-        if (iceberg) {
-            const type = iceberg.type; // BUY_ICEBERG or SELL_ICEBERG
-            const isAligned = (type === 'BUY_ICEBERG' && setupDir === 'BULLISH') ||
-                (type === 'SELL_ICEBERG' && setupDir === 'BEARISH');
+        // A. Iceberg Support/Resistance
+        if (icebergs.length > 0) {
+            const relevantIceberg = icebergs.find(ice => {
+                const dist = Math.abs(ice.price - setup.entryZone?.optimal || marketState.currentPrice) / marketState.currentPrice;
+                return dist < 0.005; // Within 0.5%
+            });
 
-            if (isAligned) {
-                totalPoints += 20;
-                positives.push(`Iceberg Defense Detected (${iceberg.strength})`);
-            } else {
-                totalPoints -= 15;
-                risks.push(`Opposing Iceberg Wall Detected (${iceberg.strength})`);
+            if (relevantIceberg) {
+                // BUY_ICEBERG supports Longs, SELL_ICEBERG supports Shorts
+                // Note: BUY_ICEBERG means Passive Buy Limit absorbing Aggressive Sells
+                const isSupport = relevantIceberg.type === 'BUY_ICEBERG';
+                const isResist = relevantIceberg.type === 'SELL_ICEBERG';
+
+                if (setupDir === 'BULLISH' && isSupport) {
+                    totalPoints += 25;
+                    positives.push(`🐋 WHALE DETECTED: Iceberg Buy Wall at ${relevantIceberg.price}`);
+                } else if (setupDir === 'BEARISH' && isResist) {
+                    totalPoints += 25;
+                    positives.push(`🐋 WHALE DETECTED: Iceberg Sell Wall at ${relevantIceberg.price}`);
+                } else if ((setupDir === 'BULLISH' && isResist) || (setupDir === 'BEARISH' && isSupport)) {
+                    totalPoints -= 30; // Fighting a whale
+                    risks.push(`CRITICAL: Trading into Opposing Iceberg at ${relevantIceberg.price}`);
+                }
             }
         }
-        if (cvd && cvd === setupDir.toUpperCase()) {
-            totalPoints += 10;
-            positives.push('Cumulative Volume Delta (CVD) Aligned');
+
+        // B. Absorption (Delta Divergence)
+        if (absorption) {
+            // BUYING_ABSORPTION means price didn't drop despite selling -> Bullish
+            const isBullishAbs = absorption.type === 'BUYING_ABSORPTION';
+            const isBearishAbs = absorption.type === 'SELLING_ABSORPTION';
+
+            if (setupDir === 'BULLISH' && isBullishAbs) {
+                totalPoints += 20;
+                positives.push('Institutional Absorption (Delta Divergence) Supporting Long');
+            } else if (setupDir === 'BEARISH' && isBearishAbs) {
+                totalPoints += 20;
+                positives.push('Institutional Absorption (Delta Divergence) Supporting Short');
+            }
+        }
+
+        // C. CVD Alignment
+        if (cvd) {
+            if (cvd === setupDir.toUpperCase()) {
+                totalPoints += 10;
+                positives.push('Cumulative Volume Delta (CVD) Aligned');
+            } else {
+                // If CVD is opposing but Price is going our way -> Divergence/Absorption (Good)
+                // If CVD is opposing and Price is struggling -> Bad
+                // Simplified: Small penalty for retail headwind unless absorption saves it
+                if (!absorption) {
+                    totalPoints -= 5;
+                    risks.push('Retail Order Flow (CVD) Conflict');
+                }
+            }
         }
 
         // 6. Volume Profile & DOM Confluence
@@ -246,10 +337,31 @@ export class EdgeScoringEngine {
             risks.push(`High-impact news hazard (${marketState.activeShock.event})`);
         }
 
-        // Trap Zone Penalty
-        if (marketState.trapZones && (marketState.trapZones.warning || marketState.trapZones.count > 0)) {
-            totalPoints -= 30;
-            risks.push(`Trap Zone Detected: ${marketState.trapZones.warning || 'Pattern Failure'}`);
+        // Trap Zone Penalty (Phase 2 Upgrade)
+        if (marketState.trapZones) {
+            // Check if setup entry is near a trap
+            const entryPrice = setup.entryZone?.optimal || marketState.currentPrice;
+            const nearbyTrap = marketState.trapZones.bullTraps.concat(marketState.trapZones.bearTraps).find(t =>
+                Math.abs(t.location - entryPrice) / entryPrice < 0.003
+            );
+
+            if (nearbyTrap) {
+                // If Long into Bull Trap (Resistance) -> BAD
+                // If Short into Bear Trap (Support) -> BAD
+                if (setupDir === 'BULLISH' && (nearbyTrap.implication === 'BULL_TRAP' || nearbyTrap.implication === 'LONG_TRAP')) {
+                    totalPoints -= 100; // NUKE IT
+                    risks.push(`CRITICAL: Trading into confirmed Bull Trap at ${nearbyTrap.location}`);
+                } else if (setupDir === 'BEARISH' && (nearbyTrap.implication === 'BEAR_TRAP' || nearbyTrap.implication === 'SHORT_TRAP')) {
+                    totalPoints -= 100; // NUKE IT
+                    risks.push(`CRITICAL: Trading into confirmed Bear Trap at ${nearbyTrap.location}`);
+                }
+            }
+
+            // General Warning
+            if (marketState.trapZones.warning) {
+                totalPoints -= 10;
+                risks.push(marketState.trapZones.warning);
+            }
         }
 
         // 9. AMD Cycle Calibration
@@ -322,7 +434,7 @@ export class EdgeScoringEngine {
         }
 
         // 12. Momentum Cluster Alignment (Layer 4)
-        const momentumPoints = this.calculateMomentumCluster(setup.direction, marketState);
+        const momentumPoints = this.calculateMomentumCluster(setup.direction, marketState, oscillatorWeight);
         if (momentumPoints !== 0) {
             totalPoints += momentumPoints;
             if (momentumPoints > 0) positives.push(`Momentum Cluster Alignment (${momentumPoints > 15 ? 'PREMIUM' : 'STRONG'})`);
@@ -385,9 +497,10 @@ export class EdgeScoringEngine {
      * Calculate Momentum Cluster Score (Aggregate Layer 4 Indicators)
      * @param {string} direction - LONG | SHORT
      * @param {Object} marketState - Current market state
+     * @param {number} weight - Oscillator weight (default 1.0)
      * @returns {number} Points (-20 to +25)
      */
-    static calculateMomentumCluster(direction, marketState) {
+    static calculateMomentumCluster(direction, marketState, weight = 1.0) {
         const setupDir = normalizeDirection(direction);
         let points = 0;
 
@@ -428,7 +541,7 @@ export class EdgeScoringEngine {
             if (setupDir === 'BEARISH' && currentHist < prevHist && currentHist > 0) points += 10; // Falling above zero
         }
 
-        return points;
+        return Math.round(points * weight);
     }
 
     /**

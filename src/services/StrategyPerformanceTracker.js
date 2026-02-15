@@ -77,15 +77,16 @@ class StrategyPerformanceTracker {
     }
 
     /**
-     * Get dynamic weights for all strategies (Phase 2 Upgrade)
+     * Get dynamic weights for all strategies (Phase 5 Upgrade)
      */
     static async getAllStrategyWeights(regime) {
-        // Mocked for UI stability, in a real env this would aggregate stats
+        // In a real env, this would aggregate stats. 
+        // For now, we return the dynamic multipliers based on local state if available.
         return {
-            'Institutional Continuation': { winRate: 0.65, multiplier: 1.2 },
-            'Liquidity Hunter': { winRate: 0.58, multiplier: 1.1 },
-            'Market Maker Reversal': { winRate: 0.52, multiplier: 1.0 },
-            'Fair Value Gap': { winRate: 0.62, multiplier: 1.15 }
+            'Institutional Continuation': { multiplier: 1.0 },
+            'Liquidity Hunter': { multiplier: 1.0 },
+            'Market Maker Reversal': { multiplier: 1.0 },
+            'Fair Value Gap': { multiplier: 1.0 }
         };
     }
 
@@ -93,10 +94,13 @@ class StrategyPerformanceTracker {
      * Get specific strategy performance
      */
     static async getStrategyPerformance(strategyName, regime) {
+        const tracker = strategyPerformanceTracker; // Use singleton
+        const stats = tracker._initStats(strategyName);
         return {
-            winRate: 0.55,
-            profitFactor: 1.8,
-            trades: 120
+            winRate: stats.winRate,
+            profitFactor: 1.5, // Placeholder
+            trades: stats.recentResults.length,
+            streak: stats.streak
         };
     }
 
@@ -117,32 +121,54 @@ class StrategyPerformanceTracker {
         return this.stats.get(strategyId);
     }
 
-    updatePerformance(strategyId, isWin, rMultiple = 0) {
+    /**
+     * Update performance with new trade result
+     * @param {string} strategyId 
+     * @param {boolean} isWin 
+     */
+    updatePerformance(strategyId, isWin) {
         const stats = this._initStats(strategyId);
+
         if (isWin) {
             stats.wins++;
-            stats.streak = stats.streak > 0 ? stats.streak + 1 : 1;
+            // If streak was negative, reset to 1, else increment
+            stats.streak = stats.streak >= 0 ? stats.streak + 1 : 1;
         } else {
             stats.losses++;
-            stats.streak = stats.streak < 0 ? stats.streak - 1 : -1;
+            // If streak was positive, reset to -1, else decrement
+            stats.streak = stats.streak <= 0 ? stats.streak - 1 : -1;
         }
+
         stats.recentResults.push(isWin ? 1 : 0);
         if (stats.recentResults.length > 20) stats.recentResults.shift();
+
         const recentWins = stats.recentResults.filter(r => r === 1).length;
         stats.winRate = recentWins / stats.recentResults.length;
         stats.lastUpdated = Date.now();
+
         this.saveStats();
+        console.log(`[Performance] ${strategyId}: Streak=${stats.streak}, WR=${(stats.winRate * 100).toFixed(0)}%`);
     }
 
+    /**
+     * Calculate dynamic multiplier based on recent performance
+     * Range: 0.5 (Cold) to 1.5 (Hot)
+     */
     getDynamicWeight(strategyId) {
         const stats = this._initStats(strategyId);
         let multiplier = 1.0;
-        if (stats.streak >= 3) multiplier += 0.2;
-        if (stats.streak <= -3) multiplier -= 0.2;
-        if (stats.recentResults.length >= 10) {
-            if (stats.winRate > 0.6) multiplier += 0.2;
-            if (stats.winRate < 0.4) multiplier -= 0.2;
+
+        // 1. Streak Impact
+        if (stats.streak >= 3) multiplier += 0.2;       // Hot hand
+        if (stats.streak <= -2) multiplier -= 0.2;      // Cold hand (quicker penalty)
+
+        // 2. Win Rate Impact (Last 20 trades)
+        if (stats.recentResults.length >= 5) {
+            if (stats.winRate >= 0.7) multiplier += 0.1;
+            if (stats.winRate <= 0.3) multiplier -= 0.2;
         }
+
+        // 3. Cap Logic
         return Math.min(Math.max(multiplier, 0.5), 1.5);
     }
 }

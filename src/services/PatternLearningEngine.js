@@ -17,25 +17,67 @@ export class PatternLearningEngine {
      * @param {Array} candles - Full history
      * @returns {Object} Match stats
      */
+    /**
+     * Dynamic Time Warping (DTW) Distance
+     * Lower is better (0 = identical).
+     * Allows matching "stretched" or "compressed" patterns.
+     */
+    _dtwDistance(s1, s2) {
+        const n = s1.length;
+        const m = s2.length;
+
+        // Initialize distance matrix with Infinity
+        const dtw = Array(n + 1).fill(null).map(() => Array(m + 1).fill(Infinity));
+        dtw[0][0] = 0;
+
+        for (let i = 1; i <= n; i++) {
+            for (let j = 1; j <= m; j++) {
+                const cost = Math.abs(s1[i - 1] - s2[j - 1]);
+                dtw[i][j] = cost + Math.min(
+                    dtw[i - 1][j],    // Insertion
+                    dtw[i][j - 1],    // Deletion
+                    dtw[i - 1][j - 1]   // Match
+                );
+            }
+        }
+
+        return dtw[n][m];
+    }
+
+    /**
+     * Find similar historical patterns using DTW
+     */
     findSimilarPatterns(candles) {
         if (candles.length < this.memorySize) return null;
 
         const currentPattern = this._normalize(candles.slice(-this.patternLength));
-        const history = candles.slice(0, candles.length - this.patternLength); // Exclude current
+        const history = candles.slice(0, candles.length - this.patternLength);
 
         let matches = [];
+        const windowSize = this.patternLength;
 
-        // Sliding window search
-        // We skip every 4 candles for speed (stride)
-        for (let i = 0; i < history.length - this.patternLength; i += 4) {
-            const candidate = this._normalize(history.slice(i, i + this.patternLength));
-            const similarity = this._correlation(currentPattern, candidate);
+        // Sliding window with flexible length (0.8x to 1.2x stretching)
+        // For Phase 6 MVP, we stick to fixed length but use DTW distance metric instead of correlation
 
-            if (similarity > 0.85) { // High correlation threshold
+        for (let i = 0; i < history.length - windowSize; i += 4) {
+            const candidateRaw = history.slice(i, i + windowSize);
+            const candidate = this._normalize(candidateRaw);
+
+            // DTW returns cumulative distance.
+            const dist = this._dtwDistance(currentPattern, candidate);
+
+            // Normalize by pattern length to get "Average Error per Candle"
+            // Since data is normalized 0-1, an avg error of 0.1 means 10% deviation
+            const avgError = dist / this.patternLength;
+
+            // Similarity: 1.0 means identical. 0.0 means completely different (avg error >= 1.0)
+            const similarity = Math.max(0, 1 - avgError);
+
+            if (similarity > 0.80) { // Allow up to 20% average deviation
                 matches.push({
                     index: i,
                     similarity,
-                    outcome: this._assessOutcome(history, i + this.patternLength)
+                    outcome: this._assessOutcome(history, i + windowSize)
                 });
             }
         }
@@ -47,7 +89,6 @@ export class PatternLearningEngine {
         const bearishOutcomes = matches.filter(m => m.outcome < 0).length;
         const total = matches.length;
 
-        // Determine predictive bias
         let prediction = 'NEUTRAL';
         let confidence = 0;
 
@@ -68,37 +109,13 @@ export class PatternLearningEngine {
     }
 
     /**
-     * Normalize geometric pattern to 0-1 scale (or % change)
-     * so that absolute price doesn't matter, only shape.
+     * Normalize geometric pattern to 0-1 scale
      */
     _normalize(segment) {
         const min = Math.min(...segment.map(c => c.low));
         const max = Math.max(...segment.map(c => c.high));
         const range = max - min || 1;
-
         return segment.map(c => (c.close - min) / range);
-    }
-
-    /**
-     * Pearson correlation coefficient (simplified)
-     */
-    _correlation(a, b) {
-        const n = a.length;
-        let sum1 = 0, sum2 = 0, sum1Sq = 0, sum2Sq = 0, pSum = 0;
-
-        for (let i = 0; i < n; i++) {
-            sum1 += a[i];
-            sum2 += b[i];
-            sum1Sq += a[i] * a[i];
-            sum2Sq += b[i] * b[i];
-            pSum += a[i] * b[i];
-        }
-
-        const num = pSum - (sum1 * sum2 / n);
-        const den = Math.sqrt((sum1Sq - sum1 * sum1 / n) * (sum2Sq - sum2 * sum2 / n));
-
-        if (den === 0) return 0;
-        return num / den;
     }
 
     /**

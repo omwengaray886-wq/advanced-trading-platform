@@ -1,30 +1,28 @@
 {
-  "SMC Smart Money Concepts": {
-    "wins": 5,
-    "losses": 0,
-    "streak": 5,
-    "winRate": 1,
+  "Institutional Continuation": {
+    "wins": 3,
+    "losses": 6,
+    "streak": -6,
+    "winRate": 0.3333333333333333,
     "recentResults": [
       1,
       1,
       1,
-      1,
-      1
-    ],
-    "lastUpdated": 1770938410543
-  },
-  "ICT Concepts": {
-    "wins": 0,
-    "losses": 5,
-    "streak": -5,
-    "winRate": 0,
-    "recentResults": [
+      0,
       0,
       0,
       0,
       0,
       0
     ],
-    "lastUpdated": 1770938410553
+    "lastUpdated": 1771153647873
+  },
+  "Market Maker Reversal": {
+    "wins": 0,
+    "losses": 0,
+    "streak": 0,
+    "winRate": 0.5,
+    "recentResults": [],
+    "lastUpdated": 1771153647861
   }
 }

@@ -25,8 +25,8 @@ export class MicroStructureEngine {
             ? ((orderBook.asks[0].price - orderBook.bids[0].price) / orderBook.bids[0].price) * 100
             : 0;
 
-        // Spread Filter: Reject logic if spread > 0.1% (Scalping killer)
-        if (spreadPercent > 0.1) {
+        // Spread Filter: Reject logic if spread > 0.15% (Scalping killer)
+        if (spreadPercent > 0.15) {
             return { imbalanceRatio, signal: null, bidVolume, askVolume, spreadPercent, description: 'Spread too wide for scalping' };
         }
 
@@ -72,9 +72,9 @@ export class MicroStructureEngine {
         const lastCandle = candles[candles.length - 1];
 
         // Step 1: Dynamic ATR-Based Thresholds (Phase 4 Perfection)
-        // Use marketState ATR if available, otherwise calculate Micro ATR
-        const atr = marketState?.atr ||
-            (candles.slice(-14).reduce((sum, c) => sum + (c.high - c.low), 0) / 14);
+        // Force local ATR calculation for Scalping Precision (ignore potentially stale global ATR)
+        const localATR = (candles.slice(-14).reduce((sum, c) => sum + (c.high - c.low), 0) / 14);
+        const atr = localATR;
 
         const threshold = atr * 1.5;
 
@@ -90,7 +90,7 @@ export class MicroStructureEngine {
                         type: 'BULLISH_SWEEP',
                         pool,
                         entry: lastCandle.close,
-                        stopLoss: lastCandle.low - (atr * 0.1),
+                        stopLoss: lastCandle.low - (atr * 0.5), // Widened Stop (was 0.1)
                         target: lastCandle.close + (wickSize * 2.0), // 2R target based on rejection magnitude
                         wickSize,
                         confidence: Math.min((wickSize / threshold) * 20 + 60, 95)

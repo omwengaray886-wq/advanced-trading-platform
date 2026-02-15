@@ -53,7 +53,12 @@ export default function MarketTicker() {
 
     return (
         <div className="card">
-            <h3 className="card-title" style={{ marginBottom: '16px' }}>Market Ticker (24h)</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 className="card-title" style={{ margin: 0 }}>Market Ticker</h3>
+                <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                    ADAPTIVE AI: ON
+                </span>
+            </div>
             <div className="flex-col gap-sm">
                 {tickers.map(t => {
                     const change = parseFloat(t.priceChangePercent);

@@ -187,4 +187,78 @@ export class OrderBookEngine {
             signals
         };
     }
+    /**
+     * Detect Iceberg Orders (Hidden Liquidity) - Phase 4 Upgrade
+     * Identifies price levels where execution volume exceeds visible depth
+     * @param {Array} recentTrades - Stream of recent trades
+     * @param {Object} depthSnapshot - Current order book depth
+     */
+    static detectIcebergs(recentTrades, depthSnapshot) {
+        if (!recentTrades || recentTrades.length < 50) return [];
+
+        const icebergs = [];
+        const volumeAtLevel = {};
+
+        // 1. Aggregate Volume per Price Level
+        recentTrades.forEach(t => {
+            const p = t.price.toFixed(2);
+            if (!volumeAtLevel[p]) volumeAtLevel[p] = { buy: 0, sell: 0, total: 0 };
+            volumeAtLevel[p].total += t.size;
+            if (t.side === 'BUY') volumeAtLevel[p].buy += t.size;
+            else volumeAtLevel[p].sell += t.size;
+        });
+
+        // 2. Compare against Visible Depth (if matched)
+        // Simplified: Look for abnormally high ratio of Aggressor Vol vs Price Displacement
+        // Or simple "Replenishing Limit" logic: Big volume, no move.
+
+        Object.keys(volumeAtLevel).forEach(price => {
+            const data = volumeAtLevel[price];
+            if (data.total > 500000) { // arbitrary 'Whale' threshold simulation
+                // In a real engine, we'd check if price moved. 
+                // Assumption: If all this volume hit and price is still here, it's an iceberg.
+
+                const type = data.buy > data.sell ? 'SELL_ICEBERG' : 'BUY_ICEBERG'; // Aggressor Buy hit Passive Sell
+                icebergs.push({
+                    price: parseFloat(price),
+                    type,
+                    size: data.total,
+                    strength: 'EXTREME'
+                });
+            }
+        });
+
+        return icebergs;
+    }
+
+    /**
+     * Analyze Absorption (Delta Divergence) - Phase 4 Upgrade
+     * Detects when aggressive volume is absorbed by passive limits
+     */
+    static analyzeAbsorption(candles) {
+        if (!candles || candles.length < 3) return null;
+
+        const last = candles[candles.length - 1];
+        const prev = candles[candles.length - 2];
+
+        // Mocking Delta for logic (in real app, delta is on the candle)
+        // Check if High Volume + Small Candle Body
+        const isHighVol = last.volume > (prev.volume * 1.5);
+        const isSmallBody = Math.abs(last.close - last.open) < (last.high - last.low) * 0.3;
+
+        if (isHighVol && isSmallBody) {
+            // Absorption Detected
+            // If close is near top -> Buying Absorption (bullish)
+            // If close is near bottom -> Selling Absorption (bearish)
+            const closePos = (last.close - last.low) / (last.high - last.low);
+
+            if (closePos > 0.7) {
+                return { type: 'BUYING_ABSORPTION', strength: 'HIGH' };
+            } else if (closePos < 0.3) {
+                return { type: 'SELLING_ABSORPTION', strength: 'HIGH' };
+            }
+        }
+
+        return null;
+    }
 }

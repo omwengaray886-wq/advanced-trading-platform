@@ -132,6 +132,10 @@ import { monteCarloService } from './monteCarloService.js';
 import { PortfolioRiskService, portfolioRiskService } from './portfolioRiskService.js';
 // DirectionalConfidenceGate is now dynamically imported in analyze() to break circular dependencies
 
+// Phase 6: Predictive Intelligence Engines
+import { LeadLagEngine } from './LeadLagEngine.js';
+import { ParameterOptimizer } from './ParameterOptimizer.js';
+
 
 export class AnalysisOrchestrator {
     constructor() {
@@ -571,9 +575,39 @@ export class AnalysisOrchestrator {
             marketState.hazards = ExecutionHazardDetector.detectHazards(candles, marketState, assetParams);
 
 
+            // Step 3.8.6: Phase 6 - Intermarket Lead-Lag Analysis (The "Crystal Ball")
+            try {
+                // In a real env, we would fetch DXY/US10Y candles here.
+                // For now, we reuse the macroTrends data if available, or fetch fresh if needed.
+                // We'll try to use the 'DXY' correlation data we likely fetched in Step 3.8.5
+                // Note: LeadLagEngine needs CANDLES, not just trend.
+
+                const dxyHistory = await marketData.fetchHistory('DXY', '1h', 100).catch(() => null);
+                if (dxyHistory) {
+                    const leadLag = LeadLagEngine.analyze(candles, dxyHistory);
+                    marketState.leadLag = leadLag;
+                    if (leadLag && leadLag.detected) {
+                        console.log(`[LeadLag] ${leadLag.leader} leads ${symbol} by ${leadLag.lag} periods. Implication: ${leadLag.implication}`);
+                    }
+                }
+            } catch (err) {
+                console.warn('[Analysis] Lead-Lag Engine failed:', err.message);
+            }
+
             // Phase 71: Velocity & Last Candle for Predictive Intelligence Upgrade
             marketState.lastCandle = lastCandle;
             marketState.velocity = this._calculateVelocity(candles, marketState.atr);
+
+            // Step 3.8.7: Phase 6 - Automated Hyperparameter Tuning
+            // Optimize RSI period based on recent volatility/regime
+            let optimizedParams = { rsiPeriod: 14 };
+            try {
+                const optRSI = ParameterOptimizer.optimizeRSI(candles);
+                if (optRSI) optimizedParams.rsiPeriod = optRSI.period;
+                marketState.optimizedParams = optimizedParams;
+            } catch (err) {
+                console.warn('[Analysis] Parameter Optimizer failed:', err.message);
+            }
 
             // Phase 80: Professional Indicator Layer (Integrated on Request)
             marketState.indicators = {
@@ -582,7 +616,9 @@ export class AnalysisOrchestrator {
                 cmf: calculateCMF(candles, 20),
                 adx: calculateADX(candles, 14),
                 ichimoku: calculateIchimoku(candles),
-                vwap: calculateAnchoredVWAP(candles, 0) // Session start anchor ideally, defaulting to start
+                vwap: calculateAnchoredVWAP(candles, 0), // Session start anchor ideally
+                // Use OPTIMIZED RSI
+                rsi: calculateRSI(candles, optimizedParams.rsiPeriod)
             };
 
             // Phase 48: Volume Profile Analysis (VPVR)

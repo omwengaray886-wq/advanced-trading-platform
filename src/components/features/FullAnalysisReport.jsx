@@ -5,7 +5,10 @@ import PredictionBadge from './PredictionBadge';
 import PathProjection from './PathProjection';
 import TrapZoneWarning from './TrapZoneWarning';
 import RegimeTransitionIndicator from './RegimeTransitionIndicator';
+import RegimeTransitionIndicator from './RegimeTransitionIndicator';
 import MacroSentimentWidget from './MacroSentimentWidget';
+import { LeadLagMonitor } from './LeadLagMonitor';
+import { PatternMatcher } from './PatternMatcher';
 
 /**
  * FullAnalysisReport - Professional 9-Point breakdown displayed beneath the chart
@@ -334,10 +337,24 @@ export default function FullAnalysisReport({ analysis, loading, realtimeDiag }) 
                 </div>
             </div>
 
-            {/* Phase 6: Macro Sentiment Widget */}
-            {marketState?.macroSentiment && (
-                <MacroSentimentWidget sentiment={marketState.macroSentiment} />
-            )}
+            {/* Phase 6: Macro & Predictive Intelligence Widget */}
+            <div style={{ display: 'flex', gap: '20px', marginBottom: '32px' }}>
+                <div style={{ flex: 1 }}>
+                    {marketState?.macroSentiment && (
+                        <MacroSentimentWidget sentiment={marketState.macroSentiment} />
+                    )}
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {/* Lead-Lag Monitor */}
+                    {marketState?.leadLag && (
+                        <LeadLagMonitor leadLag={marketState.leadLag} />
+                    )}
+                    {/* Pattern Matcher */}
+                    {marketState?.patterns && (
+                        <PatternMatcher patterns={marketState.patterns} currentPrice={marketState.currentPrice} />
+                    )}
+                </div>
+            </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
                 {/* Left Column: Bias & Selection */}

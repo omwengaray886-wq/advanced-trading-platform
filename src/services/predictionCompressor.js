@@ -682,10 +682,31 @@ export class PredictionCompressor {
         );
 
         const isObligated = marketState.obligations?.state === 'OBLIGATED';
-        const minThreshold = isObligated ? 65 : 85;
+        // Phase 75 Upgrade: Stricter Conviction Thresholds
+        const minThreshold = isObligated ? 70 : 85;
 
-        // 5. Opposing Liquidity Gating
+        // 5. Opposing Liquidity Gating (Institutional Veto)
         const htfLiquidity = (marketState.liquidityPools || []).filter(p => p.strength === 'HIGH' && p.isHTF);
+
+        // Veto if trading directly into a massive Order Book Wall (Live DOM)
+        const domWalls = marketState.orderBook?.walls || [];
+        const currentPrice = marketState.currentPrice || marketState.price;
+        const predDir = probabilities.continuation > probabilities.reversal ? ltfBias : (ltfBias === 'BULLISH' ? 'BEARISH' : 'BULLISH');
+
+        const hasOpposingWall = domWalls.some(w => {
+            if (predDir === 'BULLISH' && w.side === 'ASK' && w.price > currentPrice && (w.price - currentPrice) / currentPrice < 0.005) return true;
+            if (predDir === 'BEARISH' && w.side === 'BID' && w.price < currentPrice && (currentPrice - w.price) / currentPrice < 0.005) return true;
+            return false;
+        });
+
+        if (hasOpposingWall) {
+            return {
+                show: false,
+                code: 'ORDERBOOK_WALL',
+                reason: 'Prediction blocked by massive opposing Order Book Wall.',
+                requirements: ['Wall absorption', 'Price breakout above wall']
+            };
+        }
         if (htfLiquidity.length > 0) {
             const currentPrice = marketState.currentPrice || marketState.price;
             const predDir = probabilities.continuation > probabilities.reversal ? ltfBias : (ltfBias === 'BULLISH' ? 'BEARISH' : 'BULLISH');
