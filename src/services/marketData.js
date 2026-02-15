@@ -59,8 +59,7 @@ export const mapSymbol = (symbol) => {
         'EURUSDT': 'EURUSDT',
         'GBPUSD': 'GBPUSDT',
         'GBPUSDT': 'GBPUSDT',
-        'GBPJPY': 'GBPJPY',
-        'JBPJPY': 'GBPJPY', // Typo handling
+        // GBPJPY is synthetic - handled by server proxy
         'USDTRY': 'USDTTRY',
         'USDZAR': 'USDTZAR',
         'USDMXN': 'USDTMXN',
@@ -248,10 +247,28 @@ export class MarketDataService {
         if (this.pendingClose) return;
 
         // Prevent overlapping connections for the same stream
-        const mappedSymbol = mapSymbol(symbol).toLowerCase();
+        const mappedSymbol = mapSymbol(symbol);
+
+        // Check if this is a synthetic/proxy symbol that doesn't have Binance WS
+        const metadata = getSymbolMetadata(symbol);
+        const isSynthetic = metadata.isProxy ||
+            !mappedSymbol ||
+            ['GBPJPY', 'JBPJPY', 'DXY', 'SPX', 'SPXUSD', 'NDX', 'NAS100', 'US30'].includes(symbol.replace('/', '').toUpperCase());
+
+        if (isSynthetic) {
+            console.log(`[MarketData] ${symbol} is synthetic/proxy. Using polling mode only.`);
+            this.activeSymbol = (mappedSymbol || symbol).toLowerCase();
+            this.activeInterval = INTERVAL_MAP[interval] || '1h';
+            this.isClosing = false;
+            this.disconnect(); // Clean up any existing connections
+            this.startPolling();
+            return;
+        }
+
+        const lowerSymbol = mappedSymbol.toLowerCase();
         const mappedInterval = INTERVAL_MAP[interval] || '1h';
 
-        if (this.ws && this.activeSymbol === mappedSymbol && this.activeInterval === mappedInterval) {
+        if (this.ws && this.activeSymbol === lowerSymbol && this.activeInterval === mappedInterval) {
             if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
                 return;
             }
@@ -259,7 +276,7 @@ export class MarketDataService {
 
         this.disconnect();
         this.isClosing = false;
-        this.activeSymbol = mappedSymbol;
+        this.activeSymbol = lowerSymbol;
         this.activeInterval = mappedInterval;
 
         const streamName = `${this.activeSymbol}@kline_${this.activeInterval}`;
