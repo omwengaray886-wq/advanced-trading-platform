@@ -436,10 +436,9 @@ export class MarketDataService {
 
     startPolling() {
         if (this.pollingInterval) return;
-        console.log('[MarketData] Starting REST API polling mode (15s intervals)...');
+        console.log('[MarketData] Starting REDUCED-LATENCY REST polling mode (5s intervals)...');
 
         // Immediately mark as connected for polling mode (especially for synthetic symbols like GBPJPY)
-        // The actual validation happens in pollOnce(), but we want to show "connecting" immediately
         this.isConnected = true;
         this.latency = 150;
         this.notifyHealth(); // Notify immediately so UI doesn't show OFFLINE
@@ -447,21 +446,43 @@ export class MarketDataService {
         // Initial fetch to show online immediately
         this.pollOnce();
 
-        // Poll every 15 seconds for responsive updates
+        // Poll every 5 seconds for institutional-grade responsiveness (Phase 15 Enhancement)
         this.pollingInterval = setInterval(() => {
             this.pollOnce();
-        }, 15000);
+        }, 5000);
     }
 
     async pollOnce() {
         if (this.isClosing) return;
         try {
+            // 1. Fetch Candle History (Active Interval)
             const data = await this.fetchHistory(this.activeSymbol, this.activeInterval, 5);
+
+            // 2. Fetch 24h Ticker for live "ticking" price in header (Phase 15 Enhancement)
+            // This is critical because candles only update at the end of the interval (e.g. 1h)
+            // but the user wants to see the price moving every 5 seconds.
+            let ticker = null;
+            try {
+                // If it's a synthetic pair, we might not have a ticker, so we use the last candle close
+                if (this.activeSymbol === 'gbpjpy' || this.activeSymbol === 'jbpjpy') {
+                    // We already have the current price in history[last].close
+                } else {
+                    const tRes = await axios.get('/api/binance/ticker', { params: { symbol: this.activeSymbol } });
+                    ticker = tRes.data;
+                }
+            } catch (e) { /* silent ticker fail */ }
+
             if (data && data.length > 0) {
                 const lastCandle = data[data.length - 1];
+
+                // If we have a fresh ticker price, inject it into the last candle for live ticking
+                if (ticker && ticker.lastPrice) {
+                    lastCandle.close = parseFloat(ticker.lastPrice);
+                }
+
                 this.notify(lastCandle);
-                this.isConnected = true; // Show as connected when polling works
-                this.latency = 150; // Simulated latency for polling
+                this.isConnected = true;
+                this.latency = 150;
                 this.notifyHealth();
             }
         } catch (e) {
@@ -505,6 +526,28 @@ export class MarketDataService {
         }
 
         try {
+            // For synthetic symbols, we fallback to polling the depth API instead of WebSocket
+            if (symbol.toUpperCase() === 'GBPJPY' || symbol.toUpperCase() === 'JBPJPY') {
+                console.log(`[MarketData] GBPJPY depth subscription via polling...`);
+                const pollDepth = async () => {
+                    try {
+                        const res = await axios.get('/api/binance/depth', { params: { symbol: 'GBPJPY', limit: 20 } });
+                        if (res.data.bids && res.data.asks) {
+                            const formatted = {
+                                bids: res.data.bids.map(b => ({ price: parseFloat(b[0]), quantity: parseFloat(b[1]) })),
+                                asks: res.data.asks.map(a => ({ price: parseFloat(a[0]), quantity: parseFloat(a[1]) })),
+                                lastUpdateId: res.data.lastUpdateId
+                            };
+                            callback(formatted);
+                        }
+                    } catch (e) { console.warn('Depth poll fail:', e.message); }
+                };
+
+                pollDepth();
+                const interval = setInterval(pollDepth, 5000);
+                return () => clearInterval(interval);
+            }
+
             const streamUrl = `${BINANCE_WS_BASE}/${mappedSymbol}@depth20@100ms`;
             const ws = new WebSocket(streamUrl);
             this.depthWS.set(mappedSymbol, ws);

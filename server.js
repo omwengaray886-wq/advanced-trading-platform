@@ -268,12 +268,12 @@ app.get('/api/binance/klines', async (req, res) => {
             if (mappedSymbol === 'GBPJPY' || mappedSymbol === 'JBPJPY') {
                 try {
                     console.log(`[PROXY] Fetching REAL GBPJPY from Yahoo Finance...`);
-                    const range = interval === '1h' ? '7d' : '1mo'; 
+                    const range = interval === '1h' ? '7d' : '1mo';
                     const yParams = {
-                        interval: interval === '4h' ? '60m' : '60m', 
+                        interval: interval === '4h' ? '60m' : '60m',
                         range: range
                     };
-                    
+
                     const yRes = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/GBPJPY=X`, { params: yParams });
                     const result = yRes.data?.chart?.result?.[0];
 
@@ -281,18 +281,18 @@ app.get('/api/binance/klines', async (req, res) => {
 
                     const timestamps = result.timestamp;
                     const quote = result.indicators.quote[0];
-                    
+
                     // Map to Binance Format
                     const candles = timestamps.map((t, i) => {
                         if (quote.open[i] === null || quote.close[i] === null) return null;
-                        
+
                         return [
-                            t * 1000, 
+                            t * 1000,
                             quote.open[i].toFixed(3),
                             quote.high[i].toFixed(3),
                             quote.low[i].toFixed(3),
                             quote.close[i].toFixed(3),
-                            "10000", 
+                            "10000",
                             (t * 1000) + 3599999,
                             "100000",
                             100,
@@ -308,206 +308,105 @@ app.get('/api/binance/klines', async (req, res) => {
                     console.error(`[PROXY ERROR] Yahoo Finance fail for GBPJPY:`, yErr.message);
                 }
             }
-                        const indexConfig = typeof INDICES_MAP[mappedSymbol] === 'string'
-                            ? { id: INDICES_MAP[mappedSymbol], vs: 'usd' }
-                            : INDICES_MAP[mappedSymbol];
+            const indexConfig = typeof INDICES_MAP[mappedSymbol] === 'string'
+                ? { id: INDICES_MAP[mappedSymbol], vs: 'usd' }
+                : INDICES_MAP[mappedSymbol];
 
-                        if (indexConfig) {
-                            console.log(`[PROXY] Routing ${symbol} to CoinGecko Reference (${indexConfig.id} vs ${indexConfig.vs})...`);
-                            try {
-                                const cgRes = await coinGeckoQueue.enqueue(() =>
-                                    axios.get(`https://api.coingecko.com/api/v3/coins/${indexConfig.id}/ohlc`, {
-                                        params: { vs_currency: indexConfig.vs, days: 1 },
-                                        headers: {
-                                            'x-cg-demo-api-key': process.env.COINGECKO_API_KEY || '',
-                                            'User-Agent': 'Institutional-Platform/1.0'
-                                        },
-                                        timeout: 10000
-                                    })
-                                );
+            if (indexConfig) {
+                console.log(`[PROXY] Routing ${symbol} to CoinGecko Reference (${indexConfig.id} vs ${indexConfig.vs})...`);
+                try {
+                    const cgRes = await coinGeckoQueue.enqueue(() =>
+                        axios.get(`https://api.coingecko.com/api/v3/coins/${indexConfig.id}/ohlc`, {
+                            params: { vs_currency: indexConfig.vs, days: 1 },
+                            headers: {
+                                'x-cg-demo-api-key': process.env.COINGECKO_API_KEY || '',
+                                'User-Agent': 'Institutional-Platform/1.0'
+                            },
+                            timeout: 10000
+                        })
+                    );
 
-                                // Map CG OHLC [time, o, h, l, c] to Binance [time, o, h, l, c, v, closeTime, ...]
-                                const mapped = cgRes.data.map(p => [
-                                    p[0], p[1].toString(), p[2].toString(), p[3].toString(), p[4].toString(), "0", p[0] + 3600000, "0", 0, "0", "0", "0"
-                                ]);
-                                return res.json(mapped);
-                            } catch (cgErr) {
-                                console.error(`[PROXY ERROR] CoinGecko fallback fail for ${symbol}:`, cgErr.message);
-                            }
-                        }
+                    // Map CG OHLC [time, o, h, l, c] to Binance [time, o, h, l, c, v, closeTime, ...]
+                    const mapped = cgRes.data.map(p => [
+                        p[0], p[1].toString(), p[2].toString(), p[3].toString(), p[4].toString(), "0", p[0] + 3600000, "0", 0, "0", "0", "0"
+                    ]);
+                    return res.json(mapped);
+                } catch (cgErr) {
+                    console.error(`[PROXY ERROR] CoinGecko fallback fail for ${symbol}:`, cgErr.message);
+                }
+            }
 
-                        // Also return Ghost Candles for known invalid Forex pairs or failed indices to stop 404 spam
-                        const INVALID_FOREX = new Set(['AUDUSDT', 'NZDUSDT', 'USDCHF', 'USDJPY', 'USDCAD', 'SPXUSD', 'DXY', 'GBPJPY', 'JBPJPY']);
-                        if (INVALID_FOREX.has(mappedSymbol) || indexConfig) {
-                            // Coherent Timestamp Logic (Phase 2): Use current UTC time and subtract i hours
-                            const nowUTC = Date.now();
-                            const startOfHour = Math.floor(nowUTC / 3600000) * 3600000;
-                            const ghostCandles = [];
-                            const count = parseInt(limit) || 100;
+            // Also return Ghost Candles for known invalid Forex pairs or failed indices to stop 404 spam
+            const INVALID_FOREX = new Set(['AUDUSDT', 'NZDUSDT', 'USDCHF', 'USDJPY', 'USDCAD', 'SPXUSD', 'DXY', 'GBPJPY', 'JBPJPY']);
+            if (INVALID_FOREX.has(mappedSymbol) || indexConfig) {
+                // Coherent Timestamp Logic (Phase 2): Use current UTC time and subtract i hours
+                const nowUTC = Date.now();
+                const startOfHour = Math.floor(nowUTC / 3600000) * 3600000;
+                const ghostCandles = [];
+                const count = parseInt(limit) || 100;
 
-                            // Determine a realistic fallback price based on the symbol
-                            let fallbackPrice = "1.0";
-                            if (mappedSymbol === 'GBPJPY' || symbol.includes('JPY')) fallbackPrice = "190.0";
-                            if (symbol.includes('US30') || symbol.includes('SPX') || symbol.includes('NDX')) fallbackPrice = "5000.0";
-                            if (mappedSymbol === 'JPYGBP') fallbackPrice = "0.0053";
+                // Determine a realistic fallback price based on the symbol
+                let fallbackPrice = "1.0";
+                if (mappedSymbol === 'GBPJPY' || symbol.includes('JPY')) fallbackPrice = "190.0";
+                if (symbol.includes('US30') || symbol.includes('SPX') || symbol.includes('NDX')) fallbackPrice = "5000.0";
+                if (mappedSymbol === 'JPYGBP') fallbackPrice = "0.0053";
 
-                            console.log(`[PROXY] Generating ${count} Ghost Candles for ${symbol} @ ${fallbackPrice}. Server UTC: ${new Date(nowUTC).toISOString()}`);
+                console.log(`[PROXY] Generating ${count} Ghost Candles for ${symbol} @ ${fallbackPrice}. Server UTC: ${new Date(nowUTC).toISOString()}`);
 
-                            for (let i = 0; i < count; i++) {
-                                const t = startOfHour - (i * 3600000);
-                                ghostCandles.push([t, fallbackPrice, fallbackPrice, fallbackPrice, fallbackPrice, "0", t + 3599999, "0", 0, "0", "0", "0"]);
-                            }
-                            return res.json(ghostCandles.reverse());
-                        }
+                for (let i = 0; i < count; i++) {
+                    const t = startOfHour - (i * 3600000);
+                    ghostCandles.push([t, fallbackPrice, fallbackPrice, fallbackPrice, fallbackPrice, "0", t + 3599999, "0", 0, "0", "0", "0"]);
+                }
+                return res.json(ghostCandles.reverse());
+            }
 
-                        console.warn(`[PROXY] Requested unsupported symbol: ${symbol}`);
-                        return res.status(404).json({
-                            error: 'Unsupported Symbol',
-                            message: `The symbol ${symbol} is not found on Binance Spot or is currently not trading.`,
-                        });
-                    }
+            console.warn(`[PROXY] Requested unsupported symbol: ${symbol}`);
+            return res.status(404).json({
+                error: 'Unsupported Symbol',
+                message: `The symbol ${symbol} is not found on Binance Spot or is currently not trading.`,
+            });
+        }
 
         const response = await fetchWithRetry(`${BINANCE_BASE}/api/v3/klines`, {
-                        symbol: binanceSymbol,
-                        interval,
-                        limit: limit || 100
-                    });
-                    res.json(response.data);
-                } catch (error) {
-                    const status = error.response?.status || 500;
-                    console.error(`[PROXY ERROR] Klines ${status} for ${req.query.symbol}: ${error.message}`);
-                    if (error.response) {
-                        return res.status(status).json(error.response.data);
-                    }
-                    res.status(status).json({
-                        error: 'Binance Proxy Connection Failed',
-                        details: error.message,
-                        target: `${BINANCE_BASE}/api/v3/klines`
-                    });
-                }
-            });
+            symbol: binanceSymbol,
+            interval,
+        } catch (error) {
+            const status = error.response?.status || 500;
+            console.error(`[PROXY ERROR] Klines ${status} for ${req.query.symbol}: ${error.message}`);
+            if (error.response) {
+                return res.status(status).json(error.response.data);
+            }
+            res.status(status).json({ error: 'Binance Depth Proxy Internal Error', message: error.message });
+        }
+    });
 
-// 1.1 Proxy for Binance Depth (Public)
-app.get('/api/binance/depth', async (req, res) => {
+// 1.2 Proxy for Binance Ticker (24hr)
+app.get('/api/binance/ticker', async (req, res) => {
     try {
-        const { symbol, limit } = req.query;
+        const { symbol } = req.query;
         if (!symbol) return res.status(400).json({ error: 'Missing symbol' });
-
         const binanceSymbol = await getVerifiedSymbol(symbol);
 
-        if (!binanceSymbol) {
-            return res.status(404).json({ error: 'Unsupported Symbol for Depth' });
-        }
-
-
-        const response = await axios.get(`${BINANCE_BASE}/api/v3/depth`, {
-            params: { symbol: binanceSymbol, limit: limit || 20 }
+        const response = await axios.get(`${BINANCE_BASE}/api/v3/ticker/24hr`, {
+            params: { symbol: binanceSymbol }
         });
         res.json(response.data);
     } catch (error) {
-        const status = error.response?.status || 500;
-        console.error(`[PROXY ERROR] Depth ${status} for ${req.query.symbol}: ${error.message}`);
-        if (error.response) {
-            return res.status(status).json(error.response.data);
-        }
-        res.status(status).json({ error: 'Binance Depth Proxy Internal Error', message: error.message });
+        res.status(error.response?.status || 500).json({ error: error.message });
     }
 });
 
-// 1.2 Proxy for CoinGecko (Fixes CORS and centralizes access)
-app.use('/api/coingecko', async (req, res) => {
-    const path = req.path.replace(/^\//, '');
-    const cacheKey = `cg_${path}_${JSON.stringify(req.query)}`;
-    const cached = cache.coingecko.get(cacheKey);
-
-    // Dynamic TTL based on content: snapshots live longer than live data
-    const isStatic = path.includes('list') || path.includes('info');
-    const dynamicTTL = isStatic ? 3600000 : 600000; // 1h for static, 10m for charts/live (increased from 5m)
-
-    if (cached && (Date.now() - cached.timestamp < dynamicTTL)) {
-        return res.json(cached.data);
-    }
-
-    const cgKey = process.env.COINGECKO_API_KEY;
-
-    // Graceful Degradation: If no API key, return 200 with disabled status instead of 503
-    if (!cgKey || cgKey.trim() === '') {
-        if (cached) {
-            console.warn(`[PROXY] CoinGecko disabled (no API key). Serving stale cache for ${path}`);
-            return res.json(cached.data);
-        }
-        console.warn(`[PROXY] CoinGecko disabled (no API key). Request for ${path} placeholder returned.`);
-        return res.json({
-            disabled: true,
-            error: 'CoinGecko features disabled',
-            message: 'Add COINGECKO_API_KEY to .env to enable',
-            isConfigError: true
-        });
-    }
-
-    try {
-        // Use request queue to prevent rate limiting
-        const response = await coinGeckoQueue.enqueue(async () => {
-            const url = `https://api.coingecko.com/api/v3/${path}`;
-
-            return await axios.get(url, {
-                params: req.query,
-                headers: {
-                    'User-Agent': 'Institutional-Trading-Platform/1.0',
-                    'Accept': 'application/json',
-                    'x-cg-demo-api-key': cgKey.trim()
-                },
-                timeout: 8000
-            });
-        });
-
-        cache.coingecko.set(cacheKey, { data: response.data, timestamp: Date.now() });
-        res.json(response.data);
-    } catch (error) {
-        const status = error.response?.status || 500;
-        console.error(`[PROXY ERROR] CoinGecko (${req.path}): ${status} - ${error.message}`);
-
-        // FALLBACK: If throttled but we HAVE cached data (even if stale), return it
-        if ((status === 429 || status === 500 || status === 503) && cached) {
-            console.warn(`[PROXY] Serving stale CoinGecko data for ${path} due to error ${status}`);
-            return res.json(cached.data);
-        }
-
-        if (status === 401) {
-            console.warn(`[PROXY] CoinGecko Unauthorized - Check API Key`);
-            return res.status(401).json({ error: 'CoinGecko Unauthorized. Check COINGECKO_API_KEY in .env', isConfigError: true });
-        }
-
-        // Final safety: Ensure response is always JSON
-        const errorData = (error.response?.data && typeof error.response.data === 'object')
-            ? error.response.data
-            : { error: error.message, status };
-
-        res.status(status).json(errorData);
-    }
-});
-
-
-// 1.3 Proxy for NewsAPI
+// 1.3 Proxy for NewsAPI (General News)
 app.get('/api/news', async (req, res) => {
     try {
-        const apiKey = process.env.NEWS_API_KEY;
-        if (!apiKey || apiKey === 'MISSING') {
-            return res.json({
-                disabled: true,
-                articles: [],
-                totalResults: 0,
-                message: 'NewsAPI key missing'
-            });
-        }
+        const apiKey = process.env.NEWSAPI_KEY;
+        if (!apiKey) return res.json({ disabled: true, results: [], message: 'NewsAPI Key Missing' });
 
-        // Normalize query parameters for consistent caching
         const q = (req.query.q || 'crypto').toLowerCase().trim();
         const sortBy = (req.query.sortBy || 'publishedAt').toLowerCase().trim();
         const language = (req.query.language || 'en').toLowerCase().trim();
         const pageSize = parseInt(req.query.pageSize) || 20;
 
-        // Proxy with Caching (Phase 3 Optimization)
         const cacheKey = `news_${q}_${sortBy}_${pageSize}`;
         const cached = newsCache.get(cacheKey);
         if (cached && (Date.now() - cached.timestamp < 3600000)) { // 1h TTL
