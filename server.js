@@ -538,42 +538,6 @@ app.get('/api/news', async (req, res) => {
     }
 });
 
-console.log(`[NEWS] Fetching fresh data for ${q}...`);
-const response = await newsQueue.enqueue(() =>
-    axios.get('https://newsapi.org/v2/everything', {
-        params: {
-            q,
-            sortBy,
-            language,
-            pageSize,
-            apiKey
-        },
-        timeout: 15000
-    })
-);
-
-// Cache for 1 hour
-newsCache.set(cacheKey, { data: response.data, timestamp: Date.now() });
-res.json(response.data);
-    } catch (error) {
-    const status = error.response?.status || 500;
-    // Fallback to stale if rate limited
-    const cacheKey = `news_${(req.query.q || 'crypto').toLowerCase().trim()}_${(req.query.sortBy || 'publishedAt').toLowerCase().trim()}_${parseInt(req.query.pageSize) || 20}`;
-    const cached = newsCache.get(cacheKey);
-    if ((status === 429 || status === 500 || status === 503) && cached) {
-        console.warn('[PROXY] NewsAPI Throttled. Serving stale news.');
-        return res.json(cached.data);
-    }
-
-    // Final safety: Ensure response is always JSON
-    const errorData = (error.response?.data && typeof error.response.data === 'object')
-        ? error.response.data
-        : { error: error.message, status };
-
-    res.status(status).json(errorData);
-}
-});
-
 // 1.5.1 Proxy for CryptoPanic (Crypto News)
 app.get('/api/news/cryptopanic', async (req, res) => {
     try {
