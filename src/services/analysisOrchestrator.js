@@ -135,7 +135,7 @@ import { PortfolioRiskService, portfolioRiskService } from './portfolioRiskServi
 // Phase 6: Predictive Intelligence Engines
 import { LeadLagEngine } from './LeadLagEngine.js';
 import { ParameterOptimizer } from './ParameterOptimizer.js';
-
+import { TapeReadingEngine } from './TapeReadingEngine.js';
 
 export class AnalysisOrchestrator {
     constructor() {
