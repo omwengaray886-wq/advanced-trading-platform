@@ -8,7 +8,7 @@ export class AlertService {
         // Hybrid watchlist: Crypto (tradeable) + Forex (EURUSDT tradeable, others reference-only)
         this.watchlist = [
             'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT',  // Major Crypto
-            'EURUSDT', 'PAXGUSDT'  // EUR (forex) + Gold
+            'EURUSDT', 'PAXGUSDT', 'GBPJPY'  // EUR/Gold + Forex GBPJPY Cross
         ];
         this.timeframe = '1H';
         this.isScanning = false;

@@ -7,7 +7,8 @@
 export class BasketArbitrageEngine {
     constructor() {
         this.baskets = {
-            'USD_MAJORS': ['EURUSD'],
+            'USD_MAJORS': ['EURUSD', 'GBPUSD', 'AUDUSD', 'PAXGUSDT'],
+            'JPY_CROSSES': ['GBPJPY', 'EURJPY', 'USDJPY'],
             'CRYPTO_TOP_5': ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'],
             'BIG_TECH': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META']
         };
@@ -60,9 +61,10 @@ export class BasketArbitrageEngine {
     }
 
     static _findBasketForSymbol(symbol) {
-        // Simple heuristic
-        if (symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('SOL')) return 'CRYPTO_TOP_5';
-        if (['EUR', 'GBP', 'AUD', 'NZD', 'JPY', 'CHF', 'CAD'].some(c => symbol.includes(c))) return 'USD_MAJORS';
+        const s = symbol.toUpperCase().replace('/', '');
+        if (s.includes('BTC') || s.includes('ETH') || s.includes('SOL')) return 'CRYPTO_TOP_5';
+        if (s.includes('JPY')) return 'JPY_CROSSES';
+        if (['EUR', 'GBP', 'AUD', 'NZD', 'XAU', 'PAXG'].some(c => s.includes(c))) return 'USD_MAJORS';
         return null;
     }
 
@@ -71,7 +73,8 @@ export class BasketArbitrageEngine {
      */
     static get baskets() {
         return {
-            'USD_MAJORS': ['EURUSD'],
+            'USD_MAJORS': ['EURUSD', 'GBPUSD', 'AUDUSD', 'PAXGUSDT'],
+            'JPY_CROSSES': ['GBPJPY', 'EURJPY', 'USDJPY'],
             'CRYPTO_TOP_5': ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'],
             'BIG_TECH': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META']
         };
