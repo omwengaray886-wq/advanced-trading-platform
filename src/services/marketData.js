@@ -258,13 +258,25 @@ export class MarketDataService {
         if (isSynthetic) {
             console.log(`[MarketData] ${symbol} is synthetic/proxy. Using polling mode only.`);
 
+            const targetSymbol = (mappedSymbol || symbol).toLowerCase();
+            const targetInterval = INTERVAL_MAP[interval] || '1h';
+
+            // Check if we're already polling the same symbol+interval - if so, do nothing
+            if (this.pollingInterval && this.activeSymbol === targetSymbol && this.activeInterval === targetInterval) {
+                console.log(`[MarketData] Already polling ${targetSymbol}@${targetInterval}, skipping reconnect.`);
+                return;
+            }
+
+            // Different symbol or interval - need to restart polling
+            console.log(`[MarketData] Switching to ${targetSymbol}@${targetInterval}, restarting polling...`);
+
             // Disconnect any existing connections first (before setting new state)
             this.disconnect();
 
             // Now set up for polling mode
             this.isClosing = false;
-            this.activeSymbol = (mappedSymbol || symbol).toLowerCase();
-            this.activeInterval = INTERVAL_MAP[interval] || '1h';
+            this.activeSymbol = targetSymbol;
+            this.activeInterval = targetInterval;
 
             // Start polling (which will set isConnected=true and notify health)
             this.startPolling();
