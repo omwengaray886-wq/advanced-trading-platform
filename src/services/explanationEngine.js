@@ -24,6 +24,9 @@ export class ExplanationEngine {
 
         // Build explanation sections using the 7-step Zone Mapping Flow (Phase 20)
         explanation.sections.htfBias = this.buildHTFBias(analysis, assetContext, mode);
+        explanation.sections.whyLongExists = this.whyLongExists(analysis, mode);
+        explanation.sections.whyShortExists = this.whyShortExists(analysis, mode);
+        explanation.sections.strategySelected = this.buildStrategySelected(analysis, mode);
         explanation.sections.strategicIntent = this.buildStrategicIntent(analysis, mode);
         explanation.sections.newsShock = this.buildNewsShockRationale(analysis, mode);
         explanation.sections.liquidityContext = this.buildLiquidityContext(analysis, mode);
@@ -39,6 +42,7 @@ export class ExplanationEngine {
         explanation.sections.portfolioImpact = this.buildPortfolioImpact(analysis, mode);
         explanation.sections.bayesianNarrative = this.buildBayesianNarrative(analysis, mode);
         explanation.sections.selfCritique = this.buildSelfCritique(analysis, mode);
+        explanation.sections.alternativeScenarios = this.buildAlternativeScenario(analysis, mode);
 
         // ... legacy / supporting sections ...
         explanation.sections.fundamentals = analysis.fundamentals?.summary || 'No major fundamental events detected.';
@@ -62,136 +66,103 @@ export class ExplanationEngine {
 
     /**
      * Build Executive Narrative Synthesis (Phase 68)
+     * Provides a high-level summary of the "Market Story"
      */
     buildExecutiveNarrative(analysis, mode = 'ADVANCED') {
         const state = analysis.marketState;
         const trend = state.trend.direction;
         const bias = state.mtf?.globalBias || 'NEUTRAL';
         const setup = analysis.setups?.[0];
+        const regime = state.regime;
+        const leadLag = state.leadLag;
 
-        let narrative = `Analysis indicates a **${trend}** institutional flow, currently aligned with the ${bias.toLowerCase()} higher-timeframe structure. `;
+        let narrative = `The market is currently in a **${regime}** regime, with the immediate trend moving **${trend}**. `;
 
-        if (state.mtfBiasAligned) {
-            narrative += `This creates a **High-Probability Fractal Sync**, meaning both local and higher-timeframe money flows are pushing in the same direction. `;
-        } else {
-            narrative += `Note that we are trading against the higher-timeframe bias, so we require stricter entry confirmation. `;
+        // Contextual synthesis
+        if (bias !== 'NEUTRAL' && bias === trend) {
+            narrative += `We are seeing a **Fractal Synchronization** where both higher-timeframe institutional money and local speculators are moving in tandem. This increases the probability of a sustained expansion. `;
+        } else if (bias !== 'NEUTRAL' && bias !== trend) {
+            narrative += `Caution: Local price action is currently **counter-trend** to the higher-timeframe bias (${bias}). This often happens during a deep retracement or a "Judas Swing" designed to trap early retail sellers. `;
         }
 
-        if (state.smtDivergence) {
-            narrative += `Smart Money Divergence (SMT) is visible, suggesting institutional accumulation/distribution is active. `;
+        // Institutional drivers
+        if (state.smtConfluence > 60) {
+            narrative += `**Inter-market divergence (SMT)** suggests that while price may look weak, "Smart Money" is actively accumulating in the background. `;
+        }
+
+        if (leadLag && Math.abs(leadLag.correlation) > 0.7) {
+            narrative += `Movements are being heavily influenced by the **${leadLag.leader}**, which is currently leading the price by approximately 5-10 minutes. `;
+        }
+
+        if (state.orderFlow?.absorption?.detected) {
+            narrative += `Order book analysis shows **Passive Absorption** occuring at the lows, meaning large limit orders are "soaking up" the aggressive selling pressure, preparing for a reversal. `;
         }
 
         if (setup) {
-            const confidence = Math.round((setup.directionalConfidence || 0) * 100);
-            narrative += `\n\n**Strategy Focus:** We are tracking a **${setup.strategy}** setup with a **${confidence}%** algorithmic confidence score.`;
+            narrative += `\n\n**Current Tactical Strategy:** A **${setup.strategy}** setup has been identified with a **${Math.round(setup.quantScore || 0)}%** institutional confidence score.`;
         }
 
         return narrative;
     }
 
     /**
-     * Build HTF bias explanation
+     * Detailed reasoning for why a LONG setup is valid (Step 3)
      */
-    buildHTFBias(analysis, assetContext, mode = 'ADVANCED') {
-        const trend = analysis.marketState.trend;
-        const strength = Math.round(trend.strength * 100);
-        const alignment = analysis.marketState.fractalAlignment;
+    whyLongExists(analysis, mode = 'ADVANCED') {
+        const state = analysis.marketState;
+        const fvgs = state.fvgs || [];
+        const liquidity = state.liquidityPools || [];
 
-        if (mode === 'BEGINNER') {
-            return `The general ${analysis.symbol} direction is ${trend.direction.toLowerCase()}. We consider this a ${strength > 60 ? 'very healthy' : 'steady'} move.`;
+        let reasoning = "Bullish interest is supported by: \n";
+
+        if (state.trend.direction === 'BULLISH') reasoning += "• Sustained Bullish Structure (Higher Highs/Lows).\n";
+        if (state.mtf?.globalBias === 'BULLISH') reasoning += "• Alignment with Higher Timeframe institutional flow.\n";
+        if (state.liquiditySweep?.type === 'INTERNAL_LOW') reasoning += "• Successful sweep of internal sell-side liquidity (Trapping early bears).\n";
+        if (fvgs.some(g => g.type === 'BULLISH' && g.status === 'OPEN')) reasoning += "• Unfilled Bullish Fair Value Gaps acting as magnets below.\n";
+        if (state.orderBookDepth?.pressure === 'BULLISH') reasoning += `• Significant limit bid density (${Math.abs(state.orderBookDepth.imbalance * 100).toFixed(0)}% Buy pressure).\n`;
+
+        if (reasoning === "Bullish interest is supported by: \n") {
+            return "Bullish setups would require a shift in market structure or a test of deeper institutional demand zones.";
         }
 
-        let explanation = `${assetContext}The ${analysis.timeframe} timeframe shows a ${trend.direction.toLowerCase()} bias with ${strength}% trend strength. `;
-
-        if (alignment?.aligned) {
-            explanation += `**Fractal Synchronicity detected!** LTF and HTF are aligned in a ${alignment.trend} expansion. ${alignment.rationale} `;
-        }
-
-        // Add fundamental context
-        if (analysis.fundamentals?.impact?.direction && analysis.fundamentals.impact.direction !== 'NEUTRAL') {
-            const fundDir = analysis.fundamentals.impact.direction.toLowerCase();
-            const aligned = analysis.fundamentalAlignment;
-            explanation += `Fundamentals are ${aligned ? 'aligned' : 'conflicting'}, showing ${fundDir} pressure. `;
-
-            if (!aligned) {
-                explanation += '⚠️ Technical-fundamental divergence requires caution.';
-            }
-        }
-
-        return explanation;
+        return reasoning;
     }
 
     /**
-     * Build regime explanation
+     * Detailed reasoning for why a SHORT setup is valid (Step 4)
      */
-    buildRegime(analysis) {
-        const vol = analysis.marketState.volatility;
-        const volLevel = (typeof vol === 'string' ? vol : vol?.volatilityState?.level) || 'MODERATE';
-        return `Market is in a ${analysis.marketState.regime.toLowerCase()} state with ${volLevel.toLowerCase()} volatility.`;
-    }
+    whyShortExists(analysis, mode = 'ADVANCED') {
+        const state = analysis.marketState;
+        const fvgs = state.fvgs || [];
 
-    /**
-     * Build strategy rationale with fundamental alignment
-     */
-    buildStrategyRationale(analysis) {
-        if (!analysis.setups || analysis.setups.length === 0) return 'No primary strategy identified.';
-        const best = analysis.setups[0];
-        const suitability = Math.round(best.suitability * 100);
-        let explanation = `**${best.strategy}** selected (${suitability}% market fit). `;
+        let reasoning = "Bearish interest is supported by: \n";
 
-        // Prioritize the new deep technical rationale
-        if (best.detailedRationale) {
-            explanation += `${best.detailedRationale} `;
-        } else if (best.rationale) {
-            explanation += `${best.rationale} `;
+        if (state.trend.direction === 'BEARISH') reasoning += "• Sustained Bearish Structure (Lower Highs/Lows).\n";
+        if (state.mtf?.globalBias === 'BEARISH') reasoning += "• Alignment with MTF sell-side pressure.\n";
+        if (state.liquiditySweep?.type === 'INTERNAL_HIGH') reasoning += "• Successful hunt of buy-side liquidity (Clearing out retail stops).\n";
+        if (fvgs.some(g => g.type === 'BEARISH' && g.status === 'OPEN')) reasoning += "• Bearish Imbalances (FVG) suggesting aggressive supply.\n";
+        if (state.orderBookDepth?.pressure === 'BEARISH') reasoning += `• Aggressive offer density (${Math.abs(state.orderBookDepth.imbalance * 100).toFixed(0)}% Sell pressure).\n`;
+
+        if (reasoning === "Bearish interest is supported by: \n") {
+            return "Bearish setups are currently low probability as supply is being absorbed by high demand.";
         }
 
-        explanation += `This setup is aligned with the **${best.institutionalTheme || 'Institutional Flow'}** narrative and optimized for ${analysis.marketState.regime.toLowerCase()} conditions.`;
-
-        // Add fundamental context if not already in rationale
-        if (analysis.fundamentals && !explanation.includes('fundamental')) {
-            const fundSummary = analysis.fundamentals.summary;
-            explanation += ` ${fundSummary}`;
-        }
-
-        return explanation;
-    }
-
-    /**
-     * Build level significance explanation
-     */
-    buildLevelSignificance(analysis) {
-        if (!analysis.setups || analysis.setups.length === 0) return 'Analyzing structural walls...';
-        const setup = analysis.setups[0];
-
-        let explanation = `SIGNAL ACTIVE: The price is currently reacting to an institutional level at ${setup.entryZone?.optimal ? setup.entryZone.optimal.toFixed(5) : 'N/A'}. `;
-        explanation += `Structural invalidation is placed at ${setup.stopLoss ? setup.stopLoss.toFixed(5) : 'N/A'} (Pivot Wall + ATR buffer). `;
-
-        if (setup.targets && setup.targets.length > 0) {
-            setup.targets.forEach((t, i) => {
-                explanation += `Target ${i + 1} (${t.label || 'Major Pool'}) at ${t.price ? t.price.toFixed(5) : 'N/A'} is the primary algorithmic attractor for this session. `;
-            });
-        }
-
-        return explanation;
+        return reasoning;
     }
 
     /**
      * Build alternative scenario
      */
     buildAlternativeScenario(analysis, mode = 'ADVANCED') {
-        if (!analysis.setups || analysis.setups.length < 2) {
-            return mode === 'BEGINNER' ? 'No other likely paths at this time.' : 'No clear alternative setups at this time.';
+        const scenarios = analysis.marketState?.scenarios;
+        if (!scenarios || !scenarios.secondary) {
+            return "If the primary expansion fails, expect the market to revert to the Mean (VWAP) and remain in a consolidation phase until new news or liquidity enters.";
         }
 
-        const alt = analysis.setups[1];
-        const suitability = Math.round(alt.suitability * 100);
+        const alt = scenarios.secondary;
+        const label = alt.label.replace('Secondary: ', '');
 
-        if (mode === 'BEGINNER') {
-            return `If this doesn't work out, we'll look at the ${alt.strategy} setup next.`;
-        }
-
-        return `If current setup fails, consider Setup B: ${alt.strategy} (${suitability}% fit). Market could shift to ${alt.direction.toLowerCase()} momentum.`;
+        return `**Pivot Scenario:** If the primary thesis is invalidated, the market will likely shift to a **${label}**. This would occur if the current structural wall fails to hold, forcing institutional participants to re-hedge at the next major liquidity level.`;
     }
 
     /**

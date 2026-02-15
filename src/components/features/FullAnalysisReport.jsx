@@ -191,6 +191,25 @@ export default function FullAnalysisReport({ analysis, loading, realtimeDiag }) 
                     </div>
                 </header>
 
+                {/* Executive Narrative (Phase 9 Perfection) */}
+                <section style={{ marginBottom: '40px' }}>
+                    <h3 style={{ fontSize: '18px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', color: 'var(--color-accent-primary)' }}>
+                        <Database size={20} /> Executive Market Narrative
+                    </h3>
+                    <div style={{
+                        padding: '24px',
+                        background: 'rgba(59, 130, 246, 0.08)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        borderRadius: '12px',
+                        lineHeight: '1.8',
+                        fontSize: '16px',
+                        color: 'rgba(255, 255, 255, 0.95)',
+                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                    }}>
+                        {explanation.sections.executiveNarrative}
+                    </div>
+                </section>
+
                 {/* Institutional Alerts (Phase 4 Integration) */}
                 {marketState.alphaLeaks?.length > 0 && (
                     <div style={{ marginBottom: '24px' }}>

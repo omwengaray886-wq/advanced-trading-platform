@@ -23,8 +23,10 @@ export default function HowItWorks() {
                         Our AI-powered platform analyzes market data to identify high-probability trading opportunities using institutional-grade techniques.
                     </p>
 
-                    {/* Process Steps */}
+                    {/* Process Steps: Brain, Body, Hands */}
                     <div style={{ display: 'grid', gap: '32px', marginBottom: '64px' }}>
+
+                        {/* Phase 6: The Brain */}
                         <div className="card">
                             <div style={{ display: 'flex', gap: '20px' }}>
                                 <div style={{ flexShrink: 0 }}>
@@ -33,16 +35,18 @@ export default function HowItWorks() {
                                 <div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
                                         <Brain size={24} color="var(--color-accent-primary)" />
-                                        <h3 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Data Collection & Processing</h3>
+                                        <h3 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>The Brain: Predictive Intelligence</h3>
                                     </div>
                                     <p style={{ lineHeight: '1.6', color: 'var(--color-text-secondary)' }}>
-                                        Our system connects to multiple market data sources (exchanges, price feeds) and collects real-time candlestick data,
-                                        volume information, and order book depth. This data is cleaned, normalized, and prepared for analysis.
+                                        <strong>Intermarket Lead-Lag:</strong> We track DXY and US10Y yields to predict crypto moves <em>before</em> they happen.<br />
+                                        <strong>Ghost Patterns (DTW):</strong> Our AI scans 5 years of history to find "fractal matches" (Dynamic Time Warping) and projects the likely future path.<br />
+                                        <strong>Sentiment:</strong> NLP analysis of news and social feeds provides a real-time "Fear & Greed" bias.
                                     </p>
                                 </div>
                             </div>
                         </div>
 
+                        {/* Phase 1-5: The Body */}
                         <div className="card">
                             <div style={{ display: 'flex', gap: '20px' }}>
                                 <div style={{ flexShrink: 0 }}>
@@ -51,16 +55,18 @@ export default function HowItWorks() {
                                 <div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
                                         <TrendingUp size={24} color="var(--color-accent-primary)" />
-                                        <h3 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Market Structure Analysis</h3>
+                                        <h3 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>The Body: Structural Analysis</h3>
                                     </div>
                                     <p style={{ lineHeight: '1.6', color: 'var(--color-text-secondary)' }}>
-                                        Our AI identifies key market structures: Higher Highs/Lows (HH/HL) in uptrends, Lower Highs/Lows (LH/LL) in downtrends,
-                                        Break of Structure (BOS), Change of Character (CHOCH), and liquidity zones. This reveals where institutions are likely positioning.
+                                        <strong>Market Structure:</strong> Detects Break of Structure (BOS), Change of Character (CHOCH), and Liquidity Sweeps.<br />
+                                        <strong>Regime Adaptive:</strong> Automatically switches strategies (Trend Following vs Mean Reversion) based on current volatility state.<br />
+                                        <strong>Trap Detection:</strong> Identifies "Bull/Bear Traps" to keep you out of bad trades.
                                     </p>
                                 </div>
                             </div>
                         </div>
 
+                        {/* Phase 8: The Hands */}
                         <div className="card">
                             <div style={{ display: 'flex', gap: '20px' }}>
                                 <div style={{ flexShrink: 0 }}>
@@ -69,35 +75,17 @@ export default function HowItWorks() {
                                 <div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
                                         <Target size={24} color="var(--color-accent-primary)" />
-                                        <h3 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Strategy Selection & Setup Generation</h3>
+                                        <h3 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>The Hands: Smart Execution</h3>
                                     </div>
                                     <p style={{ lineHeight: '1.6', color: 'var(--color-text-secondary)' }}>
-                                        Based on detected structure, our AI selects the optimal strategy: Trend Following, Smart Money Concepts (SMC),
-                                        Range Trading, or Breakout. It then generates specific entry zones, stop loss levels, and multiple take profit targets
-                                        with associated probabilities.
+                                        <strong>Iceberg Slicing:</strong> Large orders are split into micro-chunks to hide from HFT bots.<br />
+                                        <strong>Limit Chasing:</strong> Standard limits are dynamically updated to "chase" the price if it runs away, ensuring you don't miss the move.<br />
+                                        <strong>Slippage Protection:</strong> Market orders are downgraded to limits if the book is too thin.
                                     </p>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="card">
-                            <div style={{ display: 'flex', gap: '20px' }}>
-                                <div style={{ flexShrink: 0 }}>
-                                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--color-accent-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>4</div>
-                                </div>
-                                <div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                                        <Shield size={24} color="var(--color-accent-primary)" />
-                                        <h3 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Risk Assessment & Confidence Scoring</h3>
-                                    </div>
-                                    <p style={{ lineHeight: '1.6', color: 'var(--color-text-secondary)' }}>
-                                        Every setup receives a confidence score (0-100%) based on: trend strength, volume confirmation, structure clarity,
-                                        and confluence with multiple timeframes. We also calculate optimal position sizing based on your risk tolerance
-                                        and the setup's risk-to-reward ratio.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
                     {/* Key Principles */}
