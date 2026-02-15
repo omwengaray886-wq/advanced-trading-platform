@@ -106,6 +106,93 @@ export class ExplanationEngine {
     }
 
     /**
+     * Build HTF bias explanation
+     */
+    buildHTFBias(analysis, assetContext, mode = 'ADVANCED') {
+        const trend = analysis.marketState.trend;
+        const strength = Math.round(trend.strength * 100);
+        const alignment = analysis.marketState.fractalAlignment;
+
+        if (mode === 'BEGINNER') {
+            return `The general ${analysis.symbol} direction is ${trend.direction.toLowerCase()}. We consider this a ${strength > 60 ? 'very healthy' : 'steady'} move.`;
+        }
+
+        let explanation = `${assetContext}The ${analysis.timeframe} timeframe shows a ${trend.direction.toLowerCase()} bias with ${strength}% trend strength. `;
+
+        if (alignment?.aligned) {
+            explanation += `**Fractal Synchronicity detected!** LTF and HTF are aligned in a ${alignment.trend} expansion. ${alignment.rationale} `;
+        }
+
+        // Add fundamental context
+        if (analysis.fundamentals?.impact?.direction && analysis.fundamentals.impact.direction !== 'NEUTRAL') {
+            const fundDir = analysis.fundamentals.impact.direction.toLowerCase();
+            const aligned = analysis.fundamentalAlignment;
+            explanation += `Fundamentals are ${aligned ? 'aligned' : 'conflicting'}, showing ${fundDir} pressure. `;
+
+            if (!aligned) {
+                explanation += '⚠️ Technical-fundamental divergence requires caution.';
+            }
+        }
+
+        return explanation;
+    }
+
+    /**
+     * Build regime explanation
+     */
+    buildRegime(analysis) {
+        const vol = analysis.marketState.volatility;
+        const volLevel = (typeof vol === 'string' ? vol : vol?.volatilityState?.level) || 'MODERATE';
+        return `Market is in a ${analysis.marketState.regime.toLowerCase()} state with ${volLevel.toLowerCase()} volatility.`;
+    }
+
+    /**
+     * Build strategy rationale with fundamental alignment
+     */
+    buildStrategyRationale(analysis) {
+        if (!analysis.setups || analysis.setups.length === 0) return 'No primary strategy identified.';
+        const best = analysis.setups[0];
+        const suitability = Math.round(best.suitability * 100);
+        let explanation = `**${best.strategy}** selected (${suitability}% market fit). `;
+
+        // Prioritize the new deep technical rationale
+        if (best.detailedRationale) {
+            explanation += `${best.detailedRationale} `;
+        } else if (best.rationale) {
+            explanation += `${best.rationale} `;
+        }
+
+        explanation += `This setup is aligned with the **${best.institutionalTheme || 'Institutional Flow'}** narrative and optimized for ${analysis.marketState.regime.toLowerCase()} conditions.`;
+
+        // Add fundamental context if not already in rationale
+        if (analysis.fundamentals && !explanation.includes('fundamental')) {
+            const fundSummary = analysis.fundamentals.summary;
+            explanation += ` ${fundSummary}`;
+        }
+
+        return explanation;
+    }
+
+    /**
+     * Build level significance explanation
+     */
+    buildLevelSignificance(analysis) {
+        if (!analysis.setups || analysis.setups.length === 0) return 'Analyzing structural walls...';
+        const setup = analysis.setups[0];
+
+        let explanation = `SIGNAL ACTIVE: The price is currently reacting to an institutional level at ${setup.entryZone?.optimal ? setup.entryZone.optimal.toFixed(5) : 'N/A'}. `;
+        explanation += `Structural invalidation is placed at ${setup.stopLoss ? setup.stopLoss.toFixed(5) : 'N/A'} (Pivot Wall + ATR buffer). `;
+
+        if (setup.targets && setup.targets.length > 0) {
+            setup.targets.forEach((t, i) => {
+                explanation += `Target ${i + 1} (${t.label || 'Major Pool'}) at ${t.price ? t.price.toFixed(5) : 'N/A'} is the primary algorithmic attractor for this session. `;
+            });
+        }
+
+        return explanation;
+    }
+
+    /**
      * Detailed reasoning for why a LONG setup is valid (Step 3)
      */
     whyLongExists(analysis, mode = 'ADVANCED') {
