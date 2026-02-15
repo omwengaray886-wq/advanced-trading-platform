@@ -448,8 +448,29 @@ app.get('/api/binance/ticker', async (req, res) => {
     try {
         const { symbol } = req.query;
         if (!symbol) return res.status(400).json({ error: 'Missing symbol' });
-        const binanceSymbol = await getVerifiedSymbol(symbol);
+        const cleanSymbol = symbol.toUpperCase().replace('/', '');
 
+        // GBPJPY Synthetic Ticker (Phase 15 Enhancement) - Reuse same logic as /24hr
+        if (cleanSymbol === 'GBPJPY' || cleanSymbol === 'JBPJPY') {
+            try {
+                const [gbpT, btcJpyT, btcUsdtT] = await Promise.all([
+                    axios.get(`${BINANCE_BASE}/api/v3/ticker/24hr`, { params: { symbol: 'GBPUSDT' } }),
+                    axios.get(`${BINANCE_BASE}/api/v3/ticker/24hr`, { params: { symbol: 'BTCJPY' } }),
+                    axios.get(`${BINANCE_BASE}/api/v3/ticker/24hr`, { params: { symbol: 'BTCUSDT' } })
+                ]);
+
+                const lastPrice = (parseFloat(gbpT.data.lastPrice) * parseFloat(btcJpyT.data.lastPrice)) / parseFloat(btcUsdtT.data.lastPrice);
+                return res.json({ lastPrice: lastPrice.toString() });
+            } catch (synErr) {
+                console.error(`[PROXY ERROR] Synthetic ticker fail for GBPJPY:`, synErr.message);
+                // Fallback to Yahoo Finance if Binance synthetic fails
+                const yRes = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/GBPJPY=X?interval=1m&range=1d`);
+                const lastPrice = yRes.data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+                return res.json({ lastPrice: lastPrice.toString() });
+            }
+        }
+
+        const binanceSymbol = await getVerifiedSymbol(symbol);
         const response = await axios.get(`${BINANCE_BASE}/api/v3/ticker/24hr`, {
             params: { symbol: binanceSymbol }
         });
