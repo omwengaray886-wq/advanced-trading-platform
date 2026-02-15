@@ -15,43 +15,46 @@ export class SessionAnalyzer {
         const minute = date.getUTCMinutes();
 
         // Session definitions (UTC)
-        const sessions = {
-            ASIAN: { start: 23, end: 8, killzone: { start: 0, end: 2 } },      // Tokyo: 00:00-02:00 UTC
-            LONDON: { start: 7, end: 16, killzone: { start: 8, end: 10 } },    // London: 08:00-10:00 UTC
-            NY: { start: 12, end: 21, killzone: { start: 13, end: 15 } },      // NY: 13:00-15:00 UTC
-            OVERLAP: { start: 12, end: 16 }                                     // London/NY Overlap: 12:00-16:00 UTC
+        // Note: These are standard approximate UTC times. 
+        // Real institutional sessions drift with DST, but we use these common benchmarks.
+        const sessionDefinitions = {
+            ASIAN: { name: 'ASIAN', start: 23, end: 8, killzone: { start: 0, end: 2 } },
+            LONDON: { name: 'LONDON', start: 7, end: 16, killzone: { start: 8, end: 10 } },
+            NY: { name: 'NY', start: 12, end: 21, killzone: { start: 13, end: 15 } }
         };
 
-        let activeSession = null;
+        const activeSessions = [];
         let killzone = null;
-        let isOverlap = false;
 
-        // Detect active session
-        if (this._isInRange(hour, sessions.ASIAN.start, sessions.ASIAN.end)) {
-            activeSession = 'ASIAN';
-            if (this._isInRange(hour, sessions.ASIAN.killzone.start, sessions.ASIAN.killzone.end)) {
-                killzone = 'ASIAN_OPEN';
+        // Detect all active sessions
+        Object.values(sessionDefinitions).forEach(def => {
+            if (this._isInRange(hour, def.start, def.end)) {
+                activeSessions.push(def.name);
+                if (def.killzone && this._isInRange(hour, def.killzone.start, def.killzone.killzoneEnd || def.killzone.end)) {
+                    killzone = `${def.name}_OPEN`;
+                }
             }
-        } else if (this._isInRange(hour, sessions.LONDON.start, sessions.LONDON.end)) {
-            activeSession = 'LONDON';
-            if (this._isInRange(hour, sessions.LONDON.killzone.start, sessions.LONDON.killzone.end)) {
-                killzone = 'LONDON_OPEN';
-            }
-        } else if (this._isInRange(hour, sessions.NY.start, sessions.NY.end)) {
-            activeSession = 'NY';
-            if (this._isInRange(hour, sessions.NY.killzone.start, sessions.NY.killzone.end)) {
-                killzone = 'NY_OPEN';
-            }
-        }
+        });
 
-        // Detect overlap
-        if (this._isInRange(hour, sessions.OVERLAP.start, sessions.OVERLAP.end)) {
-            isOverlap = true;
-            if (!killzone) killzone = 'OVERLAP';
+        // Detect overlap specifically for London/NY
+        const isLondon = activeSessions.includes('LONDON');
+        const isNY = activeSessions.includes('NY');
+        const isOverlap = isLondon && isNY;
+
+        // Determine primary display session
+        let displaySession = 'CLOSED';
+        if (activeSessions.length > 0) {
+            if (isOverlap) {
+                displaySession = 'LONDON/NY';
+            } else {
+                // If multiple (rare besides Lon/NY), take the last one added
+                displaySession = activeSessions[activeSessions.length - 1];
+            }
         }
 
         return {
-            session: activeSession || 'CLOSED',
+            session: displaySession,
+            allActive: activeSessions,
             killzone,
             isOverlap,
             hour,
