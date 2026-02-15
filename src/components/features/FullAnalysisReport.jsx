@@ -5,7 +5,7 @@ import PredictionBadge from './PredictionBadge';
 import PathProjection from './PathProjection';
 import TrapZoneWarning from './TrapZoneWarning';
 import RegimeTransitionIndicator from './RegimeTransitionIndicator';
-import RegimeTransitionIndicator from './RegimeTransitionIndicator';
+
 import MacroSentimentWidget from './MacroSentimentWidget';
 import { LeadLagMonitor } from './LeadLagMonitor';
 import { PatternMatcher } from './PatternMatcher';
