@@ -68,8 +68,8 @@ import { NewsShock } from '../models/annotations/NewsShock.js';
 import { ZoneMapper } from './zoneMapper.js';
 import { ZoneConfidenceScorer } from './zoneConfidenceScorer.js';
 import { newsShockEngine } from './newsShockEngine.js';
-import { TapeReadingEngine } from './TapeReadingEngine.js'; // Phase 2
 import { TradeManagementEngine } from './TradeManagementEngine.js'; // Phase 2
+import { signalManager } from './SignalManager.js'; // Phase 13
 
 // Phase 51: Persistent Cooldown Tracker
 const _cooldowns = new Map();
@@ -1012,6 +1012,11 @@ export class AnalysisOrchestrator {
                             }
                         ));
                     });
+                }
+
+                // 4. Auto-Track High Confidence Signals (Phase 13)
+                if (s.suitability > 0.8 && s.isHighConfidence) {
+                    signalManager.trackSignal(symbol, s);
                 }
             });
 

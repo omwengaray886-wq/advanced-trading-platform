@@ -187,6 +187,45 @@ export const getGlobalSignals = async () => {
     }
 };
 
+export const getAllActiveGlobalSignals = async () => {
+    try {
+        if (isUsingAdmin()) {
+            const snapshot = await firestore.collection("globalSignals")
+                .where("status", "==", "ACTIVE")
+                .get();
+            const signals = [];
+            snapshot.forEach(doc => signals.push({ id: doc.id, ...doc.data() }));
+            return signals;
+        } else {
+            const q = clientFirestore.query(
+                clientFirestore.collection(firestore, "globalSignals"),
+                clientFirestore.where("status", "==", "ACTIVE")
+            );
+            const querySnapshot = await clientFirestore.getDocs(q);
+            const signals = [];
+            querySnapshot.forEach((doc) => signals.push({ id: doc.id, ...doc.data() }));
+            return signals;
+        }
+    } catch (e) {
+        console.error("Error getting all active global signals: ", e);
+        return [];
+    }
+};
+
+export const updateGlobalSignal = async (id, data) => {
+    try {
+        if (isUsingAdmin()) {
+            await firestore.collection("globalSignals").doc(id).update(data);
+        } else {
+            await clientFirestore.updateDoc(clientFirestore.doc(firestore, "globalSignals", id), data);
+        }
+        return true;
+    } catch (e) {
+        console.error("Error updating global signal: ", e);
+        return false;
+    }
+};
+
 export const subscribeToGlobalSignals = (callback) => {
     try {
         if (isUsingAdmin()) {
@@ -372,8 +411,10 @@ export const db = {
     saveAnalysis,
     getMarketAnalysis,
     getGlobalSignals,
+    getAllActiveGlobalSignals,
     subscribeToGlobalSignals,
     saveGlobalSignal,
+    updateGlobalSignal,
     subscribeToTradeSetups,
     savePrediction,
 

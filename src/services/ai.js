@@ -7,6 +7,7 @@ import { AnalysisOrchestrator } from './analysisOrchestrator.js';
 import { ExplanationEngine } from './explanationEngine.js';
 import { marketData } from './marketData.js';
 import { AssetClassAdapter } from './assetClassAdapter.js';
+import { signalManager } from './SignalManager.js';
 
 
 const explanationEngine = new ExplanationEngine();
@@ -127,6 +128,13 @@ export async function generateTradeAnalysis(chartData, symbol, timeframe = '1H',
             currentExplanation = await enhanceExplanationWithAI(currentAnalysis, currentExplanation, mode);
         } catch (aiError) {
             console.warn('AI enhancement step failed (non-critical):', aiError);
+        }
+
+        // Step 3.5: Auto-Track High Confidence Signals (Phase 14 Autonomous)
+        const topSetup = currentAnalysis.setups?.[0];
+        if (topSetup && topSetup.isHighConfidence && topSetup.quantScore >= 80) {
+            console.log(`[AI] Auto-tracking Golden Setup for ${symbol}...`);
+            signalManager.trackSignal(symbol, topSetup);
         }
 
         // Step 4: Return complete package

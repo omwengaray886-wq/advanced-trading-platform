@@ -244,7 +244,41 @@ export default function GlobalSignalsPanel({ signals, onSelectSignal }) {
                             ))}
                         </div>
 
-                        {/* SIGNAL MANAGEMENT UPGRADES (Phase 67) */}
+                        {/* SIGNAL MANAGEMENT UPGRADES (Phase 13) */}
+                        {signal.status === 'ACTIVE' && (
+                            <div style={{
+                                marginTop: '10px',
+                                padding: '8px',
+                                background: 'rgba(16, 185, 129, 0.05)',
+                                border: '1px solid rgba(16, 185, 129, 0.2)',
+                                borderRadius: '6px'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 'bold' }}>LIVE MANAGEMENT</span>
+                                    <div style={{
+                                        width: '6px',
+                                        height: '6px',
+                                        borderRadius: '50%',
+                                        background: '#10b981',
+                                        boxShadow: '0 0 8px #10b981',
+                                        animation: 'pulse 2s infinite'
+                                    }} />
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                                    <span style={{ color: 'rgba(255,255,255,0.5)' }}>PnL:</span>
+                                    <span style={{ color: signal.pnl >= 0 ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>
+                                        {signal.pnl >= 0 ? '+' : ''}{signal.pnl?.toFixed(2)}
+                                    </span>
+                                </div>
+                                {signal.updates && signal.updates.length > 0 && (
+                                    <div style={{ marginTop: '4px', fontSize: '9px', color: '#9ca3af', fontStyle: 'italic' }}>
+                                        <Clock size={8} style={{ display: 'inline', marginRight: '4px' }} />
+                                        {signal.updates[signal.updates.length - 1].msg}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {signal.trailingStop && (
                             <div style={{
                                 marginTop: '8px',
@@ -256,13 +290,6 @@ export default function GlobalSignalsPanel({ signals, onSelectSignal }) {
                             }}>
                                 <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>Active Trail: </span>
                                 <span style={{ color: 'white' }}>{signal.trailingStop.toFixed(4)}</span>
-                            </div>
-                        )}
-
-                        {signal.managementUpdates && signal.managementUpdates.length > 0 && (
-                            <div style={{ marginTop: '4px', fontSize: '9px', color: '#9ca3af', fontStyle: 'italic' }}>
-                                <Clock size={8} style={{ display: 'inline', marginRight: '4px' }} />
-                                {signal.managementUpdates[signal.managementUpdates.length - 1]}
                             </div>
                         )}
 

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, AlertTriangle, Zap, Activity, Info, ChevronDown, ChevronUp, Wind } from 'lucide-react';
 import { PortfolioStressService } from '../../services/PortfolioStressService';
+import { signalManager } from '../../services/SignalManager';
 
 export default function GlobalRiskHUD({ setups = [], accountSize = 10000 }) {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -40,6 +41,23 @@ export default function GlobalRiskHUD({ setups = [], accountSize = 10000 }) {
                         <span style={{ fontSize: '10px', opacity: 0.4, fontWeight: 'bold' }}>EXPOSURE HUD</span>
                         <div className="flex-row items-center gap-xs">
                             <span style={{ fontSize: '14px', fontWeight: 'bold', letterSpacing: '-0.5px' }}>${metrics.totalOpenRisk?.toFixed(2) || '0.00'} AT RISK</span>
+                            {signalManager.getActiveSignals().length > 0 && (
+                                <div style={{
+                                    fontSize: '9px',
+                                    background: 'rgba(16, 185, 129, 0.1)',
+                                    color: '#10b981',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    fontWeight: 'bold',
+                                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    marginLeft: '8px'
+                                }}>
+                                    <Activity size={10} /> {signalManager.getActiveSignals().length} ACTIVE SIGNALS
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

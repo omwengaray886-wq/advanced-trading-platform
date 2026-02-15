@@ -23,7 +23,12 @@ import LegendPanel from '../components/features/LegendPanel';
 import CorrelationHeatmap from '../components/features/CorrelationHeatmap';
 import InstitutionalScanner from '../components/features/InstitutionalScanner';
 import GlobalRiskHUD from '../components/features/GlobalRiskHUD';
+import GlobalSignalsPanel from '../components/features/GlobalSignalsPanel';
 import { newsService } from '../services/newsService';
+import { CorrelationClusterEngine } from '../services/CorrelationClusterEngine';
+import { AnnotationMapper } from '../services/annotationMapper';
+import { signalManager } from '../services/SignalManager';
+import { subscribeToGlobalSignals } from '../services/db';
 
 const getSession = () => {
     const hour = new Date().getUTCHours();
@@ -33,9 +38,6 @@ const getSession = () => {
     if (hour >= 17 && hour < 21) return { name: 'New York Session', status: 'Moderate Volatility' };
     return { name: 'Market Close', status: 'Low Liquidity' };
 };
-
-import { CorrelationClusterEngine } from '../services/CorrelationClusterEngine';
-import { AnnotationMapper } from '../services/annotationMapper';
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -48,34 +50,31 @@ export default function Dashboard() {
     const { addToast } = useToast();
     const [overlays, setOverlays] = useState({ zones: [], labels: [] });
     const [riskStatus, setRiskStatus] = useState({ diversificationScore: 100, globalRiskStatus: 'REAL-TIME' });
+    const [isRefining, setIsRefining] = useState(false);
+    const [globalSignals, setGlobalSignals] = useState([]);
+
+    const mapAnnotationsToOverlays = (annotations, liquidityMap = [], marketState = null) => {
+        const lastCandleTime = chartData && chartData.length > 0 ? chartData[chartData.length - 1].time : Date.now() / 1000;
+        const overlays = AnnotationMapper.mapToOverlays(annotations, { lastCandleTime, timeframe: '1h', marketState });
+        return { ...overlays, liquidityMap };
+    };
 
     useEffect(() => {
-        // Future Phase: Integration with real CorrelationClusterEngine based on active wallet/setups
-    }, [setups]);
-
-    useEffect(() => {
-        // Update session every minute
         const interval = setInterval(() => {
             setSession(getSession());
         }, 60000);
+
+        // Phase 14: Initialize Signal Manager Persistence
+        signalManager.init();
+
         return () => clearInterval(interval);
     }, []);
 
     useEffect(() => {
-        // 1. Subscribe to Firestore updates
         const unsubscribeDB = subscribeToTradeSetups((data) => {
-            // Filter setups for the selected symbol if needed, 
-            // but usually we want to see all High Prob setups.
-            // For the dashboard, let's prioritize the selected one.
-            const sorted = [...data].sort((a, b) => {
-                if (a.symbol === selectedSymbol && b.symbol !== selectedSymbol) return -1;
-                if (a.symbol !== selectedSymbol && b.symbol === selectedSymbol) return 1;
-                return b.timestamp - a.timestamp;
-            });
             setSetups(data);
         });
 
-        // 2. Fetch Initial History
         const fetchHistory = async () => {
             setLoading(true);
             try {
@@ -94,19 +93,20 @@ export default function Dashboard() {
 
         fetchHistory();
 
-        // 3. Connect WebSocket
         const apiSymbol = selectedSymbol.replace('/', '');
         marketData.connect(apiSymbol, '1h');
         const unsubscribeWS = marketData.subscribe((candle) => {
+            // Phase 13: Real-time Signal Management
+            signalManager.updateMarketPrice(selectedSymbol, candle.close);
+
             setChartData(prev => {
                 const last = prev[prev.length - 1];
                 if (last && last.time === candle.time) {
                     const newData = [...prev];
                     newData[prev.length - 1] = candle;
                     return newData;
-                } else {
-                    return [...prev, candle];
                 }
+                return [...prev, candle];
             });
             setCurrentPrice(candle.close);
         });
@@ -118,20 +118,71 @@ export default function Dashboard() {
         };
     }, [selectedSymbol]);
 
-    // UseToast moved to top
+    // Phase 13: Global Signals Subscription
+    useEffect(() => {
+        const unsubscribeDB = subscribeToGlobalSignals((dbSignals) => {
+            const liveSignals = signalManager.getActiveSignals();
+            setGlobalSignals([...liveSignals, ...dbSignals]);
+        });
 
-    const mapAnnotationsToOverlays = (annotations, liquidityMap = [], marketState = null) => {
-        const lastCandleTime = chartData && chartData.length > 0 ? chartData[chartData.length - 1].time : Date.now() / 1000;
-        // Pass marketState in context
-        const overlays = AnnotationMapper.mapToOverlays(annotations, { lastCandleTime, timeframe: '1h', marketState });
+        const unsubscribeLive = signalManager.subscribe((liveSignals) => {
+            setGlobalSignals(prev => {
+                const dbOnes = prev.filter(s => !s.id.startsWith('sig-'));
+                return [...liveSignals, ...dbOnes];
+            });
+        });
 
-        return {
-            ...overlays,
-            liquidityMap
+        return () => {
+            unsubscribeDB();
+            unsubscribeLive();
         };
-    };
+    }, []);
 
-    const [isRefining, setIsRefining] = useState(false);
+    // Phase 14: Autonomous Background Scanner
+    useEffect(() => {
+        const SCAN_LIST = ['BTC/USDT', 'ETH/USDT', 'XAU/USD', 'EUR/USD', 'GBP/USD'];
+        let currentIndex = 0;
+
+        const performBackgroundScan = async () => {
+            const sym = SCAN_LIST[currentIndex];
+            console.log(`[BackgroundScanner] Scanning ${sym} for institutional setups...`);
+
+            try {
+                const history = await marketData.fetchHistory(sym, '1h', 100);
+                if (history && history.length >= 50) {
+                    await generateTradeAnalysis(
+                        history,
+                        sym,
+                        '1H',
+                        null,
+                        'ADVANCED',
+                        async (result) => {
+                            if (!result.isPartial) {
+                                // Save full analysis/setup to DB to populate dashboard
+                                await addDoc(collection(db, "tradeSetups"), result);
+                                console.log(`[BackgroundScanner] Successfully scanned ${sym}`);
+                            }
+                        }
+                    );
+                }
+            } catch (e) {
+                console.warn(`[BackgroundScanner] Scan failed for ${sym}:`, e.message);
+            }
+
+            currentIndex = (currentIndex + 1) % SCAN_LIST.length;
+        };
+
+        // Scan every 5 minutes
+        const scanInterval = setInterval(performBackgroundScan, 300000);
+
+        // Initial delay to let the dashboard load first
+        const initialDelay = setTimeout(performBackgroundScan, 30000);
+
+        return () => {
+            clearInterval(scanInterval);
+            clearTimeout(initialDelay);
+        };
+    }, []);
 
     const handleAIScan = async () => {
         if (chartData.length < 50) {
@@ -143,7 +194,6 @@ export default function Dashboard() {
         setIsRefining(true);
 
         try {
-            // 1. Analyze with partial result callback for instant feedback
             const newSetup = await generateTradeAnalysis(
                 chartData,
                 selectedSymbol,
@@ -151,7 +201,6 @@ export default function Dashboard() {
                 null,
                 'ADVANCED',
                 (partial) => {
-                    // Update UI immediately with deterministic results
                     setSetups(prev => {
                         const exists = prev.find(s => s.id === partial.id || (s.symbol === partial.symbol && s.strategy === partial.strategy));
                         if (exists) return prev.map(s => (s.id === partial.id || (s.symbol === partial.symbol && s.strategy === partial.strategy)) ? partial : s);
@@ -162,19 +211,14 @@ export default function Dashboard() {
                         const visualOverlays = mapAnnotationsToOverlays(partial.annotations, partial.liquidityMap, partial.marketState);
                         setOverlays(visualOverlays);
                     }
-
-                    // STOP the heavy loading state as soon as we have technical data
                     setLoading(false);
                     addToast(`Fast Scan Complete. Refining Deep Intel...`, 'info');
                 }
             );
 
-            // 2. Save full result to Firestore
             await addDoc(collection(db, "tradeSetups"), newSetup);
 
-            // 3. Update UI with final AI-enhanced setup
             setSetups(prev => {
-                // If we have a local partial one, replace it
                 const index = prev.findIndex(s => s.isPartial && s.symbol === newSetup.symbol);
                 if (index !== -1) {
                     const next = [...prev];
@@ -200,8 +244,8 @@ export default function Dashboard() {
 
     if (loading && chartData.length === 0) {
         return (
-            <div>
-                <div style={{ marginBottom: '24px', height: '32px', width: '200px', background: 'var(--color-bg-tertiary)', borderRadius: '4px' }}></div>
+            <div style={{ padding: '24px' }}>
+                <div style={{ marginBottom: '24px', height: '32px', width: '200px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }}></div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '32px' }}>
                     <div className="card" style={{ height: '120px' }}></div>
                     <div className="card" style={{ height: '120px' }}></div>
@@ -215,19 +259,18 @@ export default function Dashboard() {
         );
     }
 
-
-    // useNavigate moved to top
-
-    // ... (rest of component)
-
     return (
-        <div>
+        <div style={{ padding: '24px', maxWidth: '1600px', margin: '0 auto' }}>
             <div className="flex-row justify-between items-end" style={{ marginBottom: '24px' }}>
                 <div className="flex-col">
                     <h1 style={{ fontSize: '28px', margin: 0, letterSpacing: '-1px', fontWeight: '900', color: 'white' }}>COMMAND CENTER</h1>
                     <p style={{ fontSize: '11px', opacity: 0.4, fontWeight: 'bold', margin: 0 }}>INTELLIGENCE v5.2 // INSTITUTIONAL GRADE</p>
                 </div>
-                <div className="flex-row gap-md items-center">
+                <div className="flex-row gap-lg items-center">
+                    <div className="flex-row items-center gap-xs">
+                        <div className="pulse-dot" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }}></div>
+                        <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 'bold', letterSpacing: '1px' }}>LIVE CONNECTION</span>
+                    </div>
                     <div className="badge badge-success" style={{ fontSize: '9px', fontWeight: '900' }}>CORE ENGINE ACTIVE</div>
                     <div style={{ fontSize: '11px', fontFamily: 'monospace', opacity: 0.6 }}>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</div>
                 </div>
@@ -235,80 +278,38 @@ export default function Dashboard() {
 
             <GlobalRiskHUD setups={setups} />
 
-            {/* Sentiment Cards (High-Density) */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-                <div
-                    className="card interactive-card"
-                    onClick={() => navigate('/app/markets')}
-                    style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
-                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
-                    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
-                >
-                    <p style={{ color: 'var(--color-text-secondary)', fontSize: '14px', marginBottom: '8px' }}>Bitcoin Price</p>
-                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--color-primary)' }}>
+                <div className="card interactive-card" onClick={() => navigate('/app/markets')} style={{ cursor: 'pointer' }}>
+                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px', marginBottom: '8px' }}>{selectedSymbol} Price</p>
+                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#3b82f6' }}>
                         ${currentPrice?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
-                    <p style={{ fontSize: '12px', marginTop: '4px', color: 'var(--color-text-secondary)' }}>Live from Binance</p>
                 </div>
-                <div
-                    className="card interactive-card"
-                    onClick={() => navigate('/app/markets')} // Or /setups if we had it
-                    style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
-                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
-                    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
-                >
-                    <p style={{ color: 'var(--color-text-secondary)', fontSize: '14px', marginBottom: '8px' }}>Active Setups</p>
+                <div className="card interactive-card" onClick={() => navigate('/app/markets')} style={{ cursor: 'pointer' }}>
+                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px', marginBottom: '8px' }}>Active Setups</p>
                     <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{setups.filter(s => s.status === 'ACTIVE').length}</div>
-                    <p style={{ fontSize: '12px', marginTop: '4px' }}>Ready to execute</p>
                 </div>
                 <div className="card">
-                    <p style={{ color: 'var(--color-text-secondary)', fontSize: '14px', marginBottom: '8px' }}>Portfolio Risk Status</p>
-                    <div style={{
-                        fontSize: '20px',
-                        fontWeight: 'bold',
-                        color: riskStatus.globalRiskStatus.includes('DANGER') ? 'var(--color-danger)' :
-                            riskStatus.globalRiskStatus.includes('WARNING') ? 'var(--color-warning)' :
-                                'var(--color-success)'
-                    }}>
-                        {riskStatus.globalRiskStatus}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                        <div className="badge" style={{ fontSize: '10px' }}>{riskStatus.diversificationScore} Diversification Score</div>
-                    </div>
+                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px', marginBottom: '8px' }}>Portfolio Risk Status</p>
+                    <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#10b981' }}>{riskStatus.globalRiskStatus}</div>
                 </div>
                 <div className="card">
-                    <p style={{ color: 'var(--color-text-secondary)', fontSize: '14px', marginBottom: '8px' }}>Institutional Cycle (AMD)</p>
-                    <div style={{
-                        fontSize: '18px',
-                        fontWeight: 'bold',
-                        color: setups[0]?.marketState?.amdCycle?.phase === 'MANIPULATION' ? 'var(--color-danger)' :
-                            setups[0]?.marketState?.amdCycle?.phase === 'ACCUMULATION' ? 'var(--color-warning)' :
-                                'var(--color-success)'
-                    }}>
-                        {setups[0]?.marketState?.amdCycle?.phase || 'UNKNOWN'}
-                    </div>
-                    <p style={{ fontSize: '11px', marginTop: '4px', color: 'var(--color-text-secondary)' }}>
-                        {setups[0]?.marketState?.amdCycle?.note || 'Waiting for institutional footprints...'}
-                    </p>
+                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px', marginBottom: '8px' }}>Institutional Cycle</p>
+                    <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{setups[0]?.marketState?.amdCycle?.phase || 'NEUTRAL'}</div>
                 </div>
                 <SentimentGauge score={setups[0]?.marketState?.sentiment?.score || 50} />
                 <LiveWallet />
             </div>
 
-
-
-            {/* Main Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px', marginBottom: '24px' }}>
-
-                {/* Left Column: Chart */}
                 <div className="flex-col gap-md">
                     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                        <div className="card-header" style={{ padding: '16px', borderBottom: '1px solid var(--border-color)', margin: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div className="card-header" style={{ padding: '16px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div className="flex-row gap-sm items-center">
-                                <h2 className="card-title" style={{ margin: 0 }}>{selectedSymbol} Structure</h2>
+                                <h2 className="card-title" style={{ margin: 0, fontSize: '16px' }}>{selectedSymbol} Structure</h2>
                                 <select
                                     className="input"
-                                    style={{ width: '120px', fontSize: '11px', padding: '2px 4px', height: '24px' }}
+                                    style={{ width: '120px', fontSize: '11px', padding: '2px 4px', height: '24px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white' }}
                                     value={selectedSymbol}
                                     onChange={(e) => setSelectedSymbol(e.target.value)}
                                 >
@@ -319,44 +320,40 @@ export default function Dashboard() {
                                     <option value="XAU/USD">XAU/USD</option>
                                 </select>
                             </div>
-                            <div className="flex-row gap-sm">
-                                <span className="badge badge-neutral">1H</span>
-                                <span className="badge badge-success">LIVE</span>
-                            </div>
                         </div>
                         <div style={{ height: '380px', position: 'relative' }}>
                             <Chart data={chartData} overlays={overlays} />
                             <LegendPanel />
                         </div>
                     </div>
-
                     <div className="card">
                         <h2 className="card-title" style={{ fontSize: '14px', marginBottom: '16px' }}>Active Trade Monitoring</h2>
                         <ActivePositions />
                     </div>
-
                     <MarketTicker />
                 </div>
 
-                {/* Right Column: Trade Setups */}
                 <div className="flex-col gap-md">
+                    <div style={{ marginBottom: '16px' }}>
+                        <GlobalSignalsPanel
+                            signals={globalSignals}
+                            onSelectSignal={(sig) => {
+                                setSelectedSymbol(sig.symbol);
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                        />
+                    </div>
+
                     <div className="flex-row justify-between items-center">
                         <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>High Probability Setups</h2>
                         <button
-                            id="ai-btn"
                             onClick={handleAIScan}
                             disabled={loading}
-                            className={`btn btn-primary ${loading ? 'opacity-50' : ''}`}
+                            className="btn btn-primary"
                             style={{ fontSize: '12px', display: 'flex', gap: '8px', alignItems: 'center', minWidth: '140px' }}
                         >
-                            {loading ? (
-                                <RefreshCw size={16} className="animate-spin" />
-                            ) : isRefining ? (
-                                <RefreshCw size={16} className="animate-spin" style={{ color: '#10B981' }} />
-                            ) : (
-                                <Bot size={16} />
-                            )}
-                            {loading ? 'Analyzing...' : isRefining ? 'Refining Intel...' : 'AI Scan'}
+                            {loading ? <RefreshCw size={16} className="animate-spin" /> : <Bot size={16} />}
+                            {loading ? 'Analyzing...' : 'AI Scan'}
                         </button>
                     </div>
 
@@ -367,7 +364,6 @@ export default function Dashboard() {
 
                     {setups.map(setup => (
                         <div key={setup.id} onClick={() => {
-                            // On click, allow visualizing this setup's annotations if available
                             if (setup.annotations) {
                                 setOverlays(mapAnnotationsToOverlays(setup.annotations, setup.liquidityMap, setup.marketState));
                             }
@@ -375,18 +371,9 @@ export default function Dashboard() {
                             <TradeSetupCard setup={setup} />
                         </div>
                     ))}
-
-                    {setups.length === 0 && (
-                        <div style={{ textAlign: 'center', padding: '40px', color: 'var(--color-text-secondary)' }}>
-                            No active setups found.
-                        </div>
-                    )}
                 </div>
-
             </div>
 
-            {/* Market Intelligence Section */}
-            <h2 className="card-title" style={{ fontSize: '18px', marginBottom: '16px' }}>Institutional Market Intel</h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px' }}>
                 <InstitutionalScanner onSelectSymbol={(sym) => {
                     setSelectedSymbol(sym);
@@ -398,50 +385,6 @@ export default function Dashboard() {
                         <MarketHeatmap />
                     </div>
                     <CorrelationHeatmap />
-                    {overlays.liquidityMap && overlays.liquidityMap.length > 0 && (
-                        <div className="card glass-panel" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
-                            <div className="flex-row justify-between items-center" style={{ marginBottom: '16px' }}>
-                                <h3 className="card-title" style={{ fontSize: '12px', margin: 0 }}>ORDER FLOW DEPTH</h3>
-                                <div className="badge badge-outline" style={{ fontSize: '8px' }}>DOM VIEW</div>
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {overlays.liquidityMap.slice(0, 10).map((l, i) => (
-                                    <div key={i} style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        fontSize: '10px',
-                                        padding: '6px 8px',
-                                        background: 'rgba(255,255,255,0.02)',
-                                        borderRadius: '4px',
-                                        position: 'relative',
-                                        overflow: 'hidden'
-                                    }}>
-                                        <div style={{
-                                            position: 'absolute',
-                                            left: 0,
-                                            top: 0,
-                                            bottom: 0,
-                                            width: `${l.intensity * 100}%`,
-                                            background: l.side === 'BID' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                            zIndex: 0
-                                        }} />
-                                        <span style={{
-                                            color: l.side === 'BID' ? '#10b981' : '#ef4444',
-                                            fontWeight: 'bold',
-                                            zIndex: 1,
-                                            fontFamily: 'monospace'
-                                        }}>
-                                            {l.side} @ {l.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                        </span>
-                                        <span style={{ color: 'rgba(255,255,255,0.6)', zIndex: 1, fontFamily: 'monospace' }}>
-                                            {((l.volume || 0) / 1000).toFixed(1)}k
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
                 </div>
                 <div className="flex-col gap-md">
                     <EconomicCalendar />

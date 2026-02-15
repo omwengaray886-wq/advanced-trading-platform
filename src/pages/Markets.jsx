@@ -30,6 +30,7 @@ import ExplanationPanel from '../components/features/ExplanationPanel';
 import SentimentGauge from '../components/features/SentimentGauge';
 import InstitutionalScanner from '../components/features/InstitutionalScanner';
 import GlobalSignalsPanel from '../components/features/GlobalSignalsPanel';
+import { signalManager } from '../services/SignalManager.js';
 
 export default function Markets() {
     const assetRegistry = {
@@ -254,10 +255,23 @@ export default function Markets() {
 
     // Global Signals Subscription
     useEffect(() => {
-        const unsubscribe = subscribeToGlobalSignals((signals) => {
-            setGlobalSignals(signals);
+        const unsubscribeDB = subscribeToGlobalSignals((dbSignals) => {
+            const liveSignals = signalManager.getActiveSignals();
+            setGlobalSignals([...liveSignals, ...dbSignals]);
         });
-        return unsubscribe;
+
+        const unsubscribeLive = signalManager.subscribe((liveSignals) => {
+            // Re-fetch from DB state? Or just merge current state
+            setGlobalSignals(prev => {
+                const dbOnes = prev.filter(s => !s.id.startsWith('sig-'));
+                return [...liveSignals, ...dbOnes];
+            });
+        });
+
+        return () => {
+            unsubscribeDB();
+            unsubscribeLive();
+        };
     }, []);
 
     const handleToggleMonitoring = () => {
@@ -347,6 +361,9 @@ export default function Markets() {
             try {
                 marketData.connect(symbol, interval);
                 unsubscribe = marketData.subscribe((candle) => {
+                    // Update Signal Manager for real-time lifecycle tracking
+                    signalManager.updateMarketPrice(symbol, candle.close);
+
                     setChartData(prev => {
                         const last = prev[prev.length - 1];
                         if (last && last.time === candle.time) {
@@ -377,21 +394,18 @@ export default function Markets() {
                     const savedAnalysis = await getMarketAnalysis(symbol, interval);
                     // CRITICAL: Verify the loaded analysis actually belongs to this symbol
                     if (savedAnalysis && savedAnalysis.timestamp && savedAnalysis.symbol === symbol) {
-                        // Additional freshness check: only load if less than 1 hour old
+                        // Additional freshness check: only load if less than 30 minutes old (Phase 14)
                         const ageMinutes = (Date.now() - savedAnalysis.timestamp) / 60000;
-                        if (ageMinutes < 60) {
+                        if (ageMinutes < 30) {
                             console.log(`[Markets] Loaded persisted analysis for ${symbol}:`, savedAnalysis.timestamp);
                             setAnalysis(savedAnalysis);
-                            analysisRef.current = true; // Mark as analyzed so we don't auto-regen immediately
+                            analysisRef.current = true; // Mark as analyzed
                         } else {
-                            console.log(`[Markets] Cached analysis for ${symbol} is stale (${ageMinutes.toFixed(0)}m old), regenerating...`);
+                            console.log(`[Markets] Cached analysis for ${symbol} is stale (${ageMinutes.toFixed(0)}m old), clearing for regenerate...`);
                             setAnalysis(null);
                             analysisRef.current = false;
                         }
                     } else {
-                        if (savedAnalysis && savedAnalysis.symbol !== symbol) {
-                            console.warn(`[Markets] Symbol mismatch! Expected ${symbol}, got ${savedAnalysis.symbol}. Clearing cache.`);
-                        }
                         setAnalysis(null);
                         analysisRef.current = false;
                     }
@@ -418,6 +432,14 @@ export default function Markets() {
             marketData.disconnect();
         };
     }, [selectedPair, timeframe]);
+
+    // Phase 14: Auto-Regeneration of Stale Analysis
+    useEffect(() => {
+        if (!analysis && !loading && chartData.length >= 50 && !analysisRef.current) {
+            console.log('[Markets] Auto-triggering fresh analysis (stale or missing)');
+            handleGenerateAnalysis(true);
+        }
+    }, [analysis, loading, chartData]);
 
     const [analysis, setAnalysis] = useState(null);
     const [activeSetupId, setActiveSetupId] = useState('A');
