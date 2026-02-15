@@ -370,15 +370,78 @@ app.get('/api/binance/klines', async (req, res) => {
         const response = await fetchWithRetry(`${BINANCE_BASE}/api/v3/klines`, {
             symbol: binanceSymbol,
             interval,
-        } catch (error) {
-            const status = error.response?.status || 500;
-            console.error(`[PROXY ERROR] Klines ${status} for ${req.query.symbol}: ${error.message}`);
-            if (error.response) {
-                return res.status(status).json(error.response.data);
-            }
-            res.status(status).json({ error: 'Binance Depth Proxy Internal Error', message: error.message });
+            limit: limit || 100
+        });
+        res.json(response.data);
+    } catch (error) {
+        const status = error.response?.status || 500;
+        console.error(`[PROXY ERROR] Klines ${status} for ${req.query.symbol}: ${error.message}`);
+        if (error.response) {
+            return res.status(status).json(error.response.data);
         }
-    });
+        res.status(status).json({
+            error: 'Binance Proxy Connection Failed',
+            details: error.message,
+            target: `${BINANCE_BASE}/api/v3/klines`
+        });
+    }
+});
+
+// 1.1 Proxy for Binance Depth (Public)
+app.get('/api/binance/depth', async (req, res) => {
+    try {
+        const { symbol, limit = 20 } = req.query;
+        if (!symbol) return res.status(400).json({ error: 'Missing symbol' });
+
+        // GBPJPY Synthetic Depth (Phase 15 Enhancement)
+        if (symbol.toUpperCase() === 'GBPJPY' || symbol.toUpperCase() === 'JBPJPY') {
+            try {
+                // Fetch current price to center the depth
+                const yRes = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/GBPJPY=X?interval=1m&range=1d`);
+                const price = yRes.data?.chart?.result?.[0]?.meta?.regularMarketPrice || 190.50;
+
+                // Generate synthetic order book around current price
+                const bids = [];
+                const asks = [];
+                const spread = 0.012; // Typical GBPJPY spread
+
+                for (let i = 0; i < parseInt(limit); i++) {
+                    const bidPrice = (price - (spread / 2) - (i * 0.005)).toFixed(3);
+                    const askPrice = (price + (spread / 2) + (i * 0.005)).toFixed(3);
+                    bids.push([bidPrice, (Math.random() * 5 + 1).toFixed(2)]);
+                    asks.push([askPrice, (Math.random() * 5 + 1).toFixed(2)]);
+                }
+
+                return res.json({
+                    lastUpdateId: Date.now(),
+                    bids,
+                    asks
+                });
+            } catch (err) {
+                console.error(`[PROXY] GBPJPY Depth simulation failed:`, err.message);
+                return res.json({ lastUpdateId: Date.now(), bids: [], asks: [] });
+            }
+        }
+
+        const binanceSymbol = await getVerifiedSymbol(symbol);
+        if (!binanceSymbol) {
+            return res.status(404).json({ error: 'Unsupported Symbol for Depth' });
+        }
+
+        const response = await axios.get(`${BINANCE_BASE}/api/v3/depth`, {
+            params: { symbol: binanceSymbol, limit: limit || 20 }
+        });
+        res.json(response.data);
+    } catch (error) {
+        const status = error.response?.status || 500;
+        console.error(`[PROXY ERROR] Depth ${status} for ${req.query.symbol}: ${error.message}`);
+        if (error.response) {
+            return res.status(status).json(error.response.data);
+        }
+        res.status(status).json({ error: 'Binance Depth Proxy Internal Error', message: error.message });
+    }
+});
+
 
 // 1.2 Proxy for Binance Ticker (24hr)
 app.get('/api/binance/ticker', async (req, res) => {
