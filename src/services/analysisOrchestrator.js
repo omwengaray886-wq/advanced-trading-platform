@@ -931,7 +931,7 @@ export class AnalysisOrchestrator {
 
                             // Apply Macro Bias Veto/Boost Rationale (Phase 2)
                             if (marketState.macroBias) {
-                                const setupProxy = { direction, suitability: s.suitability || c.suitability, rationale: '' };
+                                const setupProxy = { direction, suitability: finalSuitability, rationale: '' };
                                 macroBiasEngine.applyVeto(setupProxy, marketState.macroBias);
                                 if (setupProxy.rationale) {
                                     baseRationale = `${setupProxy.rationale} | ${baseRationale}`;
