@@ -459,58 +459,119 @@ app.get('/api/binance/ticker', async (req, res) => {
     }
 });
 
-// 1.3 Proxy for NewsAPI (General News)
+// 1.2 Proxy for CoinGecko (Fixes CORS and centralizes access)
+app.use('/api/coingecko', async (req, res) => {
+    const path = req.path.replace(/^\//, '');
+    const cacheKey = `cg_${path}_${JSON.stringify(req.query)}`;
+    const cached = cache.coingecko.get(cacheKey);
+
+    const dynamicTTL = path.includes('list') || path.includes('info') ? 3600000 : 600000;
+
+    if (cached && (Date.now() - cached.timestamp < dynamicTTL)) {
+        return res.json(cached.data);
+    }
+
+    const cgKey = process.env.COINGECKO_API_KEY;
+    if (!cgKey) {
+        if (cached) return res.json(cached.data);
+        return res.json({ disabled: true, error: 'CoinGecko features disabled' });
+    }
+
+    try {
+        const response = await coinGeckoQueue.enqueue(async () => {
+            return await axios.get(`https://api.coingecko.com/api/v3/${path}`, {
+                params: req.query,
+                headers: { 'x-cg-demo-api-key': cgKey.trim() },
+                timeout: 8000
+            });
+        });
+
+        cache.coingecko.set(cacheKey, { data: response.data, timestamp: Date.now() });
+        res.json(response.data);
+    } catch (error) {
+        const status = error.response?.status || 500;
+        if ((status === 429 || status === 500) && cached) return res.json(cached.data);
+        res.status(status).json(error.response?.data || { error: error.message });
+    }
+});
+
+// 1.3 Proxy for NewsAPI
 app.get('/api/news', async (req, res) => {
     try {
-        const apiKey = process.env.NEWSAPI_KEY;
-        if (!apiKey) return res.json({ disabled: true, results: [], message: 'NewsAPI Key Missing' });
+        const apiKey = process.env.NEWS_API_KEY; // Corrected from NEWSAPI_KEY
+        if (!apiKey || apiKey === 'MISSING') return res.json({ disabled: true, articles: [] });
 
-        const q = (req.query.q || 'crypto').toLowerCase().trim();
+        const rawQ = (req.query.q || 'crypto').toLowerCase().trim();
+
+        // Forex News Routing (Phase 15 Enhancement)
+        let q = rawQ;
+        if (rawQ.includes('gbpjpy') || rawQ.includes('jpy')) {
+            q = 'GBPJPY forex economy';
+        } else if (rawQ.includes('eurusd')) {
+            q = 'EURUSD forex economy';
+        }
+
         const sortBy = (req.query.sortBy || 'publishedAt').toLowerCase().trim();
         const language = (req.query.language || 'en').toLowerCase().trim();
         const pageSize = parseInt(req.query.pageSize) || 20;
 
         const cacheKey = `news_${q}_${sortBy}_${pageSize}`;
         const cached = newsCache.get(cacheKey);
-        if (cached && (Date.now() - cached.timestamp < 3600000)) { // 1h TTL
-            console.log(`[NEWS] Returning cached results for ${q}`);
-            return res.json(cached.data);
-        }
+        if (cached && (Date.now() - cached.timestamp < 3600000)) return res.json(cached.data);
 
         console.log(`[NEWS] Fetching fresh data for ${q}...`);
         const response = await newsQueue.enqueue(() =>
             axios.get('https://newsapi.org/v2/everything', {
-                params: {
-                    q,
-                    sortBy,
-                    language,
-                    pageSize,
-                    apiKey
-                },
+                params: { q, sortBy, language, pageSize, apiKey },
                 timeout: 15000
             })
         );
 
-        // Cache for 1 hour
         newsCache.set(cacheKey, { data: response.data, timestamp: Date.now() });
         res.json(response.data);
     } catch (error) {
         const status = error.response?.status || 500;
-        // Fallback to stale if rate limited
-        const cacheKey = `news_${(req.query.q || 'crypto').toLowerCase().trim()}_${(req.query.sortBy || 'publishedAt').toLowerCase().trim()}_${parseInt(req.query.pageSize) || 20}`;
+        const cacheKey = `news_${(req.query.q || 'crypto')}_${(req.query.sortBy || 'publishedAt').toLowerCase().trim()}_${parseInt(req.query.pageSize) || 20}`;
         const cached = newsCache.get(cacheKey);
-        if ((status === 429 || status === 500 || status === 503) && cached) {
-            console.warn('[PROXY] NewsAPI Throttled. Serving stale news.');
-            return res.json(cached.data);
-        }
-
-        // Final safety: Ensure response is always JSON
-        const errorData = (error.response?.data && typeof error.response.data === 'object')
-            ? error.response.data
-            : { error: error.message, status };
-
-        res.status(status).json(errorData);
+        if ((status === 429 || status === 500) && cached) return res.json(cached.data);
+        res.status(status).json(error.response?.data || { error: error.message });
     }
+});
+
+console.log(`[NEWS] Fetching fresh data for ${q}...`);
+const response = await newsQueue.enqueue(() =>
+    axios.get('https://newsapi.org/v2/everything', {
+        params: {
+            q,
+            sortBy,
+            language,
+            pageSize,
+            apiKey
+        },
+        timeout: 15000
+    })
+);
+
+// Cache for 1 hour
+newsCache.set(cacheKey, { data: response.data, timestamp: Date.now() });
+res.json(response.data);
+    } catch (error) {
+    const status = error.response?.status || 500;
+    // Fallback to stale if rate limited
+    const cacheKey = `news_${(req.query.q || 'crypto').toLowerCase().trim()}_${(req.query.sortBy || 'publishedAt').toLowerCase().trim()}_${parseInt(req.query.pageSize) || 20}`;
+    const cached = newsCache.get(cacheKey);
+    if ((status === 429 || status === 500 || status === 503) && cached) {
+        console.warn('[PROXY] NewsAPI Throttled. Serving stale news.');
+        return res.json(cached.data);
+    }
+
+    // Final safety: Ensure response is always JSON
+    const errorData = (error.response?.data && typeof error.response.data === 'object')
+        ? error.response.data
+        : { error: error.message, status };
+
+    res.status(status).json(errorData);
+}
 });
 
 // 1.5.1 Proxy for CryptoPanic (Crypto News)
