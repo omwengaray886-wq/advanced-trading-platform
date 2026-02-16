@@ -312,7 +312,7 @@ app.get('/api/binance/klines', async (req, res) => {
 
                     const intervalMs = getIntervalMs(interval);
 
-                    // Map to Binance Format
+                    // Map to Binance Format with Strict Timestamp Snapping
                     const candles = timestamps.map((t, i) => {
                         if (quote.open[i] === null || quote.close[i] === null) return null;
 
@@ -322,14 +322,17 @@ app.get('/api/binance/klines', async (req, res) => {
                         const close = quote.close[i];
                         const volume = quote.volume ? quote.volume[i] : 10000;
 
+                        // Strict snapping: ensured timestamps are exactly at multiples of intervalMs
+                        const snappedOpenTime = Math.floor((t * 1000) / intervalMs) * intervalMs;
+
                         return [
-                            t * 1000,
+                            snappedOpenTime,
                             open.toFixed(3),
                             high.toFixed(3),
                             low.toFixed(3),
                             close.toFixed(3),
                             (volume || 10000).toString(),
-                            (t * 1000) + intervalMs - 1, // Dynamic close time
+                            snappedOpenTime + intervalMs - 1, // Strict close time
                             (volume ? (volume * close) : 100000).toString(),
                             100, // Number of trades placeholder
                             (volume ? (volume * 0.5) : 5000).toString(), // Buy volume placeholder
@@ -533,22 +536,22 @@ app.get('/api/binance/ticker', async (req, res) => {
         if (!symbol) return res.status(400).json({ error: 'Missing symbol' });
         const cleanSymbol = symbol.toUpperCase().replace('/', '');
 
-        // GBPJPY Synthetic Ticker (Phase 15 Enhancement) - Reuse same logic as /24hr
+        // GBPJPY Synthetic Ticker (Phase 15/9 Enhancement)
+        // Prioritize Yahoo Finance to align with Klines and avoid stale Binance GBPUSDT (1.18 vs 1.28)
         if (cleanSymbol === 'GBPJPY' || cleanSymbol === 'JBPJPY') {
             try {
+                const yRes = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/GBPJPY=X?interval=1m&range=1d`);
+                const lastPrice = yRes.data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+                if (!lastPrice) throw new Error('No price from Yahoo');
+                return res.json({ lastPrice: lastPrice.toString() });
+            } catch (yErr) {
+                console.warn(`[PROXY] Yahoo ticker fail for GBPJPY, using synthetic fallback:`, yErr.message);
                 const [gbpT, btcJpyT, btcUsdtT] = await Promise.all([
                     axios.get(`${BINANCE_BASE}/api/v3/ticker/24hr`, { params: { symbol: 'GBPUSDT' } }),
                     axios.get(`${BINANCE_BASE}/api/v3/ticker/24hr`, { params: { symbol: 'BTCJPY' } }),
                     axios.get(`${BINANCE_BASE}/api/v3/ticker/24hr`, { params: { symbol: 'BTCUSDT' } })
                 ]);
-
                 const lastPrice = (parseFloat(gbpT.data.lastPrice) * parseFloat(btcJpyT.data.lastPrice)) / parseFloat(btcUsdtT.data.lastPrice);
-                return res.json({ lastPrice: lastPrice.toString() });
-            } catch (synErr) {
-                console.error(`[PROXY ERROR] Synthetic ticker fail for GBPJPY:`, synErr.message);
-                // Fallback to Yahoo Finance if Binance synthetic fails
-                const yRes = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/GBPJPY=X?interval=1m&range=1d`);
-                const lastPrice = yRes.data?.chart?.result?.[0]?.meta?.regularMarketPrice;
                 return res.json({ lastPrice: lastPrice.toString() });
             }
         }
