@@ -48,7 +48,7 @@ export class AssetClassAdapter {
             FOREX: {
                 swingLookback: Math.max(3, Math.round(5 * scalingFactor)),
                 volatilityThreshold: 0.015,
-                minStructureMove: 0.005 * scalingFactor,
+                minStructureMove: 0.002 * scalingFactor, // Reduced from 0.005 for better intraday sensitivity
                 stopLossMultiplier: 1.5, // Tighter stops for Forex
                 sessionBased: true,
                 killzonesActive: true,

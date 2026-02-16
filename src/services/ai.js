@@ -305,15 +305,16 @@ ${contextPrefix}
 /**
  * Format price difference based on asset class (Pips, Points, %)
  */
-function formatPriceDelta(amount, assetClass) {
+function formatPriceDelta(amount, assetClass, symbol = '') {
     if (!amount) return '0.00';
     const val = parseFloat(amount);
+    const upperSymbol = symbol ? symbol.toUpperCase() : '';
 
-    if (assetClass === 'FOREX') {
+    if (assetClass === 'FOREX' || upperSymbol.includes('JPY')) {
         // Standard Lot: 0.0001, JPY: 0.01
-        // We act heuristically since we don't have symbol here easily without passing it down
-        // But for generic delta, we usually treat 0.0001 as 1 pip
-        return (val / 0.0001).toFixed(1) + ' pips';
+        const isJpy = upperSymbol.includes('JPY');
+        const pipValue = isJpy ? 0.01 : 0.0001;
+        return (val / pipValue).toFixed(1) + ' pips';
     }
 
     if (assetClass === 'INDICES' || assetClass === 'METALS') {

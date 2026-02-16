@@ -299,6 +299,19 @@ app.get('/api/binance/klines', async (req, res) => {
                     const timestamps = result.timestamp;
                     const quote = result.indicators.quote[0];
 
+                    // Helper for dynamic close time based on interval (Institutional Grade)
+                    const getIntervalMs = (intv) => {
+                        const unit = intv.slice(-1);
+                        const val = parseInt(intv);
+                        if (unit === 'm') return val * 60000;
+                        if (unit === 'h') return val * 3600000;
+                        if (unit === 'd') return val * 86400000;
+                        if (unit === 'w') return val * 604800000;
+                        return 3600000; // Default 1h
+                    };
+
+                    const intervalMs = getIntervalMs(interval);
+
                     // Map to Binance Format
                     const candles = timestamps.map((t, i) => {
                         if (quote.open[i] === null || quote.close[i] === null) return null;
@@ -307,6 +320,7 @@ app.get('/api/binance/klines', async (req, res) => {
                         const high = quote.high[i];
                         const low = quote.low[i];
                         const close = quote.close[i];
+                        const volume = quote.volume ? quote.volume[i] : 10000;
 
                         return [
                             t * 1000,
@@ -314,17 +328,22 @@ app.get('/api/binance/klines', async (req, res) => {
                             high.toFixed(3),
                             low.toFixed(3),
                             close.toFixed(3),
-                            "10000",
-                            (t * 1000) + 3599999,
-                            "100000",
-                            100,
-                            "5000",
-                            "50000",
+                            (volume || 10000).toString(),
+                            (t * 1000) + intervalMs - 1, // Dynamic close time
+                            (volume ? (volume * close) : 100000).toString(),
+                            100, // Number of trades placeholder
+                            (volume ? (volume * 0.5) : 5000).toString(), // Buy volume placeholder
+                            (volume ? (volume * 0.5 * close) : 50000).toString(), // Buy quote volume placeholder
                             "0"
                         ];
                     }).filter(c => c !== null);
 
-                    return res.json(candles.reverse().slice(0, parseInt(limit) || 100).reverse()); // Ensure limit
+                    const requestedLimit = parseInt(limit) || 100;
+                    const slicedCandles = candles.length > requestedLimit
+                        ? candles.slice(-requestedLimit)
+                        : candles;
+
+                    return res.json(slicedCandles);
 
                 } catch (yErr) {
                     console.error(`[PROXY ERROR] Yahoo Finance fail for GBPJPY:`, yErr.message);
