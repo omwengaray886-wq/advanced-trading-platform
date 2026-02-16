@@ -463,13 +463,9 @@ export class MarketDataService {
             // but the user wants to see the price moving every 5 seconds.
             let ticker = null;
             try {
-                // If it's a synthetic pair, we might not have a ticker, so we use the last candle close
-                if (this.activeSymbol === 'gbpjpy' || this.activeSymbol === 'jbpjpy') {
-                    // We already have the current price in history[last].close
-                } else {
-                    const tRes = await axios.get('/api/binance/ticker', { params: { symbol: this.activeSymbol } });
-                    ticker = tRes.data;
-                }
+                // Fetch ticker for ALL symbols including synthetic ones to ensure live price in header
+                const tRes = await axios.get('/api/binance/ticker', { params: { symbol: this.activeSymbol } });
+                ticker = tRes.data;
             } catch (e) { /* silent ticker fail */ }
 
             if (data && data.length > 0) {

@@ -339,9 +339,51 @@ app.get('/api/binance/klines', async (req, res) => {
                     }).filter(c => c !== null);
 
                     const requestedLimit = parseInt(limit) || 100;
-                    const slicedCandles = candles.length > requestedLimit
+                    let slicedCandles = candles.length > requestedLimit
                         ? candles.slice(-requestedLimit)
                         : candles;
+
+                    // Phase 9: Real-Time Candle Formation (Live Tick Injection)
+                    // If the last candle is older than the current interval's start, or if we want to ensure "live" ticking
+                    // we fetch the ticker and update/append the last candle.
+                    try {
+                        const tickerRes = await axios.get(`http://localhost:${PORT}/api/binance/ticker?symbol=GBPJPY`);
+                        const livePrice = parseFloat(tickerRes.data?.lastPrice);
+
+                        if (livePrice && slicedCandles.length > 0) {
+                            const now = Date.now();
+                            const lastIndex = slicedCandles.length - 1;
+                            const lastCandle = slicedCandles[lastIndex];
+                            const candleOpenTime = lastCandle[0];
+                            const candleCloseTime = lastCandle[6];
+
+                            if (now >= candleOpenTime && now <= candleCloseTime) {
+                                // Update existing last candle
+                                lastCandle[4] = livePrice.toFixed(3); // Close
+                                if (livePrice > parseFloat(lastCandle[2])) lastCandle[2] = livePrice.toFixed(3); // High
+                                if (livePrice < parseFloat(lastCandle[3])) lastCandle[3] = livePrice.toFixed(3); // Low
+                            } else if (now > candleCloseTime) {
+                                // Append a new "forming" candle
+                                const newOpenTime = Math.floor(now / intervalMs) * intervalMs;
+                                const newCandle = [
+                                    newOpenTime,
+                                    livePrice.toFixed(3), // Open
+                                    livePrice.toFixed(3), // High
+                                    livePrice.toFixed(3), // Low
+                                    livePrice.toFixed(3), // Close
+                                    "0", // Volume
+                                    newOpenTime + intervalMs - 1, // Close Time
+                                    "0", // Quote Volume
+                                    0, // Trades
+                                    "0", "0", "0"
+                                ];
+                                slicedCandles.push(newCandle);
+                                if (slicedCandles.length > requestedLimit) slicedCandles.shift();
+                            }
+                        }
+                    } catch (tickErr) {
+                        console.warn(`[PROXY] Live tick injection failed for GBPJPY:`, tickErr.message);
+                    }
 
                     return res.json(slicedCandles);
 
