@@ -25,30 +25,56 @@ export class NewsService {
         }
 
         try {
-            // Parallel Fetch: CryptoPanic + Simulated Global Macro
-            const [cryptoRes, macroFeed] = await Promise.all([
-                fetch(`${CRYPTOPANIC_PROXY}?currencies=${asset}&kind=news`).catch(() => null),
+            const isForex = ['GBPJPY', 'JBPJPY', 'EURUSD', 'GBPUSD', 'EURJPY', 'USDJPY', 'DXY', 'SPX', 'NDX', 'US30'].includes(asset);
+
+            // Parallel Fetch: Use Cryptopanic for Crypto, NewsAPI (via proxy) for Forex/Macro
+            const [cryptoRes, newsApiRes, macroFeed] = await Promise.all([
+                !isForex ? fetch(`${CRYPTOPANIC_PROXY}?currencies=${asset}&kind=news`).catch(() => null) : Promise.resolve(null),
+                isForex ? fetch(`${BACKEND_BASE}/api/news?q=${asset}`).catch(() => null) : Promise.resolve(null),
                 this._fetchGlobalMacroFeed()
             ]);
 
-            const cryptoNews = cryptoRes && cryptoRes.ok ? (await cryptoRes.json()).results : [];
-            const combinedNews = [...(cryptoNews || []), ...macroFeed];
+            let combinedNews = [...macroFeed];
+
+            // Handle CryptoPanic Data
+            if (cryptoRes && cryptoRes.ok) {
+                const data = await cryptoRes.json();
+                if (data.results) {
+                    combinedNews = [...combinedNews, ...data.results];
+                }
+            }
+
+            // Handle NewsAPI Data (Forex/Macro)
+            if (newsApiRes && newsApiRes.ok) {
+                const data = await newsApiRes.json();
+                if (data.articles) {
+                    const mapped = data.articles.map(a => ({
+                        id: a.url,
+                        title: a.title,
+                        domain: a.source?.name || 'NewsAPI',
+                        created_at: a.publishedAt,
+                        url: a.url,
+                        metadata: { impact: 'MEDIUM' } // Default
+                    }));
+                    combinedNews = [...combinedNews, ...mapped];
+                }
+            }
 
             const results = combinedNews.map(n => {
                 const nlpAnalysis = sentimentNLPEngine.scoreHeadline(n.title);
                 return {
-                    id: n.id || `macro-${Math.random()}`,
+                    id: n.id || `n-${Math.random()}`,
                     time: n.created_at ? Math.floor(new Date(n.created_at).getTime() / 1000) : Math.floor(Date.now() / 1000),
                     title: n.title,
-                    source: n.domain || 'Global Wire',
+                    source: n.domain || n.source || 'Global Wire',
                     impact: this._scoreImpact(n.title, n.metadata),
                     sentiment: nlpAnalysis.bias,
                     sentimentScore: nlpAnalysis.score,
                     sentimentLabel: nlpAnalysis.label,
-                    entity: nlpAnalysis.entity, // New field
+                    entity: nlpAnalysis.entity,
                     url: n.url || '#'
                 };
-            }).sort((a, b) => b.time - a.time); // Sort by newest
+            }).sort((a, b) => b.time - a.time);
 
             this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
             return results;

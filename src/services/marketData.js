@@ -251,9 +251,10 @@ export class MarketDataService {
 
         // Check if this is a synthetic/proxy symbol that doesn't have Binance WS
         const metadata = getSymbolMetadata(symbol);
+        const normalizedS = symbol.replace('/', '').toUpperCase();
         const isSynthetic = metadata.isProxy ||
             !mappedSymbol ||
-            ['GBPJPY', 'JBPJPY', 'DXY', 'SPX', 'SPXUSD', 'NDX', 'NAS100', 'US30'].includes(symbol.replace('/', '').toUpperCase());
+            ['GBPJPY', 'JBPJPY', 'DXY', 'SPX', 'SPXUSD', 'NDX', 'NAS100', 'US30'].includes(normalizedS);
 
         if (isSynthetic) {
             console.log(`[MarketData] ${symbol} is synthetic/proxy. Using polling mode only.`);
@@ -522,8 +523,11 @@ export class MarketDataService {
         }
 
         try {
+            // Normalize symbol for check
+            const normalizedSymbol = symbol.replace('/', '').toUpperCase();
+
             // For synthetic symbols, we fallback to polling the depth API instead of WebSocket
-            if (symbol.toUpperCase() === 'GBPJPY' || symbol.toUpperCase() === 'JBPJPY') {
+            if (normalizedSymbol === 'GBPJPY' || normalizedSymbol === 'JBPJPY' || normalizedSymbol === 'DXY') {
                 console.log(`[MarketData] GBPJPY depth subscription via polling...`);
                 const pollDepth = async () => {
                     try {
