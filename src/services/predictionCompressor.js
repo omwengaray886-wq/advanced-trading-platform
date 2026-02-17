@@ -12,9 +12,10 @@ export class PredictionCompressor {
      * Compress full analysis into single dominant forecast
      * @param {Object} analysis - Full market analysis
      * @param {Object} probabilities - Probabilistic engine output
+     * @param {Array} dna - GSR Candle DNA (Phase 6)
      * @returns {Object} Compressed prediction
      */
-    static compress(analysis, probabilities) {
+    static compress(analysis, probabilities, dna = null) {
         const { marketState, setups } = analysis;
 
         // 1. Determine dominant bias
@@ -77,6 +78,7 @@ export class PredictionCompressor {
             strategy: relevantSetup?.strategy || 'GENERIC',
             regime: marketState.regime,
             obligationState: marketState.obligations?.state || 'FREE_ROAMING',
+            dna, // Phase 6 Elite Accuracy DNA
 
             // Market State Snapshot for Audit
             snapshot: {
@@ -90,7 +92,9 @@ export class PredictionCompressor {
             meta: {
                 continuationProb: probabilities.continuation,
                 reversalProb: probabilities.reversal,
-                htfBias: marketState.mtf?.globalBias || 'NEUTRAL'
+                htfBias: marketState.mtf?.globalBias || 'NEUTRAL',
+                gsrMatch: marketState.gsrMatch, // Phase 6 Elite
+                mtfEquilibrium: marketState.mtfEquilibrium // Phase 6 Elite
             }
         };
     }

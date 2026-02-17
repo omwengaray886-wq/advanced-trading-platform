@@ -307,7 +307,72 @@ export class EdgeScoringEngine {
             }
         }
 
-        // 7.5 Correlation Cluster Risk (Phase 2)
+        // 7.2 Elite Accuracy: Inter-Market Vector (IMV) alignment
+        const imv = marketState.imv;
+        if (imv && imv.bias !== 'NEUTRAL') {
+            const imvDir = imv.bias.includes('BULLISH') ? 'BULLISH' : 'BEARISH';
+            const isAligned = imvDir === setupDir;
+            const strengthFactor = (imv.strength || 50) / 100;
+
+            if (isAligned) {
+                const imvBonus = Math.round(30 * strengthFactor);
+                totalPoints += imvBonus;
+                positives.push(`🛰️ ELITE IMV ALIGNMENT: ${imv.rationale} (+${imvBonus})`);
+            } else {
+                const imvPenalty = Math.round(20 * strengthFactor);
+                totalPoints -= imvPenalty;
+                risks.push(`🛰️ ELITE IMV CONFLICT: ${imv.rationale} (-${imvPenalty})`);
+            }
+        }
+
+        // 7.3 Elite Accuracy: Genetic Signature Match (GSR)
+        const gsr = marketState.gsrMatch;
+        if (gsr && gsr.rating !== 'NEUTRAL') {
+            if (gsr.rating === 'ELITE_MATCH') {
+                totalPoints += 25;
+                positives.push(`🧬 ELITE GENETIC MATCH: Current morphology matches 90% of winners`);
+            } else if (gsr.rating === 'STRONG_MATCH') {
+                totalPoints += 15;
+                positives.push(`🧬 Strong Genetic Match: Morphology aligns with recent success DNA`);
+            } else if (gsr.rating === 'POOR_MATCH') {
+                totalPoints -= 20;
+                risks.push(`🧬 POOR GENETIC MATCH: DNA does not resemble current winning signature`);
+            }
+        }
+
+        // 7.4 Elite Accuracy: Liquidity Void Magnet (LVH)
+        const voids = marketState.liquidityVoids || [];
+        const currentEntry = setup.entryZone?.optimal || marketState.currentPrice;
+        const targetPrice = setup.targets?.[0]?.price || 0;
+
+        const relevantVoid = voids.find(v => {
+            // Check if target is inside or beyond the void equilibrium
+            if (setupDir === 'BULLISH') return v.type === 'BULLISH_VOID' && targetPrice >= v.equilibrium && currentEntry < v.top;
+            if (setupDir === 'BEARISH') return v.type === 'BEARISH_VOID' && targetPrice <= v.equilibrium && currentEntry > v.bottom;
+            return false;
+        });
+
+        if (relevantVoid) {
+            const voidBonus = Math.round(20 * relevantVoid.intensity);
+            totalPoints += voidBonus;
+            positives.push(`🕳️ LIQUIDITY VOID MAGNET: Target aligns with unfilled ${relevantVoid.type} (+${voidBonus})`);
+        }
+
+        // 7.5 Elite Accuracy: MTF Equilibrium (Premium/Discount)
+        const eq = marketState.equilibrium;
+        if (eq && eq.bias !== 'EQUILIBRIUM') {
+            const isFavorable = (setupDir === 'BULLISH' && eq.bias === 'DISCOUNT_FAVORED') ||
+                (setupDir === 'BEARISH' && eq.bias === 'PREMIUM_FAVORED');
+
+            if (isFavorable) {
+                totalPoints += 15;
+                positives.push(`⚖️ MTF Equilibrium Alignment: Entry is in institutional DISCOUNT/PREMIUM favor`);
+            } else {
+                totalPoints -= 30;
+                risks.push(`⚖️ CRITICAL: MTF Equilibrium Conflict (Buying in Premium or Selling in Discount)`);
+            }
+        }
+
         if (marketState.clusters) {
             const cluster = marketState.clusters.clusters.find(c => c.assets.includes(marketState.symbol || ''));
             if (cluster) {
@@ -389,6 +454,30 @@ export class EdgeScoringEngine {
             } else if (cycle.phase === 'ACCUMULATION') {
                 totalPoints -= 10;
                 risks.push('Early entry hazard (Accumulation phase)');
+            }
+        }
+
+        // 9.5 Wyckoff Phase Weighting (Phase 7)
+        const wyckoff = marketState.wyckoffPhase;
+        if (wyckoff && wyckoff.phase !== 'UNKNOWN') {
+            const wyDir = normalizeDirection(wyckoff.type || (wyckoff.phase === 'PHASE_E' ? (wyckoff.type === 'MARKUP' ? 'BULLISH' : 'BEARISH') : 'NEUTRAL'));
+
+            if (wyckoff.phase === 'PHASE_E') {
+                const isMarkup = wyckoff.type === 'MARKUP' && setupDir === 'BULLISH';
+                const isMarkdown = wyckoff.type === 'MARKDOWN' && setupDir === 'BEARISH';
+                if (isMarkup || isMarkdown) {
+                    totalPoints += 45; // MASSIVE Boost for markup/markdown
+                    positives.push(`🔥 Wyckoff Result Phase (Phase E: ${wyckoff.type})`);
+                }
+            } else if (wyckoff.phase === 'PHASE_D') {
+                totalPoints += 30;
+                positives.push(`🌟 Wyckoff Participation (Phase D: ${wyckoff.type})`);
+            } else if (wyckoff.phase === 'PHASE_C') {
+                totalPoints += 15;
+                positives.push(`Institutional Test detected (Phase C: ${wyckoff.type})`);
+            } else if (wyckoff.phase === 'PHASE_A' || wyckoff.phase === 'PHASE_B') {
+                totalPoints -= 5;
+                risks.push(`Early Wyckoff stage (${wyckoff.phase}) - Consolidation likely`);
             }
         }
 

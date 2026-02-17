@@ -136,6 +136,10 @@ import { PortfolioRiskService, portfolioRiskService } from './portfolioRiskServi
 import { LeadLagEngine } from './LeadLagEngine.js';
 import { ParameterOptimizer } from './ParameterOptimizer.js';
 import { TapeReadingEngine } from './TapeReadingEngine.js';
+import { DXYCorrelationEngine } from './DXYCorrelationEngine.js';
+import { gsRefiner } from './GSRefiner.js';
+import { LiquidityVoidHeatmap } from './LiquidityVoidHeatmap.js';
+import { MTFEquilibriumTracker } from './MTFEquilibriumTracker.js';
 
 export class AnalysisOrchestrator {
     constructor() {
@@ -589,7 +593,29 @@ export class AnalysisOrchestrator {
                     if (leadLag && leadLag.detected) {
                         console.log(`[LeadLag] ${leadLag.leader} leads ${symbol} by ${leadLag.lag} periods. Implication: ${leadLag.implication}`);
                     }
+
+                    // Phase 6: Elite Accuracy - Inter-Market Vector (IMV)
+                    const imv = DXYCorrelationEngine.calculateIMV(candles, dxyHistory);
+                    marketState.imv = imv;
+                    if (imv.bias !== 'NEUTRAL') {
+                        console.log(`[IMV Engine] Institutional Divergence Detected: ${imv.bias} (Strength: ${imv.strength})`);
+                    }
                 }
+
+                // Phase 6: Genetic Signature Refinement (Compatibility Check)
+                const gsrMatch = gsRefiner.analyzeCompatibility(symbol, candles);
+                marketState.gsrMatch = gsrMatch;
+                if (gsrMatch.rating !== 'NEUTRAL') {
+                    console.log(`[GSR Engine] Genetic Match Rating for ${symbol}: ${gsrMatch.rating} (${Math.round(gsrMatch.compatibility * 100)}%)`);
+                }
+
+                // Phase 6: Liquidity Void Heatmap (LVH)
+                const voids = LiquidityVoidHeatmap.generateHeatmap(candles);
+                marketState.liquidityVoids = voids;
+
+                // Phase 6: MTF Equilibrium Tracking
+                const equilibrium = MTFEquilibriumTracker.analyze(marketState);
+                marketState.equilibrium = equilibrium;
             } catch (err) {
                 console.warn('[Analysis] Lead-Lag Engine failed:', err.message);
             }
@@ -1637,10 +1663,11 @@ export class AnalysisOrchestrator {
                 console.log(`[Analysis] Top Setup Score: ${setups[0].quantScore}, Confidence: ${setups[0].directionalConfidence}`);
             }
 
-            // 10.8: Compress into single prediction
+            // 10.8: Compress into single prediction (Include GSR DNA)
             const diagnostic = PredictionCompressor.shouldShowPrediction(marketState, probabilities);
+            const dna = gsRefiner.extractDNA(candles.slice(-5));
             const prediction = diagnostic.show ?
-                PredictionCompressor.compress(analysis, probabilities) :
+                PredictionCompressor.compress(analysis, probabilities, dna) :
                 {
                     bias: 'NO_EDGE',
                     target: null,

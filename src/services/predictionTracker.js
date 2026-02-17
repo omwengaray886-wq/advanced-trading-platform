@@ -1,4 +1,5 @@
 import { db } from './db.js';
+import { gsRefiner } from './GSRefiner.js';
 
 const statsCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -84,6 +85,14 @@ export class PredictionTracker {
                         finalPrice: currentCandle.close
                     });
                     console.log(`[PredictionTracker] Evaluated ${p.id}: ${outcome}`);
+
+                    // Phase 6 Elite: GSR Learning - Record DNA if it was a HIT
+                    if (outcome === 'HIT' && p.dna) {
+                        // Reconstruct a pseudo-candle history from the saved DNA for the refiner
+                        // In a more robust system, we would store the raw candles, 
+                        // but recording the extracted DNA directly is efficient.
+                        gsRefiner.recordSuccess(symbol, p.dna);
+                    }
                 }
             }
         } catch (e) {

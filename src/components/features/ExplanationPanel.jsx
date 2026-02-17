@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Layers, AlertCircle, TrendingUp, Target, Shield, Zap, Sparkles } from 'lucide-react';
+import { Activity, Layers, AlertCircle, TrendingUp, Target, Shield, Zap, Sparkles, Clock } from 'lucide-react';
 import { ScenarioEngine } from '../../services/scenarioEngine';
 
 /**
@@ -138,6 +138,150 @@ export default function ExplanationPanel({ analysis, loading, realtimeDiag, onGe
                     </div>
                 </div>
             </div>
+
+            {/* Institutional Elite Accuracy [Phase 6] */}
+            {(marketState.gsrMatch || marketState.liquidityVoids || marketState.mtfEquilibrium) && (
+                <div style={{
+                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(37, 99, 235, 0.1) 100%)',
+                    padding: '14px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    boxShadow: '0 4px 12px rgba(139, 92, 246, 0.1)'
+                }}>
+                    <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#a78bfa', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Sparkles size={14} /> INSTITUTIONAL ELITE ACCURACY
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {/* GSR DNA Match */}
+                        {marketState.gsrMatch && (
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
+                                    <span style={{ color: 'var(--color-text-secondary)' }}>Genetic DNA Match</span>
+                                    <span style={{
+                                        fontWeight: 'bold',
+                                        color: marketState.gsrMatch.rating === 'ELITE_MATCH' ? 'var(--color-success)' : '#a78bfa'
+                                    }}>
+                                        {marketState.gsrMatch.rating} ({(marketState.gsrMatch.closeness * 100).toFixed(0)}%)
+                                    </span>
+                                </div>
+                                <div style={{ height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                                    <div style={{
+                                        width: `${(marketState.gsrMatch.closeness * 100)}%`,
+                                        height: '100%',
+                                        background: '#a78bfa',
+                                        boxShadow: '0 0 8px #a78bfa'
+                                    }} />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Liquidity Voids (Price Vacuums) */}
+                        {marketState.liquidityVoids && marketState.liquidityVoids.length > 0 && (
+                            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '8px', borderRadius: '4px' }}>
+                                <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                                    <span>LIQUIDITY VOIDS DETECTED</span>
+                                    <span style={{ color: '#f87171' }}>PRICE VACUUM ACTIVE</span>
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--color-text-primary)' }}>
+                                    {marketState.liquidityVoids.length} zones of institutional imbalance detected.
+                                    Strong magnet effect toward <b>{marketState.liquidityVoids[0].low.toFixed(2)}</b>.
+                                </div>
+                            </div>
+                        )}
+
+                        {/* MTF Equilibrium */}
+                        {marketState.mtfEquilibrium && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                <span style={{ color: 'var(--color-text-secondary)' }}>Market Equilibrium</span>
+                                <span style={{
+                                    fontWeight: 'bold',
+                                    color: marketState.mtfEquilibrium.state === 'DISCOUNT' ? 'var(--color-success)' :
+                                        marketState.mtfEquilibrium.state === 'PREMIUM' ? 'var(--color-danger)' : 'var(--color-accent-primary)'
+                                }}>
+                                    {marketState.mtfEquilibrium.state} ZONE
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Institutional Cycle Management [Phase 7] */}
+            {(marketState.amdCycle || marketState.wyckoffPhase) && (
+                <div style={{
+                    background: 'var(--color-bg-secondary)',
+                    padding: '16px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--color-border-primary)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                }}>
+                    <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-accent-primary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Clock size={14} /> INSTITUTIONAL CYCLE MANAGEMENT
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        {/* AMD Cycle Status */}
+                        {marketState.amdCycle && marketState.amdCycle.phase !== 'UNKNOWN' && (
+                            <div style={{ background: 'var(--color-bg-tertiary)', padding: '10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                                <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>AMD PHASE</div>
+                                <div style={{
+                                    fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', color:
+                                        marketState.amdCycle.phase === 'DISTRIBUTION' ? 'var(--color-success)' :
+                                            (marketState.amdCycle.phase === 'MANIPULATION' ? '#f87171' : 'var(--color-accent-primary)')
+                                }}>
+                                    {marketState.amdCycle.phase}
+                                </div>
+                                <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', marginTop: '4px', fontStyle: 'italic' }}>
+                                    {marketState.amdCycle.behavior}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Wyckoff Phase Status */}
+                        {marketState.wyckoffPhase && marketState.wyckoffPhase.phase !== 'UNKNOWN' && (
+                            <div style={{ background: 'var(--color-bg-tertiary)', padding: '10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                                <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>WYCKOFF PHASE</div>
+                                <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#8b5cf6' }}>
+                                    {marketState.wyckoffPhase.phase}
+                                </div>
+                                <div style={{ fontSize: '10px', color: 'var(--color-text-secondary)', marginTop: '4px', fontWeight: '500' }}>
+                                    {marketState.wyckoffPhase.type}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Cycle Alerts and Timing windows */}
+                    {(marketState.amdCycle?.phase === 'MANIPULATION' || marketState.wyckoffPhase?.type === 'SPRING' || marketState.wyckoffPhase?.type === 'UPTHRUST') && (
+                        <div style={{
+                            marginTop: '12px',
+                            padding: '10px',
+                            background: marketState.amdCycle?.phase === 'MANIPULATION' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                            borderRadius: '6px',
+                            borderLeft: `3px solid ${marketState.amdCycle?.phase === 'MANIPULATION' ? '#ef4444' : 'var(--color-success)'}`,
+                            fontSize: '11px'
+                        }}>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                color: marketState.amdCycle?.phase === 'MANIPULATION' ? '#ef4444' : 'var(--color-success)',
+                                fontWeight: 'bold',
+                                marginBottom: '4px'
+                            }}>
+                                <AlertCircle size={14} /> {marketState.amdCycle?.phase === 'MANIPULATION' ? 'JUDAS TRAP WARNING' : 'INSTITUTIONAL ENTRY WINDOW'}
+                            </div>
+                            <div style={{ color: 'var(--color-text-primary)', lineHeight: '1.4' }}>
+                                {marketState.amdCycle?.phase === 'MANIPULATION'
+                                    ? `Judas Swing detected near ${marketState.session?.killzone}. Price currently faking HTF direction to build liquidity.`
+                                    : `Wyckoff ${marketState.wyckoffPhase.type} identified. Smart money test completed. High probability for Phase ${marketState.wyckoffPhase.phase === 'PHASE_C' ? 'D Expansion' : 'E Markup'}.`
+                                }
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* MTF Alignment Overview [NEW] */}
             {marketState.mtf && (

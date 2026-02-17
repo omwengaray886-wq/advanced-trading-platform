@@ -125,7 +125,11 @@ export default function ChartGrid({ initialPair = 'BTCUSDT' }) {
                             <Chart
                                 data={chart.data}
                                 markers={[]}
-                                overlays={chart.analysis ? AnnotationMapper.mapToOverlays(chart.analysis.annotations, { lastCandleTime: chart.data[chart.data.length - 1]?.time, timeframe: chart.timeframe }) : {}}
+                                overlays={chart.analysis ? AnnotationMapper.mapToOverlays(chart.analysis.annotations, {
+                                    lastCandleTime: chart.data[chart.data.length - 1]?.time,
+                                    timeframe: chart.timeframe,
+                                    marketState: chart.analysis.marketState
+                                }) : {}}
                                 externalCrosshair={syncCrosshair}
                                 onCrosshairMove={setSyncCrosshair}
                             />

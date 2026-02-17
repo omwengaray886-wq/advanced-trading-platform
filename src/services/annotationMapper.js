@@ -447,8 +447,10 @@ export class AnnotationMapper {
             }
         });
 
-        // 9. Phase 2 Features: Icebergs & Tape (from marketState)
+        // 9. Institutional & Contextual Metadata Overlays (Phase 2+)
         if (context.marketState) {
+            const lastPrice = context.marketState.currentPrice || (context.marketState.candles ? context.marketState.candles[context.marketState.candles.length - 1].close : 0);
+
             // A. Icebergs (Hidden Liquidity)
             if (context.marketState.icebergs && Array.isArray(context.marketState.icebergs)) {
                 context.marketState.icebergs.forEach((iceberg, idx) => {
@@ -500,6 +502,122 @@ export class AnnotationMapper {
                     color: event.impact === 'CRITICAL' || context.marketState.eventRisk.score > 75 ? '#ef4444' : '#f59e0b',
                     isImminent: (event.timestamp - Date.now()) < 3600000, // < 1 hour
                     corridor: null
+                });
+            }
+
+            // D. Liquidity Voids (Price Vacuums - Phase 6)
+            if (context.marketState.liquidityVoids && Array.isArray(context.marketState.liquidityVoids)) {
+                context.marketState.liquidityVoids.forEach((voidZone, idx) => {
+                    overlays.zones.push({
+                        id: `void-${idx}`,
+                        x1: Math.floor(voidZone.startTime),
+                        x2: Math.floor(futureTime),
+                        y1: voidZone.low,
+                        y2: voidZone.high,
+                        color: 'rgba(139, 92, 246, 0.1)', // Subtle Purple Vacuum
+                        borderColor: '#8b5cf6',
+                        label: `🕳️ VOID (${voidZone.intensity}%)`,
+                        role: 'BREAKTHROUGH',
+                        isHTF: true
+                    });
+                });
+            }
+
+            // E. MTF Equilibrium (Premium/Discount - Phase 6)
+            if (context.marketState.mtfEquilibrium) {
+                const eq = context.marketState.mtfEquilibrium;
+                if (eq.zones) {
+                    Object.entries(eq.zones).forEach(([tf, zone]) => {
+                        overlays.zones.push({
+                            id: `eq-${tf}`,
+                            x1: Math.floor(lastCandleTime - (interval * 20)),
+                            x2: Math.floor(futureTime),
+                            y1: zone.low,
+                            y2: zone.high,
+                            color: zone.state === 'DISCOUNT' ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)',
+                            borderColor: zone.state === 'DISCOUNT' ? '#10b981' : '#ef4444',
+                            label: `⚖️ ${tf} ${zone.state}`,
+                            role: 'NEUTRAL',
+                            opacity: 0.3
+                        });
+                    });
+                }
+            }
+
+            // F. Genetic Signature Match (Phase 6)
+            if (context.marketState.gsrMatch && context.marketState.gsrMatch.rating !== 'NEUTRAL') {
+                const gsr = context.marketState.gsrMatch;
+                overlays.labels.push({
+                    id: 'gsr-match',
+                    x: lastCandleTime,
+                    y: lastPrice,
+                    text: gsr.rating === 'ELITE_MATCH' ? '🧬 ELITE GENETIC MATCH' : '🧬 STRONG DNA MATCH',
+                    subtext: `${(gsr.closeness * 100).toFixed(0)}% Similarity`,
+                    color: '#8b5cf6', // Genetic Purple
+                    direction: 'down'
+                });
+            }
+
+            // G. Institutional Cycle Management (Phase 7 - AMD & Wyckoff)
+
+            // 1. AMD Cycle (Accumulation, Manipulation, Distribution)
+            if (context.marketState.amdCycle && context.marketState.amdCycle.phase !== 'UNKNOWN') {
+                const amd = context.marketState.amdCycle;
+
+                // Render Manipulation (Judas Swing) as a distinct "Danger" zone
+                if (amd.phase === 'MANIPULATION') {
+                    overlays.zones.push({
+                        id: `amd-manipulation`,
+                        x1: Math.floor(lastCandleTime - (interval * 5)),
+                        x2: Math.floor(futureTime),
+                        y1: context.marketState.candles ? Math.min(...context.marketState.candles.slice(-5).map(c => c.low)) : 0,
+                        y2: context.marketState.candles ? Math.max(...context.marketState.candles.slice(-5).map(c => c.high)) : 0,
+                        color: 'rgba(239, 68, 68, 0.15)', // Danger Red
+                        borderColor: '#ef4444',
+                        label: `🕵️ MANIPULATION (${amd.behavior})`,
+                        role: 'INVALIDATION_FLIP',
+                        isHTF: true
+                    });
+                }
+
+                // Labels for Cycle Stages
+                overlays.labels.push({
+                    id: 'amd-status',
+                    x: lastCandleTime,
+                    y: lastPrice * 0.999,
+                    text: `🕰️ ${amd.phase} PHASE`,
+                    subtext: amd.note,
+                    color: amd.phase === 'DISTRIBUTION' ? '#10b981' : (amd.phase === 'MANIPULATION' ? '#ef4444' : '#fbbf24'),
+                    direction: 'up'
+                });
+            }
+
+            // 2. Wyckoff Phases (A-E)
+            if (context.marketState.wyckoffPhase && context.marketState.wyckoffPhase.phase !== 'UNKNOWN') {
+                const wy = context.marketState.wyckoffPhase;
+
+                // Highlight high-probability reversal tests (Spring/Upthrust)
+                if (wy.type === 'SPRING' || wy.type === 'UPTHRUST') {
+                    overlays.labels.push({
+                        id: 'wyckoff-test',
+                        x: lastCandleTime,
+                        y: wy.type === 'SPRING' ? (context.marketState.price * 0.995) : (context.marketState.price * 1.005),
+                        text: `🎯 WYCKOFF ${wy.type}`,
+                        subtext: 'Institutional Test Confirmation',
+                        color: wy.type === 'SPRING' ? '#10b981' : '#ef4444',
+                        direction: wy.type === 'SPRING' ? 'up' : 'down'
+                    });
+                }
+
+                // Overall progress marker
+                overlays.labels.push({
+                    id: 'wyckoff-phase',
+                    x: lastCandleTime,
+                    y: lastPrice * 1.001,
+                    text: `🏛️ WYCKOFF ${wy.phase}`,
+                    subtext: wy.action || wy.note,
+                    color: '#8b5cf6',
+                    direction: 'down'
                 });
             }
         }

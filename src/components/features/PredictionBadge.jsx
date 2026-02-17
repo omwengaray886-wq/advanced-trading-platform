@@ -115,6 +115,22 @@ const PredictionBadge = ({ prediction }) => {
                         <span>Reversal: {prediction.meta.reversalProb}%</span>
                     </div>
                     <div className="meta-label">HTF: {prediction.meta.htfBias}</div>
+
+                    {/* Phase 6 Elite Indicators */}
+                    {(prediction.meta.gsrMatch || prediction.meta.mtfEquilibrium) && (
+                        <div className="elite-indicators">
+                            {prediction.meta.gsrMatch && prediction.meta.gsrMatch.rating !== 'NEUTRAL' && (
+                                <div className={`elite-tag gsr-${prediction.meta.gsrMatch.rating.toLowerCase()}`}>
+                                    🧬 {prediction.meta.gsrMatch.rating.replace('_', ' ')}
+                                </div>
+                            )}
+                            {prediction.meta.mtfEquilibrium && (
+                                <div className={`elite-tag eq-${prediction.meta.mtfEquilibrium.state.toLowerCase()}`}>
+                                    ⚖️ {prediction.meta.mtfEquilibrium.state} ZONE
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
         </div>
