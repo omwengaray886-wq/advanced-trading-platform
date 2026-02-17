@@ -162,7 +162,7 @@ export default function ExplanationPanel({ analysis, loading, realtimeDiag, onGe
                                         fontWeight: 'bold',
                                         color: marketState.gsrMatch.rating === 'ELITE_MATCH' ? 'var(--color-success)' : '#a78bfa'
                                     }}>
-                                        {marketState.gsrMatch.rating} ({(marketState.gsrMatch.closeness * 100).toFixed(0)}%)
+                                        {marketState.gsrMatch.rating} ({((marketState.gsrMatch.closeness || 0) * 100).toFixed(0)}%)
                                     </span>
                                 </div>
                                 <div style={{ height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
@@ -185,7 +185,7 @@ export default function ExplanationPanel({ analysis, loading, realtimeDiag, onGe
                                 </div>
                                 <div style={{ fontSize: '11px', color: 'var(--color-text-primary)' }}>
                                     {marketState.liquidityVoids.length} zones of institutional imbalance detected.
-                                    Strong magnet effect toward <b>{marketState.liquidityVoids[0].low.toFixed(2)}</b>.
+                                    Strong magnet effect toward <b>{marketState.liquidityVoids[0].low?.toFixed(2) || 'N/A'}</b>.
                                 </div>
                             </div>
                         )}

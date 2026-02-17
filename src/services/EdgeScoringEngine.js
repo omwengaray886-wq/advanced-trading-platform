@@ -101,10 +101,10 @@ export class EdgeScoringEngine {
 
         if (perfMultiplier > 1.1) {
             totalPoints += 15;
-            positives.push(`🔥 HOT HAND: Strategy is winning (${perfMultiplier.toFixed(1)}x boost)`);
+            positives.push(`🔥 HOT HAND: Strategy is winning (${perfMultiplier?.toFixed(1) || '1.0'}x boost)`);
         } else if (perfMultiplier < 0.9) {
             totalPoints -= 25;
-            risks.push(`❄️ COLD STREAK: Strategy is struggling (${perfMultiplier.toFixed(1)}x penalty)`);
+            risks.push(`❄️ COLD STREAK: Strategy is struggling (${perfMultiplier?.toFixed(1) || '1.0'}x penalty)`);
         }
 
         // 2. R:R Feasibility (up to 20 points) - TIMEFRAME ADJUSTED
@@ -571,7 +571,7 @@ export class EdgeScoringEngine {
         }
 
         // Resolution Score (1-10)
-        const score = Math.max(0, Math.min(10, (totalPoints / 100) * 10)).toFixed(1);
+        const score = (Math.max(0, Math.min(10, (totalPoints / 100) * 10)) || 0).toFixed(1);
 
         return {
             score: parseFloat(score),

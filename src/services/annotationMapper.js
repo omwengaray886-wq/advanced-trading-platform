@@ -552,7 +552,7 @@ export class AnnotationMapper {
                     x: lastCandleTime,
                     y: lastPrice,
                     text: gsr.rating === 'ELITE_MATCH' ? '🧬 ELITE GENETIC MATCH' : '🧬 STRONG DNA MATCH',
-                    subtext: `${(gsr.closeness * 100).toFixed(0)}% Similarity`,
+                    subtext: `${((gsr.closeness || 0) * 100).toFixed(0)}% Similarity`,
                     color: '#8b5cf6', // Genetic Purple
                     direction: 'down'
                 });
