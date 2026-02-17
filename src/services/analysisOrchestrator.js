@@ -98,6 +98,7 @@ import { SessionAnalyzer } from '../analysis/SessionAnalyzer.js';
 import { MarketObligationEngine } from '../analysis/MarketObligationEngine.js';
 import { bayesianEngine } from './BayesianInferenceEngine.js';
 import { liveOrderBookStore } from './LiveOrderBookStore.js';
+import { DirectionalConfidenceGate } from '../analysis/DirectionalConfidenceGate.js';
 import { macroBiasEngine } from './MacroBiasEngine.js';
 import { probabilisticRiskEngine } from './ProbabilisticRiskEngine.js';
 import { RegimeTransitionPredictor } from './RegimeTransitionPredictor.js';
@@ -782,7 +783,7 @@ export class AnalysisOrchestrator {
             }
 
             // Phase 55: Parallelize Candidate Evaluation
-            const { DirectionalConfidenceGate: Gate } = await import('../analysis/DirectionalConfidenceGate.js');
+            const Gate = DirectionalConfidenceGate; // Re-use static import
             const candidateResults = await Promise.all(candidates.map(async (c) => {
                 const direction = selection.long.includes(c) ? 'LONG' : 'SHORT';
 
@@ -1416,7 +1417,6 @@ export class AnalysisOrchestrator {
 
             // Phase 56: Directional Confidence Gate
             // Multi-factor validation for directional accuracy
-            const { DirectionalConfidenceGate } = await import('../analysis/DirectionalConfidenceGate.js');
 
             setups = await Promise.all(setups.map(async (s) => {
                 const validation = await DirectionalConfidenceGate.validateDirection(s, marketState, candles, symbol);
