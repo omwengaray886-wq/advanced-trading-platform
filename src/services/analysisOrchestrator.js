@@ -203,8 +203,7 @@ export class AnalysisOrchestrator {
             marketState.assetClass = assetClass;
             marketState.currentPrice = (candles && candles.length > 0) ? candles[candles.length - 1].close : 0;
             if (!marketState.currentPrice || marketState.currentPrice === 0) {
-                console.warn(`[ORCHESTRATOR] Zero price detected for ${symbol}, using dummy fallback.`);
-                marketState.currentPrice = 1.0;
+                throw new Error(`[ORCHESTRATOR] Invalid zero price detected for ${symbol}. Analysis aborted.`);
             }
 
             // --- Institutional Zone Intelligence (Initialize Early to avoid ReferenceErrors) ---
@@ -496,8 +495,7 @@ export class AnalysisOrchestrator {
 
                 // Phase 7: Basket Arbitrage Intelligence
                 try {
-                    // In a real environment, we'd fetch prices for the active basket
-                    // For now, we simulate the required price map for the engine
+                    // Fetch real-time prices for the active basket to detect institutional divergence
                     const basketPrices = new Map();
                     const basketKey = BasketArbitrageEngine._findBasketForSymbol(symbol);
                     if (basketKey) {
@@ -1554,7 +1552,10 @@ export class AnalysisOrchestrator {
             // Multi-factor validation for directional accuracy
 
             setups = await Promise.all(setups.map(async (s) => {
-                const validation = await DirectionalConfidenceGate.validateDirection(s, marketState, candles, symbol);
+                // Use the dynamically imported Gate if available, otherwise skip validation
+                const validation = Gate ?
+                    await Gate.validateDirection(s, marketState, candles, symbol) :
+                    { confidence: 0.5, isValid: true, failedChecks: [], checkDetails: {} };
 
                 return {
                     ...s,

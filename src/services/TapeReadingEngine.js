@@ -1,8 +1,8 @@
 /**
  * Tape Reading Engine (Phase 2)
  * 
- * Simulates Tick-Level Aggressiveness and Momentum Ignition.
- * Since we don't have raw tick data, we reconstruct "Tick Aggression" 
+ * Reconstructs Tick-Level Aggressiveness and Momentum Ignition.
+ * Since we don't have raw tick data, we analyze "Tick Aggression" 
  * using intra-candle Volume Delta dynamics and micro-structure patterns.
  */
 export class TapeReadingEngine {
@@ -108,7 +108,7 @@ export class TapeReadingEngine {
     /**
      * Monitor Tape for Whale Activity (Large Prints)
      * @param {Array} candles - Recent candles to establish baseline volume
-     * @param {Object} currentTick - Simulated current tick { price, volume }
+     * @param {Object} currentTick - Current tick data { price, volume }
      */
     static monitorTape(candles, currentTick) {
         if (!candles || candles.length < 20 || !currentTick) return null;

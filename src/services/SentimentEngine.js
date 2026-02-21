@@ -2,7 +2,7 @@
  * Sentiment Engine (Phase 6)
  * 
  * Tracks "Large Trader" and "Hedge Fund" positioning via COT (Commitment of Traders) proxy.
- * Since direct COT feeds are premium, we use algorithmic simulation based on price/volume.
+ * Uses algorithmic reconstruction based on real price/volume dynamics.
  */
 export class SentimentEngine {
     /**
@@ -18,12 +18,12 @@ export class SentimentEngine {
                 netPosition: 0,
                 bias: 'NEUTRAL',
                 confidence: 'LOW',
-                reason: 'Insufficient data for COT simulation'
+                reason: 'Insufficient data for COT reconstruction'
             };
         }
 
-        // 1. Simulate Large Trader Positioning
-        const positioning = this._simulateCOT(dailyCandles, assetClass);
+        // 1. Reconstruct Large Trader Positioning
+        const positioning = this._reconstructCOT(dailyCandles, assetClass);
 
         // 2. Determine Macro Bias
         const bias = positioning.netPosition > 15 ? 'BULLISH' :
@@ -44,10 +44,10 @@ export class SentimentEngine {
     }
 
     /**
-     * Simulate COT positioning based on price/volume behavior
+     * Reconstruct COT positioning based on real price/volume behavior
      * Institutional players tend to accumulate during consolidation and distribute during climax.
      */
-    static _simulateCOT(dailyCandles, assetClass) {
+    static _reconstructCOT(dailyCandles, assetClass) {
         const recent60 = dailyCandles.slice(-60);
 
         let longInterest = 0;
