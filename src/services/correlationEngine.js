@@ -276,6 +276,91 @@ export class CorrelationEngine {
             return { score: 0, level: 'UNKNOWN', warning: null };
         }
     }
+    /**
+     * Generate a full Correlation Matrix for a list of symbols
+     * @param {Array<string>} symbols - List of symbols to analyze
+     * @param {string} timeframe - Candle timeframe (default 4h)
+     * @returns {Promise<Object>} - The correlation matrix { 'BTC': { 'ETH': 0.9, ... }, ... }
+     */
+    async generateCorrelationMatrix(symbols, timeframe = '4h') {
+        const matrix = {};
+        const uniqueSymbols = [...new Set(symbols)];
+        const historyCache = new Map();
+
+        // 1. Fetch history for all symbols in parallel
+        console.log(`[Correlation] Building matrix for ${uniqueSymbols.length} assets...`);
+
+        await Promise.all(uniqueSymbols.map(async (s) => {
+            try {
+                const candles = await marketData.fetchHistory(s, timeframe, 50);
+                if (candles && candles.length >= 20) {
+                    historyCache.set(s, this.calculateReturns(candles));
+                }
+            } catch (err) {
+                console.warn(`[Correlation] Failed to fetch data for ${s}:`, err.message);
+            }
+        }));
+
+        // 2. Compute pairwise correlations
+        for (const s1 of uniqueSymbols) {
+            matrix[s1] = {};
+            const returns1 = historyCache.get(s1);
+
+            if (!returns1) {
+                uniqueSymbols.forEach(s2 => matrix[s1][s2] = 0); // Default to 0 if data missing
+                continue;
+            }
+
+            for (const s2 of uniqueSymbols) {
+                if (s1 === s2) {
+                    matrix[s1][s2] = 1.0;
+                    continue;
+                }
+
+                // Optimization: Correlation is symmetric, check if computed
+                if (matrix[s2] && matrix[s2][s1] !== undefined) {
+                    matrix[s1][s2] = matrix[s2][s1];
+                    continue;
+                }
+
+                const returns2 = historyCache.get(s2);
+                if (!returns2) {
+                    matrix[s1][s2] = 0;
+                    continue;
+                }
+
+                matrix[s1][s2] = this.computePearson(returns1, returns2);
+            }
+        }
+
+        return matrix;
+    }
+
+    /**
+     * Compute Pearson Correlation Coefficient
+     * @private
+     */
+    computePearson(returnsA, returnsB) {
+        const minLen = Math.min(returnsA.length, returnsB.length);
+        const sliceA = returnsA.slice(-minLen);
+        const sliceB = returnsB.slice(-minLen);
+
+        const meanA = sliceA.reduce((a, b) => a + b, 0) / minLen;
+        const meanB = sliceB.reduce((a, b) => a + b, 0) / minLen;
+
+        let num = 0, denA = 0, denB = 0;
+
+        for (let i = 0; i < minLen; i++) {
+            const diffA = sliceA[i] - meanA;
+            const diffB = sliceB[i] - meanB;
+            num += (diffA * diffB);
+            denA += (diffA * diffA);
+            denB += (diffB * diffB);
+        }
+
+        if (denA === 0 || denB === 0) return 0;
+        return parseFloat((num / Math.sqrt(denA * denB)).toFixed(4));
+    }
 }
 
 export const correlationEngine = new CorrelationEngine();

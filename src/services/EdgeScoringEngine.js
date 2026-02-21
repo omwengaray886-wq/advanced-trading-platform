@@ -285,6 +285,46 @@ export class EdgeScoringEngine {
             positives.push('Entry supported by DOM Liquidity Wall');
         }
 
+        // 6b. Pivot Point Confluence (Phase 102)
+        const pivots = marketState.pivots;
+        if (pivots && pivots.classic) {
+            const { PP, R1, S1, R2, S2 } = pivots.classic;
+            const distPP = Math.abs(entryPrice - PP) / PP;
+            const distR1 = Math.abs(entryPrice - R1) / R1;
+            const distS1 = Math.abs(entryPrice - S1) / S1;
+
+            if (setupDir === 'BULLISH') {
+                if (distS1 < 0.002) {
+                    totalPoints += 15;
+                    positives.push(`Institutional Confluence: Entry at Classic S1 (${S1.toFixed(setup.precision || 4)})`);
+                } else if (distPP < 0.002) {
+                    totalPoints += 10;
+                    positives.push('Institutional Confluence: Entry at Classic Pivot (PP)');
+                }
+            } else if (setupDir === 'BEARISH') {
+                if (distR1 < 0.002) {
+                    totalPoints += 15;
+                    positives.push(`Institutional Confluence: Entry at Classic R1 (${R1.toFixed(setup.precision || 4)})`);
+                } else if (distPP < 0.002) {
+                    totalPoints += 10;
+                    positives.push('Institutional Confluence: Entry at Classic Pivot (PP)');
+                }
+            }
+
+            // Camarilla Reversion Logic (Highly Institutional)
+            if (pivots.camarilla) {
+                const { S3, R3 } = pivots.camarilla;
+                if (setupDir === 'BULLISH' && Math.abs(entryPrice - S3) / S3 < 0.0015) {
+                    totalPoints += 20;
+                    positives.push('Premium Camarilla S3 Reversion Zone Detected');
+                } else if (setupDir === 'BEARISH' && Math.abs(entryPrice - R3) / R3 < 0.0015) {
+                    totalPoints += 20;
+                    positives.push('Premium Camarilla R3 Reversion Zone Detected');
+                }
+            }
+        }
+
+
         // 7. Cross-Asset Consensus (Macro Alignment - Phase 2 Upgrade)
         const macroBias = marketState.macroBias; // Uses the new Engine result directly
         if (macroBias && macroBias.bias !== 'NEUTRAL') {

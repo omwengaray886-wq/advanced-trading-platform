@@ -3,7 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
 import Chart from '../components/ui/Chart';
 import FullAnalysisReport from '../components/features/FullAnalysisReport';
+import RegimeTransitionIndicator from '../components/features/RegimeTransitionIndicator';
 import { marketData, getSymbolMetadata } from '../services/marketData.js';
+import { newsShockEngine } from '../services/newsShockEngine.js';
 import { TrendingUp, AlertTriangle, ShieldCheck, Activity, BarChart3, HelpCircle, LayoutGrid, Square, Sparkles, Layout, Target, BookOpen, PanelRightOpen, PanelLeftOpen, Search, History } from 'lucide-react';
 import { generateTradeAnalysis } from '../services/ai.js';
 import { saveTradeSetups, getMarketAnalysis, subscribeToGlobalSignals } from '../services/db.js';
@@ -31,6 +33,7 @@ import SentimentGauge from '../components/features/SentimentGauge';
 import InstitutionalScanner from '../components/features/InstitutionalScanner';
 import GlobalSignalsPanel from '../components/features/GlobalSignalsPanel';
 import { signalManager } from '../services/SignalManager.js';
+import { computePivotPoints, pivotLevelsToLines } from '../services/PivotPointEngine.js';
 
 export default function Markets() {
     const assetRegistry = {
@@ -144,8 +147,10 @@ export default function Markets() {
         volumeProfile: true,
         sessionZones: false,
         liquidityHeatmap: false,
-        institutionalLevels: true
+        institutionalLevels: true,
+        pivotPoints: false
     });
+    const [pivotType, setPivotType] = useState('CLASSIC');
     const [chartData, setChartData] = useState([]);
     const [manualStrategy, setManualStrategy] = useState(null);
     const [analysis, setAnalysis] = useState(null);
@@ -714,6 +719,15 @@ export default function Markets() {
             }
         }
 
+        // 5b. Classic / Camarilla / Woodie Pivot Points
+        if (indicators.pivotPoints && chartData.length > 24) {
+            const precision = getPrecision(selectedPair);
+            const fmt = p => p.toFixed(precision);
+            const pivots = computePivotPoints(chartData, pivotType);
+            const pivotLines = pivotLevelsToLines(pivots, pivotType, fmt);
+            lines.push(...pivotLines);
+        }
+
         // DEBUG: Log annotation types
         console.log('[Markets.jsx] Source Annotations:', sourceAnnotations.map(a => ({ type: a.type, id: a.id })));
         console.log('[Markets.jsx] Active Setup Annotations:', activeSetup?.annotations?.map(a => ({ type: a.type, id: a.id })));
@@ -1113,6 +1127,13 @@ export default function Markets() {
                             </motion.div>
                         )}
                     </AnimatePresence>
+
+                    {/* Phase 15: Regime Transition Alert */}
+                    {analysis && analysis.regimeTransition && (
+                        <div style={{ margin: '0 24px 16px 24px' }}>
+                            <RegimeTransitionIndicator regimeTransition={analysis.regimeTransition} />
+                        </div>
+                    )}
 
                     {/* Integrated Chart HUD */}
                     <div style={{
@@ -1703,6 +1724,8 @@ export default function Markets() {
                                     onTimeframeChange={setTimeframe}
                                     indicators={indicators}
                                     onToggleIndicator={(id) => setIndicators(prev => ({ ...prev, [id]: !prev[id] }))}
+                                    pivotType={pivotType}
+                                    onPivotTypeChange={setPivotType}
                                     onScreenshot={handleScreenshot}
                                     activeDrawTool={activeDrawTool}
                                     onSelectDrawTool={setActiveDrawTool}

@@ -179,8 +179,28 @@ export class ExplanationEngine {
     buildLevelSignificance(analysis) {
         if (!analysis.setups || analysis.setups.length === 0) return 'Analyzing structural walls...';
         const setup = analysis.setups[0];
+        const state = analysis.marketState;
 
         let explanation = `SIGNAL ACTIVE: The price is currently reacting to an institutional level at ${setup.entryZone?.optimal ? setup.entryZone.optimal.toFixed(5) : 'N/A'}. `;
+
+        // Inject Pivot Point Confluence (Phase 102)
+        if (state.pivots) {
+            const entryPrice = setup.entryZone?.optimal || state.currentPrice;
+            const classic = state.pivots.classic;
+            const camarilla = state.pivots.camarilla;
+
+            if (classic) {
+                if (Math.abs(entryPrice - classic.PP) / classic.PP < 0.002) explanation += `This area is reinforced by the **Classic Pivot Point (PP)**, a key magnet for floor traders. `;
+                if (Math.abs(entryPrice - classic.S1) / classic.S1 < 0.002) explanation += `We are seeing strong alignment with the **Classic Support 1 (S1)** level. `;
+                if (Math.abs(entryPrice - classic.R1) / classic.R1 < 0.002) explanation += `We are seeing strong alignment with the **Classic Resistance 1 (R1)** level. `;
+            }
+
+            if (camarilla) {
+                if (Math.abs(entryPrice - camarilla.S3) / camarilla.S3 < 0.0015) explanation += `Significant institutional confluence found at the **Camarilla S3** reversion floor. `;
+                if (Math.abs(entryPrice - camarilla.R3) / camarilla.R3 < 0.0015) explanation += `Significant institutional confluence found at the **Camarilla R3** reversion ceiling. `;
+            }
+        }
+
         explanation += `Structural invalidation is placed at ${setup.stopLoss ? setup.stopLoss.toFixed(5) : 'N/A'} (Pivot Wall + ATR buffer). `;
 
         if (setup.targets && setup.targets.length > 0) {

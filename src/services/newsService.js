@@ -214,22 +214,30 @@ export class NewsService {
 
     /**
      * Private: Score news impact based on keywords and assign professional Tiers
+     * Also detects GEOPOLITICAL category.
      */
     _scoreImpact(title, metadata) {
         const upperTitle = title.toUpperCase();
 
+        // 1. Geopolitical Detection (Overrides standard economic logic)
+        const GEO_KEYWORDS = ['WAR', 'INVASION', 'MISSILE', 'ATTACK', 'SANCTION', 'EMBARGO', 'TERROR', 'COUP', 'EMERGENCY', 'NUCLEAR'];
+        if (GEO_KEYWORDS.some(k => upperTitle.includes(k))) {
+            metadata.category = 'GEOPOLITICAL';
+            return 'HIGH'; // Geopolitical events are almost always High Impact initially
+        }
+
+        metadata.category = 'ECONOMIC'; // Default
+
         const TIER_1 = ['PAYROLL', 'NFP', 'CPI', 'FOMC', 'INTEREST RATE', 'GDP', 'RETAIL SALES', 'ISM'];
         const TIER_2 = ['PPI', 'ECB', 'BOE', 'BOJ', 'UNEMPLOYMENT', 'ELECTION', 'GERMAN PMI'];
         const TIER_3 = ['ADP', 'CONFIDENCE', 'HOUSING', 'PERMITS', 'TRADE BALANCE', 'INVENTORIES'];
-        const SPECIAL = ['SPEECH', 'WAR', 'SANCTION', 'CRISIS', 'EMERGENCY', 'HACK', 'HUNT'];
 
-        if (TIER_1.some(k => upperTitle.includes(k))) return 'HIGH'; // Tier 1 mapped to HIGH
-        if (TIER_2.some(k => upperTitle.includes(k))) return 'HIGH'; // Tier 2 also mapped to HIGH internally
+        if (TIER_1.some(k => upperTitle.includes(k))) return 'HIGH';
+        if (TIER_2.some(k => upperTitle.includes(k))) return 'HIGH';
         if (TIER_3.some(k => upperTitle.includes(k))) return 'MEDIUM';
-        if (SPECIAL.some(k => upperTitle.includes(k))) return 'HIGH';
 
-        // Legacy mapping for high-impact keywords (Phase 72)
-        const highImpactKeywords = ['EMBARGO', 'HALT', 'ETF', 'SEC', 'INFLATION', 'WAR'];
+        // Legacy mapping including some overlap
+        const highImpactKeywords = ['HALT', 'ETF', 'SEC', 'INFLATION'];
         if (highImpactKeywords.some(k => upperTitle.includes(k))) return 'HIGH';
 
         return 'MEDIUM';

@@ -392,6 +392,14 @@ app.get('/api/binance/klines', async (req, res) => {
 
                 } catch (yErr) {
                     console.error(`[PROXY ERROR] Yahoo Finance fail for GBPJPY:`, yErr.message);
+                    // GBPJPY requires real data - do not fall through to ghost candles
+                    return res.status(503).json({
+                        error: 'Real Market Data Unavailable',
+                        message: 'GBPJPY data source (Yahoo Finance) is temporarily unavailable. Please try again in a moment.',
+                        symbol: 'GBPJPY',
+                        source: 'Yahoo Finance',
+                        details: yErr.message
+                    });
                 }
             }
             const indexConfig = typeof INDICES_MAP[mappedSymbol] === 'string'
@@ -423,7 +431,8 @@ app.get('/api/binance/klines', async (req, res) => {
             }
 
             // Also return Ghost Candles for known invalid Forex pairs or failed indices to stop 404 spam
-            const INVALID_FOREX = new Set(['AUDUSDT', 'NZDUSDT', 'USDCHF', 'USDJPY', 'USDCAD', 'SPXUSD', 'DXY', 'GBPJPY', 'JBPJPY']);
+            // NOTE: GBPJPY removed - it has real Yahoo Finance data source
+            const INVALID_FOREX = new Set(['AUDUSDT', 'NZDUSDT', 'USDCHF', 'USDJPY', 'USDCAD', 'SPXUSD', 'DXY']);
             if (INVALID_FOREX.has(mappedSymbol) || indexConfig) {
                 // Coherent Timestamp Logic (Phase 2): Use current UTC time and subtract i hours
                 const nowUTC = Date.now();
@@ -433,9 +442,8 @@ app.get('/api/binance/klines', async (req, res) => {
 
                 // Determine a realistic fallback price based on the symbol
                 let fallbackPrice = "1.0";
-                if (mappedSymbol === 'GBPJPY' || symbol.includes('JPY')) fallbackPrice = "190.0";
+                if (symbol.includes('JPY')) fallbackPrice = "150.0";
                 if (symbol.includes('US30') || symbol.includes('SPX') || symbol.includes('NDX')) fallbackPrice = "5000.0";
-                if (mappedSymbol === 'JPYGBP') fallbackPrice = "0.0053";
 
                 console.log(`[PROXY] Generating ${count} Ghost Candles for ${symbol} @ ${fallbackPrice}. Server UTC: ${new Date(nowUTC).toISOString()}`);
 

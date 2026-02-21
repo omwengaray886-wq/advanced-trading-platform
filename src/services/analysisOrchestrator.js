@@ -65,6 +65,7 @@ import { VolumeProfileAnalyzer } from '../analysis/VolumeProfileAnalyzer.js';
 import { VolumeProfile } from '../models/annotations/VolumeProfile.js';
 import { OrderFlowHeatmap } from '../models/annotations/OrderFlowHeatmap.js';
 import { NewsShock } from '../models/annotations/NewsShock.js';
+import { WhaleAlert } from '../models/annotations/WhaleAlert.js';
 import { ZoneMapper } from './zoneMapper.js';
 import { ZoneConfidenceScorer } from './zoneConfidenceScorer.js';
 import { newsShockEngine } from './newsShockEngine.js';
@@ -76,7 +77,7 @@ const _cooldowns = new Map();
 
 // Phase 35: Predictive Intelligence Layer
 import { analyzeSentiment } from './sentimentService.js';
-import { getOnChainMetrics } from './onChainService.js';
+import { getOnChainMetrics, onChainService } from './onChainService.js';
 import { analyzeOptionsFlow } from './optionsFlowService.js';
 import { getSeasonalityEdge } from './seasonalityService.js';
 import { marketData } from './marketData.js';
@@ -98,7 +99,10 @@ import { SessionAnalyzer } from '../analysis/SessionAnalyzer.js';
 import { MarketObligationEngine } from '../analysis/MarketObligationEngine.js';
 import { bayesianEngine } from './BayesianInferenceEngine.js';
 import { liveOrderBookStore } from './LiveOrderBookStore.js';
-import { DirectionalConfidenceGate } from '../analysis/DirectionalConfidenceGate.js';
+import { portfolioRiskService } from './portfolioRiskService.js';
+// DirectionalConfidenceGate is now dynamically imported in analyze() to break circular dependencies
+// Phase 15 Fix applied below
+
 import { macroBiasEngine } from './MacroBiasEngine.js';
 import { probabilisticRiskEngine } from './ProbabilisticRiskEngine.js';
 import { RegimeTransitionPredictor } from './RegimeTransitionPredictor.js';
@@ -130,7 +134,7 @@ import { CorrelationClusterEngine } from './CorrelationClusterEngine.js';
 import { correlationService } from './correlationService.js';
 import { PortfolioStressService, portfolioStressService } from './PortfolioStressService.js';
 import { monteCarloService } from './monteCarloService.js';
-import { PortfolioRiskService, portfolioRiskService } from './portfolioRiskService.js';
+
 // DirectionalConfidenceGate is now dynamically imported in analyze() to break circular dependencies
 
 // Phase 6: Predictive Intelligence Engines
@@ -139,8 +143,11 @@ import { ParameterOptimizer } from './ParameterOptimizer.js';
 import { TapeReadingEngine } from './TapeReadingEngine.js';
 import { DXYCorrelationEngine } from './DXYCorrelationEngine.js';
 import { gsRefiner } from './GSRefiner.js';
+import { liquidityHeatmapEngine } from './LiquidityHeatmapEngine.js';
+
 import { LiquidityVoidHeatmap } from './LiquidityVoidHeatmap.js';
 import { MTFEquilibriumTracker } from './MTFEquilibriumTracker.js';
+import { computePivotPoints } from './PivotPointEngine.js';
 
 export class AnalysisOrchestrator {
     constructor() {
@@ -532,15 +539,25 @@ export class AnalysisOrchestrator {
 
             // Step 3.8: Phase 35/55 - Predictive Intelligence Layer
             let sentiment, onChain, optionsFlow, seasonality, orderBook, alphaFlow;
+
+            // Phase 16: Supply Dynamics & Whale Tracking
+            let whaleAlerts = [], exchangeFlows = { netFlow: 0 };
+
             if (!isLight) {
-                [sentiment, onChain, optionsFlow, seasonality, orderBook, alphaFlow] = await Promise.all([
+                // Parallelize all advanced data fetching
+                const results = await Promise.all([
                     analyzeSentiment(symbol).catch(() => null),
                     assetClass === 'CRYPTO' ? getOnChainMetrics(symbol).catch(() => null) : Promise.resolve(null),
                     (assetClass === 'EQUITY' || assetClass === 'FOREX') ? analyzeOptionsFlow(symbol).catch(() => null) : Promise.resolve(null),
                     getSeasonalityEdge(symbol, new Date()),
                     marketData.fetchOrderBook(symbol, 40).catch(() => null),
-                    institutionalFlow.getAlphaScore(symbol).catch(() => null)
+                    institutionalFlow.getAlphaScore(symbol).catch(() => null),
+                    // New Phase 16 Data
+                    assetClass === 'CRYPTO' ? onChainService.getWhaleAlerts(symbol).catch(() => []) : Promise.resolve([]),
+                    assetClass === 'CRYPTO' ? onChainService.getRealExchangeFlows(symbol).catch(() => ({ netFlow: 0 })) : Promise.resolve({ netFlow: 0 })
                 ]);
+
+                [sentiment, onChain, optionsFlow, seasonality, orderBook, alphaFlow, whaleAlerts, exchangeFlows] = results;
             } else {
                 // Return fast defaults for light mode
                 sentiment = { score: 50, label: 'NEUTRAL' };
@@ -554,6 +571,37 @@ export class AnalysisOrchestrator {
             marketState.seasonality = seasonality;
             marketState.orderBook = orderBook;
             marketState.institutionalFlow = alphaFlow;
+
+            // Phase 16: Supply Pressure Analysis
+            marketState.supplyDynamics = {
+                whaleAlerts,
+                exchangeFlows,
+                score: 50 // Default Neutral
+            };
+
+            if (assetClass === 'CRYPTO') {
+                // Calculate Supply Pressure Score (0-100)
+                // > 70 = Bullish (Accumulation/Outflows)
+                // < 30 = Bearish (Distribution/Inflows)
+                let supplyScore = 50;
+
+                // 1. Exchange Flows Impact
+                if (exchangeFlows.netFlow < -1000) supplyScore += 15; // Major Outflow (Bullish)
+                else if (exchangeFlows.netFlow > 1000) supplyScore -= 15; // Major Inflow (Bearish)
+
+                // 2. Whale Alerts Impact
+                const recentWhales = whaleAlerts.filter(w => (Date.now() - w.timestamp) < 3600000); // Last hour
+                recentWhales.forEach(whale => {
+                    if (whale.from === 'Exchange' && whale.to === 'Wallet') supplyScore += 5; // Accumulation
+                    if (whale.from === 'Wallet' && whale.to === 'Exchange') supplyScore -= 5; // Dump Risk
+                });
+
+                marketState.supplyDynamics.score = Math.max(0, Math.min(100, supplyScore));
+
+                // Log significant supply events
+                if (supplyScore > 75) console.log(`[Supply] BULLISH Supply Shock detected for ${symbol}`);
+                if (supplyScore < 25) console.log(`[Supply] BEARISH Supply Shock detected for ${symbol}`);
+            }
 
             // Step 3.8.5: Phase 2 - Intermarket Macro Bias Engine
             try {
@@ -682,6 +730,18 @@ export class AnalysisOrchestrator {
             }
 
 
+            // Step 3.4.6: Classic Pivot Point Confluence (Phase 102)
+            try {
+                marketState.pivots = {
+                    classic: computePivotPoints(candles, 'CLASSIC'),
+                    woodie: computePivotPoints(candles, 'WOODIE'),
+                    camarilla: computePivotPoints(candles, 'CAMARILLA')
+                };
+            } catch (pivotErr) {
+                console.warn('[Analysis] Pivot calculation failed:', pivotErr.message);
+            }
+
+
             // --- NEW PREDICTIVE FORECASTING LAYER ---
 
             // 1. Regime Transition Prediction
@@ -783,7 +843,14 @@ export class AnalysisOrchestrator {
             }
 
             // Phase 55: Parallelize Candidate Evaluation
-            const Gate = DirectionalConfidenceGate; // Re-use static import
+            let Gate;
+            try {
+                const module = await import('../analysis/DirectionalConfidenceGate.js');
+                Gate = module.DirectionalConfidenceGate;
+            } catch (err) {
+                console.error('[Orchestrator] Dynamic Import Failed:', err);
+            }
+
             const candidateResults = await Promise.all(candidates.map(async (c) => {
                 const direction = selection.long.includes(c) ? 'LONG' : 'SHORT';
 
@@ -827,10 +894,23 @@ export class AnalysisOrchestrator {
                     }
 
                     // 2. Heavy Parallel Checks (Bayesian + Gate)
-                    const [bayesianStats, validation] = await Promise.all([
-                        bayesianEngine.getPosteriorCredibility(symbol, c.strategy.name, marketState.regime),
-                        Gate.validateDirection({ ...c, direction, ...riskParams }, marketState, candles, symbol)
-                    ]);
+                    let validation = { isValid: true, confidence: 0.5 }; // Default fallback
+                    let bayesianStats;
+
+                    if (Gate) {
+                        try {
+                            [bayesianStats, validation] = await Promise.all([
+                                bayesianEngine.getPosteriorCredibility(symbol, c.strategy.name, marketState.regime),
+                                Gate.validateDirection({ ...c, direction, ...riskParams }, marketState, candles, symbol)
+                            ]);
+                        } catch (e) {
+                            console.error('[Orchestrator] Validation Error:', e);
+                            bayesianStats = await bayesianEngine.getPosteriorCredibility(symbol, c.strategy.name, marketState.regime);
+                        }
+                    } else {
+                        // Fallback if Gate missing
+                        bayesianStats = await bayesianEngine.getPosteriorCredibility(symbol, c.strategy.name, marketState.regime);
+                    }
 
                     // Skip low confidence OR invalid direction
                     if (!validation.isValid || validation.confidence < 0.3) return null;
@@ -1332,6 +1412,41 @@ export class AnalysisOrchestrator {
                 ));
             }
 
+
+            // 14. Liquidity Heatmap (Phase 18)
+            if (marketState.orderBook && marketState.orderBook.bids && marketState.orderBook.asks) {
+                // Update Engine with current snapshot
+                liquidityHeatmapEngine.update(
+                    marketState.orderBook,
+                    marketState.currentPrice,
+                    Date.now()
+                );
+
+                // Retrieve active blocks (Persistent Walls)
+                const heatmapBlocks = liquidityHeatmapEngine.getHeatmapBlocks(Date.now());
+
+                heatmapBlocks.forEach(block => {
+                    baseAnnotations.push(new OrderFlowHeatmap({
+                        heatmap: [], // Not used for blocks
+                        walls: [],   // Not used for blocks - we map individual blocks
+                        maxIntensity: 1 // Placeholder
+                    }, {
+                        id: `liq-block-${block.id}`,
+                        type: 'LIQUIDITY_HEATMAP_BLOCK',
+                        coordinates: {
+                            startTime: block.startTime,
+                            endTime: block.endTime,
+                            price: block.price
+                        },
+                        volume: block.volume,
+                        currentVolume: block.currentVolume,
+                        side: block.side,
+                        label: `🧱 ${block.side} WALL`,
+                        isActive: block.isActive
+                    }));
+                });
+            }
+
             // 13.5: Multi-Timeframe POI Synchronization (Phase 16)
             if (mtfData) {
                 const mtfAnalysis = {};
@@ -1347,6 +1462,26 @@ export class AnalysisOrchestrator {
                     marketState.mtfAlignments = mtfResults.alignments;
                     marketState.mtfBiasAligned = mtfResults.biasAlignment;
                 }
+            }
+
+            // 14. Phase 16: Whale Alerts
+            if (marketState.supplyDynamics && marketState.supplyDynamics.whaleAlerts) {
+                marketState.supplyDynamics.whaleAlerts.forEach(whale => {
+                    // Determine sentiment based on flow
+                    let sentiment = 'NEUTRAL';
+                    if (whale.from === 'Exchange' && whale.to === 'Wallet') sentiment = 'BULLISH';
+                    if (whale.from === 'Wallet' && whale.to === 'Exchange') sentiment = 'BEARISH';
+
+                    baseAnnotations.push(new WhaleAlert(
+                        whale.hash,
+                        whale.symbol,
+                        whale.valueUsd,
+                        whale.from,
+                        whale.to,
+                        whale.timestamp,
+                        sentiment
+                    ));
+                });
             }
 
             // Step 3.4.6: Consolidated Volume Annotations (Phase 55)
@@ -1567,7 +1702,7 @@ export class AnalysisOrchestrator {
                 globalAnnotations: baseAnnotations,
 
                 // Confidence
-                overallConfidence: this.calculateOverallConfidence(marketState, setups[0]?.suitability || 0),
+                overallConfidence: await this.calculateOverallConfidence(marketState, setups[0]?.suitability || 0, setups[0]),
                 fundamentalAlignment: aligned,
 
                 // Performance metadata
@@ -2227,7 +2362,7 @@ export class AnalysisOrchestrator {
      * @param {number} strategySuitability - Strategy suitability score
      * @returns {number} - Overall confidence (0-1)
      */
-    calculateOverallConfidence(marketState, strategySuitability) {
+    async calculateOverallConfidence(marketState, strategySuitability, setup = null) {
         const regimeConfidence = marketState.confidence || 0.5;
         const trendStrength = marketState.trend.strength || 0.5;
 
@@ -2242,6 +2377,39 @@ export class AnalysisOrchestrator {
             score = Math.min(1.0, score + boost);
         }
 
+        // Phase 17: Portfolio Risk Validation
+        if (setup && setup.entry && setup.stopLoss) {
+            try {
+                const validation = await portfolioRiskService.validateTrade({
+                    symbol: symbol,
+                    entry: setup.entry,
+                    stopLoss: setup.stopLoss
+                });
+
+                setup.riskValidation = validation;
+
+                if (!validation.approved) {
+                    console.log(`[Risk] Trade Rejected for ${symbol}: ${validation.reason}`);
+                    // Downgrade confidence or invalidate
+                    score = 0;
+                    marketState.signal = 'NEUTRAL'; // Force clear signal
+
+                    // Add annotation explaining rejection
+                    baseAnnotations.push({
+                        type: 'RISK_REJECTION',
+                        id: `risk-reject-${Date.now()}`,
+                        coordinates: { time: candles[candles.length - 1].time, price: setup.entry },
+                        metadata: { reason: validation.reason, code: validation.code },
+                        getLabel: () => `⛔ RISK REJECT: ${validation.reason}`
+                    });
+                } else if (validation.sizing) {
+                    setup.suggestedPositionSize = validation.sizing;
+                }
+            } catch (err) {
+                console.warn('[Orchestrator] Correlation check failed:', err);
+            }
+        }
+
         return score;
     }
 
@@ -2249,7 +2417,7 @@ export class AnalysisOrchestrator {
      * Phase 40: Timeframe Stacking Logic
      * Maps the current 'Entry' timeframe to its 'Context' (Truth) timeframe.
      * Enhanced to support all timeframes: 1m, 5m, 15m, 30m, 1H, 2H, 4H, D, W
-
+     
      */
     determineContextTimeframes(currentTF) {
         if (!currentTF) return { profile: 'DAY_TRADER', contextTF: '4h', entryTF: '1h' };

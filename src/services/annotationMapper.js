@@ -112,6 +112,15 @@ export class AnnotationMapper {
                     config.borderColor = '#ef4444';
                     config.icon = '🚫';
                     break;
+                case 'LIQUIDITY_HEATMAP_BLOCK':
+                    const isBid = anno.side === 'BID' || anno.side === 'BUY';
+                    // Opacity based on volume (if available) or default
+                    // We can use currentVolume vs volume (max) to fade if decaying
+                    const intensity = anno.isActive ? 0.3 : 0.1;
+                    config.background = isBid ? `rgba(16, 185, 129, ${intensity})` : `rgba(239, 68, 68, ${intensity})`;
+                    config.borderColor = isBid ? '#10b981' : '#ef4444';
+                    config.icon = '🧱';
+                    break;
             }
 
             return config;
@@ -126,7 +135,8 @@ export class AnnotationMapper {
                 'ENTRY_ZONE', 'SUPPLY_DEMAND_ZONE', 'CONSOLIDATION_ZONE',
                 'ORDER_BLOCK', 'FAIR_VALUE_GAP', 'LIQUIDITY_ZONE', 'LIQUIDITY_SWEEP_ZONE',
                 'STRUCTURE_ZONE', 'CONFLUENCE_ZONE', 'PREMIUM_DISCOUNT_ZONE', 'CHOCH_ZONE', 'FVG', 'TRAP_ZONE',
-                'DARK_POOL', 'VOLATILITY_CORRIDOR', 'ORDER_BOOK_WALL', 'NEWS_IMPACT_ZONE', 'INVALIDATION_ZONE'
+                'DARK_POOL', 'VOLATILITY_CORRIDOR', 'ORDER_BOOK_WALL', 'NEWS_IMPACT_ZONE', 'INVALIDATION_ZONE',
+                'LIQUIDITY_HEATMAP_BLOCK'
             ].includes(anno.type)) {
 
 
@@ -445,6 +455,33 @@ export class AnnotationMapper {
                     style: { left: futureTime, top: anno.coordinates.price }
                 });
             }
+            // 11. Whale Alerts (Phase 16)
+            else if (anno.type === 'WHALE_ALERT') {
+                const label = anno.getLabel ? anno.getLabel() : 'Whale Alert';
+                const color = anno.sentiment === 'BULLISH' ? '#10b981' : (anno.sentiment === 'BEARISH' ? '#ef4444' : '#64748b');
+
+                overlays.labels.push({
+                    id: anno.id || `whale-${anno.txHash}`,
+                    x: Math.floor(anno.coordinates.time / 1000), // Ensure seconds
+                    y: context.marketState.currentPrice, // Anchor to current price (or we could use candle High/Low at that time)
+                    text: label,
+                    subtext: `${anno.fromType} ➔ ${anno.toType}`,
+                    color: color,
+                    direction: anno.sentiment === 'BULLISH' ? 'up' : 'down',
+                    style: { left: Math.floor(anno.coordinates.time / 1000), top: context.marketState.currentPrice }
+                });
+
+                // Vertical line marker
+                overlays.lines.push({
+                    id: `whale-line-${anno.txHash}`,
+                    start: { time: Math.floor(anno.coordinates.time / 1000), price: context.marketState.currentPrice * 0.95 },
+                    end: { time: Math.floor(anno.coordinates.time / 1000), price: context.marketState.currentPrice * 1.05 },
+                    color: color,
+                    width: 2,
+                    dashed: true,
+                    opacity: 0.6
+                });
+            }
         });
 
         // 9. Institutional & Contextual Metadata Overlays (Phase 2+)
@@ -491,17 +528,27 @@ export class AnnotationMapper {
                 });
             }
 
-            // C. Event Risk (Macro Shocks)
-            if (context.marketState.eventRisk && context.marketState.eventRisk.closestEvent) {
-                const event = context.marketState.eventRisk.closestEvent;
+            // C. Event Risk (Macro Shocks & Geopolitical)
+            const activeRisk = context.marketState.activeShock || (context.marketState.eventRisk ? context.marketState.eventRisk.closestEvent : null);
+
+            if (activeRisk) {
+                const isGeo = activeRisk.category === 'GEOPOLITICAL';
                 overlays.shocks.push({
-                    id: `event-${event.timestamp}`,
-                    time: Math.floor(event.timestamp / 1000),
-                    impact: event.impact,
-                    label: `📅 ${event.title} (${context.marketState.eventRisk.level})`,
-                    color: event.impact === 'CRITICAL' || context.marketState.eventRisk.score > 75 ? '#ef4444' : '#f59e0b',
-                    isImminent: (event.timestamp - Date.now()) < 3600000, // < 1 hour
-                    corridor: null
+                    id: `risk-${activeRisk.event || 'hazard'}`,
+                    time: Math.floor(Date.now() / 1000), // Active now
+                    impact: activeRisk.impact,
+                    label: isGeo ? `⚠️ ${activeRisk.event} (WAR RISK)` : `📅 ${activeRisk.event}`,
+                    color: isGeo ? '#dc2626' : (activeRisk.impact === 'HIGH' ? '#ef4444' : '#f59e0b'), // Crimson for War, Red/Orange for eco
+                    isImminent: true,
+                    corridor: {
+                        start: Math.floor(Date.now() / 1000) - 3600,
+                        end: Math.floor(Date.now() / 1000) + 3600,
+                        color: isGeo ? 'rgba(220, 38, 38, 0.1)' : 'rgba(239, 68, 68, 0.1)' // faint red background
+                    },
+                    corridorStyle: {
+                        left: 0, // dynamic in chart
+                        width: '100%' // placeholder
+                    }
                 });
             }
 

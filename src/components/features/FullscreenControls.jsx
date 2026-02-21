@@ -9,6 +9,8 @@ export default function FullscreenControls({
     onTimeframeChange,
     indicators,
     onToggleIndicator,
+    pivotType,
+    onPivotTypeChange,
     onScreenshot,
     activeDrawTool,
     onSelectDrawTool
@@ -26,8 +28,11 @@ export default function FullscreenControls({
         { id: 'volumeProfile', label: 'Volume Profile' },
         { id: 'sessionZones', label: 'Session Zones' },
         { id: 'liquidityHeatmap', label: 'Liquidity Heatmap' },
-        { id: 'institutionalLevels', label: 'Institutional Levels' }
+        { id: 'institutionalLevels', label: 'Institutional Levels' },
+        { id: 'pivotPoints', label: 'Pivot Points' }
     ];
+
+    const pivotMethods = ['CLASSIC', 'WOODIE', 'CAMARILLA'];
 
     return (
         <div style={{
@@ -133,8 +138,36 @@ export default function FullscreenControls({
                             {indicator.label}
                         </button>
                     ))}
+
+                    {/* Pivot Method Selector — visible only when Pivot Points is ON */}
+                    {indicators.pivotPoints && (
+                        <div style={{ display: 'flex', gap: '3px', marginLeft: '6px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.35)', fontWeight: 'bold', letterSpacing: '0.5px' }}>TYPE:</span>
+                            {pivotMethods.map(m => (
+                                <button
+                                    key={m}
+                                    onClick={() => onPivotTypeChange && onPivotTypeChange(m)}
+                                    style={{
+                                        padding: '4px 8px',
+                                        borderRadius: '5px',
+                                        border: '1px solid',
+                                        borderColor: pivotType === m ? 'rgba(251, 191, 36, 0.6)' : 'rgba(255,255,255,0.08)',
+                                        background: pivotType === m ? 'rgba(251, 191, 36, 0.15)' : 'rgba(255,255,255,0.03)',
+                                        color: pivotType === m ? '#fbbf24' : 'rgba(255,255,255,0.45)',
+                                        cursor: 'pointer',
+                                        fontSize: '9px',
+                                        fontWeight: 'bold',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    {m}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
+
 
             {/* Divider */}
             <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }} />
