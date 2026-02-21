@@ -2,7 +2,7 @@ import { db } from './db.js';
 import { gsRefiner } from './GSRefiner.js';
 
 const statsCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes (Improved for Phase 55)
 
 export class PredictionTracker {
     static async track(prediction, symbol) {
@@ -156,6 +156,7 @@ export class PredictionTracker {
             };
 
             statsCache.set(symbol, { data: stats, timestamp: Date.now() });
+            console.log(`[PredictionTracker] Cached stats updated for ${symbol}. Total: ${stats.total}, Accuracy: ${stats.accuracy}%`);
             return stats;
         } catch (e) {
             console.error('[PredictionTracker] Error getting stats:', e);

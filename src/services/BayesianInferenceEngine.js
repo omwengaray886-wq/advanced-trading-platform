@@ -34,9 +34,9 @@ export class BayesianInferenceEngine {
             };
         } else {
             try {
-                // Phase 55: Robustness - Race against timeout (2s) to prevent analysis hang
+                // Phase 55: Robustness - Race against timeout (5s) to prevent analysis hang
                 const timeoutPromise = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Bayesian stats fetch timed out')), 15000)
+                    setTimeout(() => reject(new Error('Bayesian stats fetch timed out')), 5000)
                 );
                 stats = await Promise.race([
                     PredictionTracker.getStats(symbol),
@@ -44,6 +44,7 @@ export class BayesianInferenceEngine {
                 ]);
             } catch (e) {
                 console.warn(`[Bayesian] Stats fetch issue for ${symbol} (${e.message}), using priors.`);
+                stats = null;
             }
         }
 

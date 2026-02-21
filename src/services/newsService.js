@@ -34,7 +34,7 @@ export class NewsService {
                 this._fetchGlobalMacroFeed()
             ]);
 
-            let combinedNews = [...macroFeed];
+            let combinedNews = Array.isArray(macroFeed) ? [...macroFeed] : [];
 
             // Handle CryptoPanic Data
             if (cryptoRes && cryptoRes.ok) {
@@ -67,7 +67,7 @@ export class NewsService {
                     time: n.created_at ? Math.floor(new Date(n.created_at).getTime() / 1000) : Math.floor(Date.now() / 1000),
                     title: n.title,
                     source: n.domain || n.source || 'Global Wire',
-                    impact: this._scoreImpact(n.title, n.metadata),
+                    impact: this._scoreImpact(n.title, n.metadata || {}),
                     sentiment: nlpAnalysis.bias,
                     sentimentScore: nlpAnalysis.score,
                     sentimentLabel: nlpAnalysis.label,
@@ -216,17 +216,18 @@ export class NewsService {
      * Private: Score news impact based on keywords and assign professional Tiers
      * Also detects GEOPOLITICAL category.
      */
-    _scoreImpact(title, metadata) {
+    _scoreImpact(title, metadata = {}) {
         const upperTitle = title.toUpperCase();
+        const safeMetadata = metadata || {};
 
         // 1. Geopolitical Detection (Overrides standard economic logic)
         const GEO_KEYWORDS = ['WAR', 'INVASION', 'MISSILE', 'ATTACK', 'SANCTION', 'EMBARGO', 'TERROR', 'COUP', 'EMERGENCY', 'NUCLEAR'];
         if (GEO_KEYWORDS.some(k => upperTitle.includes(k))) {
-            metadata.category = 'GEOPOLITICAL';
+            safeMetadata.category = 'GEOPOLITICAL';
             return 'HIGH'; // Geopolitical events are almost always High Impact initially
         }
 
-        metadata.category = 'ECONOMIC'; // Default
+        safeMetadata.category = 'ECONOMIC'; // Default
 
         const TIER_1 = ['PAYROLL', 'NFP', 'CPI', 'FOMC', 'INTEREST RATE', 'GDP', 'RETAIL SALES', 'ISM'];
         const TIER_2 = ['PPI', 'ECB', 'BOE', 'BOJ', 'UNEMPLOYMENT', 'ELECTION', 'GERMAN PMI'];

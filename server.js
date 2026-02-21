@@ -653,7 +653,6 @@ app.get('/api/news', async (req, res) => {
     }
 });
 
-// 1.5.1 Proxy for CryptoPanic (Crypto News)
 app.get('/api/news/cryptopanic', async (req, res) => {
     try {
         const apiKey = process.env.CRYPTOPANIC_API_KEY || process.env.VITE_CRYPTOPANIC_KEY;
@@ -661,11 +660,14 @@ app.get('/api/news/cryptopanic', async (req, res) => {
 
         const response = await axios.get('https://cryptopanic.com/api/v1/posts/', {
             params: { ...req.query, auth_token: apiKey },
-            timeout: 8000
+            timeout: 10000
         });
         res.json(response.data);
     } catch (error) {
-        res.status(error.response?.status || 500).json({ error: error.message });
+        const status = error.response?.status || 500;
+        console.error(`[PROXY ERROR] CryptoPanic ${status}: ${error.message}`);
+        if (error.response?.data) console.error(`[PROXY ERROR] Details:`, JSON.stringify(error.response.data));
+        res.status(status).json({ error: error.message, details: error.response?.data });
     }
 });
 
@@ -673,15 +675,22 @@ app.get('/api/news/cryptopanic', async (req, res) => {
 app.get('/api/news/calendar', async (req, res) => {
     try {
         const apiKey = process.env.FMP_API_KEY || process.env.VITE_FMP_KEY;
-        if (!apiKey) return res.json({ disabled: true, results: [], message: 'FMP Key Missing' });
+        if (!apiKey) {
+            console.warn('[PROXY] FMP API Key missing from environment.');
+            return res.json({ disabled: true, results: [], message: 'FMP Key Missing' });
+        }
 
+        console.log(`[PROXY] Fetching Economic Calendar for: ${JSON.stringify(req.query)}`);
         const response = await axios.get('https://financialmodelingprep.com/api/v3/economic_calendar', {
             params: { ...req.query, apikey: apiKey },
-            timeout: 8000
+            timeout: 10000
         });
         res.json(response.data);
     } catch (error) {
-        res.status(error.response?.status || 500).json({ error: error.message });
+        const status = error.response?.status || 500;
+        console.error(`[PROXY ERROR] Calendar ${status}: ${error.message}`);
+        if (error.response?.data) console.error(`[PROXY ERROR] Details:`, JSON.stringify(error.response.data));
+        res.status(status).json({ error: error.message, details: error.response?.data });
     }
 });
 

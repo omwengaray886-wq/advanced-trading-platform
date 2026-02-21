@@ -1536,13 +1536,13 @@ export class AnalysisOrchestrator {
                 });
 
                 if (opposingChoch) {
-                    // console.log(`Dropped ${s.name} due to recent opposing CHoCH at ${new Date(opposingChoch.time * 1000).toISOString()}`);
+                    console.log(`[FILTER] Dropped ${s.name} for ${symbol} due to recent opposing CHoCH (Structure Conflict) at ${new Date(opposingChoch.time * 1000).toISOString()}`);
                     return false;
                 }
 
                 const minScore = 48; // Relaxed from 55 for increased alpha visibility
                 if (s.quantScore < minScore) {
-                    // console.log(`Dropped ${s.name} due to low conviction (${s.quantScore})`);
+                    console.log(`[FILTER] Dropped ${s.name} for ${symbol} due to low conviction score: ${s.quantScore} (Min: ${minScore})`);
                     return false;
                 }
                 return true;
