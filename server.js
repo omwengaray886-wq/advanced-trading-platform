@@ -725,7 +725,7 @@ app.post('/api/ai/generate', async (req, res) => {
 
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({
-            model: modelName || "gemini-1.5-flash",
+            model: modelName || "gemini-2.0-flash",
             // Phase 2: Explicit safety settings to prevent false positive blocks causing 500s
             safetySettings: [
                 { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },

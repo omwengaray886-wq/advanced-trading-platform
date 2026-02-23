@@ -35,7 +35,8 @@ async function testEndpoints() {
         console.log('[TEST] Testing AI Generation...');
         const start = Date.now();
         const res = await axios.post(`${BASE_URL}/ai/generate`, {
-            prompt: 'Test prompt for institutional analysis verification. Respond with "VERIFIED".'
+            prompt: 'Test prompt for institutional analysis verification. Respond with "VERIFIED".',
+            model: 'gemini-2.0-flash'
         }, { timeout: 30000 });
         const duration = Date.now() - start;
         console.log(`[SUCCESS] AI Generation - Status: ${res.status} (${duration}ms)`);
