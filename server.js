@@ -101,6 +101,7 @@ class SimpleQueue {
 
 const newsQueue = new SimpleQueue(1, 1000); // 1 request / second
 const coinGeckoQueue = new SimpleQueue(1, 1500); // 1.5s delay to be safe
+const binanceQueue = new SimpleQueue(5, 500);  // 5 concurrent, but 500ms spaced
 // ------------------------------------------------
 
 
@@ -461,11 +462,13 @@ app.get('/api/binance/klines', async (req, res) => {
             });
         }
 
-        const response = await fetchWithRetry(`${BINANCE_BASE}/api/v3/klines`, {
-            symbol: binanceSymbol,
-            interval,
-            limit: limit || 100
-        });
+        const response = await binanceQueue.enqueue(() =>
+            fetchWithRetry(`${BINANCE_BASE}/api/v3/klines`, {
+                symbol: binanceSymbol,
+                interval,
+                limit: limit || 100
+            })
+        );
         res.json(response.data);
     } catch (error) {
         const status = error.response?.status || 500;
@@ -522,9 +525,11 @@ app.get('/api/binance/depth', async (req, res) => {
             return res.status(404).json({ error: 'Unsupported Symbol for Depth' });
         }
 
-        const response = await axios.get(`${BINANCE_BASE}/api/v3/depth`, {
-            params: { symbol: binanceSymbol, limit: limit || 20 }
-        });
+        const response = await binanceQueue.enqueue(() =>
+            axios.get(`${BINANCE_BASE}/api/v3/depth`, {
+                params: { symbol: binanceSymbol, limit: limit || 20 }
+            })
+        );
         res.json(response.data);
     } catch (error) {
         const status = error.response?.status || 500;
@@ -565,9 +570,11 @@ app.get('/api/binance/ticker', async (req, res) => {
         }
 
         const binanceSymbol = await getVerifiedSymbol(symbol);
-        const response = await axios.get(`${BINANCE_BASE}/api/v3/ticker/24hr`, {
-            params: { symbol: binanceSymbol }
-        });
+        const response = await binanceQueue.enqueue(() =>
+            axios.get(`${BINANCE_BASE}/api/v3/ticker/24hr`, {
+                params: { symbol: binanceSymbol }
+            })
+        );
         res.json(response.data);
     } catch (error) {
         res.status(error.response?.status || 500).json({ error: error.message });
@@ -607,6 +614,58 @@ app.use('/api/coingecko', async (req, res) => {
         const status = error.response?.status || 500;
         if ((status === 429 || status === 500) && cached) return res.json(cached.data);
         res.status(status).json(error.response?.data || { error: error.message });
+    }
+});
+
+// 1.5.2 Proxy for FMP (Economic Calendar)
+app.get('/api/news/calendar', async (req, res) => {
+    try {
+        const apiKey = process.env.FMP_API_KEY || process.env.VITE_FMP_KEY;
+        if (!apiKey) {
+            console.warn('[PROXY] FMP API Key missing from environment.');
+            return res.json({ disabled: true, results: [], message: 'FMP Key Missing' });
+        }
+
+        console.log(`[PROXY] Fetching Economic Calendar for: ${JSON.stringify(req.query)}`);
+        const response = await axios.get('https://financialmodelingprep.com/api/v3/economic_calendar', {
+            params: { ...req.query, apikey: apiKey },
+            timeout: 10000
+        });
+        res.json(response.data);
+    } catch (error) {
+        const status = error.response?.status || 500;
+        console.error(`[PROXY ERROR] Calendar ${status}: ${error.message}`);
+
+        // Phase 55: Robustness - Provide structured error for frontend fallback
+        if (status === 403 || status === 404) {
+            return res.status(status).json({
+                error: 'Calendar data restricted',
+                message: 'Your API key may not have access to this endpoint or the tier is restricted.',
+                status
+            });
+        }
+
+        if (error.response?.data) console.error(`[PROXY ERROR] Details:`, JSON.stringify(error.response.data));
+        res.status(status).json({ error: error.message, details: error.response?.data });
+    }
+});
+
+app.get('/api/news/cryptopanic', async (req, res) => {
+    try {
+        const apiKey = process.env.CRYPTOPANIC_API_KEY || process.env.VITE_CRYPTOPANIC_KEY;
+        if (!apiKey) return res.json({ disabled: true, results: [], message: 'CryptoPanic Key Missing' });
+
+        const response = await axios.get('https://cryptopanic.com/api/v1/posts/', {
+            params: { ...req.query, auth_token: apiKey },
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' },
+            timeout: 10000
+        });
+        res.json(response.data);
+    } catch (error) {
+        const status = error.response?.status || 500;
+        console.error(`[PROXY ERROR] CryptoPanic ${status}: ${error.message}`);
+        if (error.response?.data) console.error(`[PROXY ERROR] Details:`, JSON.stringify(error.response.data));
+        res.status(status).json({ error: error.message, details: error.response?.data });
     }
 });
 
@@ -653,47 +712,6 @@ app.get('/api/news', async (req, res) => {
     }
 });
 
-app.get('/api/news/cryptopanic', async (req, res) => {
-    try {
-        const apiKey = process.env.CRYPTOPANIC_API_KEY || process.env.VITE_CRYPTOPANIC_KEY;
-        if (!apiKey) return res.json({ disabled: true, results: [], message: 'CryptoPanic Key Missing' });
-
-        const response = await axios.get('https://cryptopanic.com/api/v1/posts/', {
-            params: { ...req.query, auth_token: apiKey },
-            timeout: 10000
-        });
-        res.json(response.data);
-    } catch (error) {
-        const status = error.response?.status || 500;
-        console.error(`[PROXY ERROR] CryptoPanic ${status}: ${error.message}`);
-        if (error.response?.data) console.error(`[PROXY ERROR] Details:`, JSON.stringify(error.response.data));
-        res.status(status).json({ error: error.message, details: error.response?.data });
-    }
-});
-
-// 1.5.2 Proxy for FMP (Economic Calendar)
-app.get('/api/news/calendar', async (req, res) => {
-    try {
-        const apiKey = process.env.FMP_API_KEY || process.env.VITE_FMP_KEY;
-        if (!apiKey) {
-            console.warn('[PROXY] FMP API Key missing from environment.');
-            return res.json({ disabled: true, results: [], message: 'FMP Key Missing' });
-        }
-
-        console.log(`[PROXY] Fetching Economic Calendar for: ${JSON.stringify(req.query)}`);
-        const response = await axios.get('https://financialmodelingprep.com/api/v3/economic_calendar', {
-            params: { ...req.query, apikey: apiKey },
-            timeout: 10000
-        });
-        res.json(response.data);
-    } catch (error) {
-        const status = error.response?.status || 500;
-        console.error(`[PROXY ERROR] Calendar ${status}: ${error.message}`);
-        if (error.response?.data) console.error(`[PROXY ERROR] Details:`, JSON.stringify(error.response.data));
-        res.status(status).json({ error: error.message, details: error.response?.data });
-    }
-});
-
 // 1.7 Proxy for Gemini AI
 app.post('/api/ai/generate', async (req, res) => {
     try {
@@ -707,7 +725,7 @@ app.post('/api/ai/generate', async (req, res) => {
 
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({
-            model: modelName || "gemini-1.5-flash-latest",
+            model: modelName || "gemini-1.5-flash",
             // Phase 2: Explicit safety settings to prevent false positive blocks causing 500s
             safetySettings: [
                 { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -741,8 +759,16 @@ app.post('/api/ai/generate', async (req, res) => {
         console.log(`[AI SUCCESS] Generated ${text.length} chars of analysis.`);
         res.json({ text });
     } catch (error) {
+        console.error(`[AI PROXY ERROR] CRITICAL FAILURE`);
         console.error(`[AI PROXY ERROR] Prompt Length: ${req.body.prompt?.length || 0}`);
         console.error(`[AI PROXY ERROR] Model: ${req.body.model || 'default'}: ${error.message}`);
+
+        // Log more details about the error object
+        if (error.response) {
+            console.error(`[AI PROXY ERROR] Response Status: ${error.response.status}`);
+            console.error(`[AI PROXY ERROR] Response Data:`, JSON.stringify(error.response.data));
+        }
+
         if (error.stack) console.error(error.stack);
 
         res.status(500).json({

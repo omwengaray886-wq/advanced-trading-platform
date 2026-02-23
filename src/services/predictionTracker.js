@@ -159,8 +159,13 @@ export class PredictionTracker {
             console.log(`[PredictionTracker] Cached stats updated for ${symbol}. Total: ${stats.total}, Accuracy: ${stats.accuracy}%`);
             return stats;
         } catch (e) {
-            console.error('[PredictionTracker] Error getting stats:', e);
-            return null;
+            console.error(`[PredictionTracker] Error getting stats for ${symbol}:`, e);
+            // Phase 55: Return stale if exists on error
+            if (cached) {
+                console.warn(`[PredictionTracker] Returning STALE stats for ${symbol} due to error.`);
+                return cached.data;
+            }
+            return { accuracy: 0, total: 0, error: true };
         }
     }
 

@@ -42,6 +42,8 @@ export class NewsService {
                 if (data.results) {
                     combinedNews = [...combinedNews, ...data.results];
                 }
+            } else if (cryptoRes) {
+                console.warn(`[NEWS] CryptoPanic fetch failed with status: ${cryptoRes.status}`);
             }
 
             // Handle NewsAPI Data (Forex/Macro)
@@ -156,8 +158,8 @@ export class NewsService {
                     return cached.data;
                 }
 
-                if (res.status === 503 || res.status === 429) {
-                    console.warn(`[NEWS] Calendar proxy unavailable (${res.status}). Using simulated fallback.`);
+                if (res.status === 503 || res.status === 429 || res.status === 403 || res.status === 404) {
+                    console.warn(`[NEWS] Calendar proxy unavailable or restricted (${res.status}). Using simulated fallback.`);
                     return [
                         new EconomicEvent({
                             timestamp: Math.floor(Date.now() / 1000) + 3600,
@@ -165,7 +167,7 @@ export class NewsService {
                             impact: 'HIGH',
                             asset: 'USD',
                             bias: 'NEUTRAL',
-                            description: 'Simulated High Impact Event'
+                            description: 'Simulated High Impact Event (Fallback)'
                         })
                     ];
                 }
