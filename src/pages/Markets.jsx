@@ -772,14 +772,7 @@ export default function Markets() {
     }, []);
 
     return (
-        <div style={{
-            height: 'calc(100vh - 64px)',
-            background: 'radial-gradient(circle at top left, #0f172a, #000000)',
-            display: 'flex',
-            flexDirection: 'column',
-            color: 'white',
-            overflow: 'hidden'
-        }}>
+        <div className="markets-container">
             {/* ... header ... */}
             <header style={{
                 height: '60px',
@@ -1740,14 +1733,9 @@ export default function Markets() {
                                 {showLeftPanel && !isCleanView && (
                                     <motion.div
                                         initial={{ width: 0, opacity: 0 }}
-                                        animate={{ width: '320px', opacity: 1 }}
+                                        animate={{ width: '300px', opacity: 1 }}
                                         exit={{ width: 0, opacity: 0 }}
-                                        style={{
-                                            background: 'rgba(15, 23, 42, 0.6)',
-                                            borderRight: '1px solid rgba(255, 255, 255, 0.05)',
-                                            overflowY: 'auto',
-                                            padding: '16px'
-                                        }}
+                                        className="markets-panel side-panel left-panel"
                                     >
                                         <MacroCalendar />
                                         <div style={{ height: '24px' }} />
@@ -1993,15 +1981,7 @@ export default function Markets() {
                                         initial={{ width: 0, opacity: 0 }}
                                         animate={{ width: '320px', opacity: 1 }}
                                         exit={{ width: 0, opacity: 0 }}
-                                        style={{
-                                            background: 'rgba(15, 23, 42, 0.6)',
-                                            borderLeft: '1px solid rgba(255, 255, 255, 0.05)',
-                                            overflowY: 'auto',
-                                            padding: '16px',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '16px'
-                                        }}
+                                        className="markets-panel side-panel right-panel"
                                     >
                                         <FullscreenDOMPanel
                                             symbol={selectedPair}
@@ -2051,6 +2031,7 @@ export default function Markets() {
                             exit={{ scale: 0.9, opacity: 0 }}
                             style={{
                                 width: '450px',
+                                maxWidth: '90%',
                                 background: 'rgba(30, 41, 59, 0.95)',
                                 border: '1px solid rgba(255,255,255,0.1)',
                                 borderRadius: '24px',

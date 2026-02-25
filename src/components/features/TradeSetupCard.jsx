@@ -62,7 +62,7 @@ const TradeSetupCard = ({ setup, index = 0, onClick }) => {
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', background: 'var(--color-bg-primary)', padding: '12px', borderRadius: '6px' }}>
+            <div className="trade-setup-grid">
                 <div>
                     <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>ENTRY ZONE</span>
                     <div style={{ fontWeight: '600', fontSize: '14px' }}>

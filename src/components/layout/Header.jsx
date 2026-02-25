@@ -28,10 +28,10 @@ export default function Header({ toggleSidebar, isSidebarOpen }) {
     // };
 
     return (
-        <header className="header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '64px', borderBottom: '1px solid var(--border-color)', padding: '0 24px' }}>
+        <header className="header topbar">
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <button className="btn btn-ghost hide-desktop" onClick={toggleSidebar}>
-                    {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+                    <Menu size={20} />
                 </button>
 
                 {/* Search Bar */}
@@ -71,7 +71,7 @@ export default function Header({ toggleSidebar, isSidebarOpen }) {
                     )}
                 </button>
 
-                <div style={{ height: '24px', width: '1px', background: 'var(--border-color)' }}></div>
+                <div style={{ height: '24px', width: '1px', background: 'var(--border-color)' }} className="hide-mobile"></div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div className="hide-mobile" style={{ textAlign: 'right' }}>

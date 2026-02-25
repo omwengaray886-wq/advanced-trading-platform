@@ -261,25 +261,25 @@ export default function Dashboard() {
     }
 
     return (
-        <div style={{ padding: '24px', maxWidth: '1600px', margin: '0 auto' }}>
-            <div className="flex-row justify-between items-end" style={{ marginBottom: '24px' }}>
+        <div className="dashboard-container">
+            <div className="flex-row justify-between items-end" style={{ marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
                 <div className="flex-col">
-                    <h1 style={{ fontSize: '28px', margin: 0, letterSpacing: '-1px', fontWeight: '900', color: 'white' }}>COMMAND CENTER</h1>
+                    <h1 style={{ fontSize: 'var(--spacing-xl)', margin: 0, letterSpacing: '-1px', fontWeight: '900', color: 'white' }}>COMMAND CENTER</h1>
                     <p style={{ fontSize: '11px', opacity: 0.4, fontWeight: 'bold', margin: 0 }}>INTELLIGENCE v5.2 // INSTITUTIONAL GRADE</p>
                 </div>
-                <div className="flex-row gap-lg items-center">
+                <div className="flex-row gap-lg items-center" style={{ flexWrap: 'wrap' }}>
                     <div className="flex-row items-center gap-xs">
                         <div className="pulse-dot" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }}></div>
                         <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 'bold', letterSpacing: '1px' }}>LIVE CONNECTION</span>
                     </div>
                     <div className="badge badge-success" style={{ fontSize: '9px', fontWeight: '900' }}>CORE ENGINE ACTIVE</div>
-                    <div style={{ fontSize: '11px', fontFamily: 'monospace', opacity: 0.6 }}>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</div>
+                    <div style={{ fontSize: '11px', fontFamily: 'monospace', opacity: 0.6 }} className="hide-mobile">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</div>
                 </div>
             </div>
 
             <GlobalRiskHUD setups={setups} />
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '24px' }}>
+            <div className="stats-grid">
                 <div className="card interactive-card" onClick={() => navigate('/app/markets')} style={{ cursor: 'pointer' }}>
                     <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px', marginBottom: '8px' }}>{selectedSymbol} Price</p>
                     <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#3b82f6' }}>
@@ -302,7 +302,7 @@ export default function Dashboard() {
                 <LiveWallet />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+            <div className="main-dashboard-grid">
                 <div className="flex-col gap-md">
                     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                         <div className="card-header" style={{ padding: '16px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -376,7 +376,7 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px' }}>
+            <div className="secondary-dashboard-grid">
                 <InstitutionalScanner onSelectSymbol={(sym) => {
                     setSelectedSymbol(sym);
                     window.scrollTo({ top: 0, behavior: 'smooth' });

@@ -18,6 +18,10 @@ const Layout = () => {
 
     return (
         <div className="app-layout">
+            <div
+                className={`sidebar-overlay ${isSidebarOpen ? 'visible' : ''}`}
+                onClick={toggleSidebar}
+            />
             <Sidebar isOpen={isSidebarOpen} closeSidebar={() => setIsSidebarOpen(false)} />
             <div className="main-content">
                 <Header toggleSidebar={toggleSidebar} isSidebarOpen={isSidebarOpen} />

@@ -5,16 +5,43 @@
     height: 100vh;
     width: 100vw;
     overflow: hidden;
+    position: relative;
 }
 
 .sidebar {
-    width: 240px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px;
     background-color: var(--color-bg-secondary);
     border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    transition: width 0.2s ease;
+    transition: transform 0.3s ease-in-out;
+    z-index: 1000;
+    transform: translateX(-100%);
+}
+
+.sidebar.open {
+    transform: translateX(0);
+}
+
+.sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.sidebar-overlay.visible {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .main-content {
@@ -23,6 +50,7 @@
     flex-direction: column;
     overflow: hidden;
     background-color: var(--color-bg-primary);
+    width: 100%;
 }
 
 .topbar {
@@ -31,21 +59,131 @@
     background-color: var(--color-bg-primary);
     display: flex;
     align-items: center;
-    padding: 0 var(--spacing-lg);
+    padding: 0 var(--spacing-md);
     justify-content: space-between;
 }
 
 .content-area {
     flex: 1;
     overflow-y: auto;
-    padding: var(--spacing-lg);
+    padding: var(--spacing-md);
+}
+
+/* Breakpoints */
+
+/* Desktop / Large Screens */
+@media (min-width: 1024px) {
+    .sidebar {
+        position: relative;
+        transform: translateX(0);
+        width: 240px;
+    }
+
+    .sidebar-overlay {
+        display: none;
+    }
+
+    .topbar {
+        padding: 0 var(--spacing-lg);
+    }
+
+    .content-area {
+        padding: var(--spacing-lg);
+    }
+}
+
+/* Visibility Utilities */
+.hide-mobile {
+    display: none !important;
+}
+
+@media (min-width: 768px) {
+    .hide-mobile {
+        display: flex !important;
+    }
+
+    .hide-tablet {
+        display: none !important;
+    }
+}
+
+@media (min-width: 1024px) {
+    .hide-tablet {
+        display: flex !important;
+    }
+
+    .hide-desktop {
+        display: none !important;
+    }
+}
+
+/* Dashboard Reusable Grids */
+.dashboard-container {
+    padding: var(--spacing-md);
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+@media (min-width: 1024px) {
+    .dashboard-container {
+        padding: var(--spacing-lg);
+    }
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(1, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+@media (min-width: 640px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 1024px) {
+    .stats-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (min-width: 1280px) {
+    .stats-grid {
+        grid-template-columns: repeat(6, 1fr);
+    }
+}
+
+.main-dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+@media (min-width: 1280px) {
+    .main-dashboard-grid {
+        grid-template-columns: 1fr 400px;
+    }
+}
+
+.secondary-dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+}
+
+@media (min-width: 1024px) {
+    .secondary-dashboard-grid {
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    }
 }
 
 /* Terminal Mode: For full-bleed screens like Markets/Dashboard */
 .content-area.terminal-mode {
     padding: 0;
     overflow: hidden;
-    /* Markets.jsx handles its own internal scrolling */
 }
 
 /* Utilities for layout */
