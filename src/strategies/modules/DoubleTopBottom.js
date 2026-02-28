@@ -36,29 +36,33 @@ export class DoubleTopBottom extends StrategyBase {
                 // If prices are within 0.1% proximity
                 const diff = Math.abs(prev.price - curr.price) / prev.price;
                 if (diff < 0.001) {
+                    const atr = marketState.atr || this.calculateATR(candles);
+                    const buffer = atr * 0.15;
+
                     annotations.push(new StructureMarker(
                         { time: curr.time, price: curr.price },
-                        'DOUBLE_TOP',
+                        'DT',
                         { significance: 'high', direction: 'BEARISH' }
                     ));
 
                     // Entry Zone near the second top
                     annotations.push(new EntryZone(
-                        curr.price * 1.001,
-                        curr.price * 0.999,
+                        curr.price + buffer,
+                        curr.price - buffer,
                         'SHORT',
-                        { confidence: 0.78, note: 'Double Top Entry', timeframe: '1H' }
+                        { confidence: 0.78, note: 'DT Entry', timeframe: '1H' }
                     ));
 
-                    const stopLoss = Math.max(prev.price, curr.price) * 1.005;
-                    const risk = Math.abs(curr.price - stopLoss);
-                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
+                    const stopLoss = Math.max(prev.price, curr.price) + (atr * 0.5);
+                    annotations.push(new TargetProjection(stopLoss, 'SL', { label: `SL: ${stopLoss.toFixed(2)}` }));
 
-                    annotations.push(new TargetProjection(
-                        curr.price - (risk * 3),
-                        'TARGET_1',
-                        { riskReward: 3.0, probability: 0.60 }
-                    ));
+                    const targets = this.generateStandardTargets(curr.price, stopLoss, marketState.liquidityPools, 'SHORT', marketState);
+                    targets.forEach((t, idx) => {
+                        annotations.push(new TargetProjection(t.price, `TP${idx + 1}`, {
+                            riskReward: t.riskReward,
+                            label: t.label
+                        }));
+                    });
                     break;
                 }
             }
@@ -73,28 +77,32 @@ export class DoubleTopBottom extends StrategyBase {
 
                 const diff = Math.abs(prev.price - curr.price) / prev.price;
                 if (diff < 0.001) {
+                    const atr = marketState.atr || this.calculateATR(candles);
+                    const buffer = atr * 0.15;
+
                     annotations.push(new StructureMarker(
                         { time: curr.time, price: curr.price },
-                        'DOUBLE_BOTTOM',
+                        'DB',
                         { significance: 'high', direction: 'BULLISH' }
                     ));
 
                     annotations.push(new EntryZone(
-                        curr.price * 0.999,
-                        curr.price * 1.001,
+                        curr.price - buffer,
+                        curr.price + buffer,
                         'LONG',
-                        { confidence: 0.78, note: 'Double Bottom Entry', timeframe: '1H' }
+                        { confidence: 0.78, note: 'DB Entry', timeframe: '1H' }
                     ));
 
-                    const stopLoss = Math.min(prev.price, curr.price) * 0.995;
-                    const risk = Math.abs(curr.price - stopLoss);
-                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
+                    const stopLoss = Math.min(prev.price, curr.price) - (atr * 0.5);
+                    annotations.push(new TargetProjection(stopLoss, 'SL', { label: `SL: ${stopLoss.toFixed(2)}` }));
 
-                    annotations.push(new TargetProjection(
-                        curr.price + (risk * 3),
-                        'TARGET_1',
-                        { riskReward: 3.0, probability: 0.60 }
-                    ));
+                    const targets = this.generateStandardTargets(curr.price, stopLoss, marketState.liquidityPools, 'LONG', marketState);
+                    targets.forEach((t, idx) => {
+                        annotations.push(new TargetProjection(t.price, `TP${idx + 1}`, {
+                            riskReward: t.riskReward,
+                            label: t.label
+                        }));
+                    });
                     break;
                 }
             }

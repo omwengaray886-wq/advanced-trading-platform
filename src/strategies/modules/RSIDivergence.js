@@ -56,19 +56,22 @@ export class RSIDivergence extends StrategyBase {
             ));
 
             annotations.push(new EntryZone(
-                lowestPrice.price * 0.999,
-                lowestPrice.price * 1.001,
+                lowestPrice.price - (atr * 0.1),
+                lowestPrice.price + (atr * 0.1),
                 'LONG',
-                { confidence: 0.80, note: 'RSI Bullish Divergence', timeframe: '1H' }
+                { confidence: 0.80, note: 'Bullish DIV', timeframe: '1H' }
             ));
 
-            // Dynamic ATR-based Stop Loss (Institutional standard)
-            const atr = marketState.atr || (lowestPrice.price * 0.005);
             const stopLoss = lowestPrice.price - (atr * 1.5);
-            const risk = lowestPrice.price - stopLoss;
+            annotations.push(new TargetProjection(stopLoss, 'SL', { label: `SL: ${stopLoss.toFixed(2)}` }));
 
-            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
-            annotations.push(new TargetProjection(lowestPrice.price + (risk * 3), 'TARGET_1', { riskReward: 3.0 }));
+            const targets = this.generateStandardTargets(lowestPrice.price, stopLoss, marketState.liquidityPools, 'LONG', marketState);
+            targets.forEach((t, idx) => {
+                annotations.push(new TargetProjection(t.price, `TP${idx + 1}`, {
+                    riskReward: t.riskReward,
+                    label: t.label
+                }));
+            });
         }
 
         // BEARISH DIVERGENCE (Price higher high, RSI lower high)
@@ -87,19 +90,22 @@ export class RSIDivergence extends StrategyBase {
             ));
 
             annotations.push(new EntryZone(
-                highestPrice.price * 1.001,
-                highestPrice.price * 0.999,
+                highestPrice.price + (atr * 0.1),
+                highestPrice.price - (atr * 0.1),
                 'SHORT',
-                { confidence: 0.80, note: 'RSI Bearish Divergence', timeframe: '1H' }
+                { confidence: 0.80, note: 'Bearish DIV', timeframe: '1H' }
             ));
 
-            // Dynamic ATR-based Stop Loss (Institutional standard)
-            const atr = marketState.atr || (highestPrice.price * 0.005);
             const stopLoss = highestPrice.price + (atr * 1.5);
-            const risk = stopLoss - highestPrice.price;
+            annotations.push(new TargetProjection(stopLoss, 'SL', { label: `SL: ${stopLoss.toFixed(2)}` }));
 
-            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
-            annotations.push(new TargetProjection(highestPrice.price - (risk * 3), 'TARGET_1', { riskReward: 3.0 }));
+            const targets = this.generateStandardTargets(highestPrice.price, stopLoss, marketState.liquidityPools, 'SHORT', marketState);
+            targets.forEach((t, idx) => {
+                annotations.push(new TargetProjection(t.price, `TP${idx + 1}`, {
+                    riskReward: t.riskReward,
+                    label: t.label
+                }));
+            });
         }
 
         return annotations;

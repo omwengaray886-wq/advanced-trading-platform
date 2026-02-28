@@ -39,19 +39,26 @@ export class EMAAlignment extends StrategyBase {
             const nearEMA50 = Math.abs(currentPrice - current50) / current50 < 0.005;
 
             if (nearEMA50) {
+                const atr = marketState.atr || this.calculateATR(candles);
+                const buffer = atr * 0.2;
+
                 annotations.push(new EntryZone(
-                    current50 * 1.002,
-                    current50 * 0.998,
+                    current50 + buffer,
+                    current50 - buffer,
                     'LONG',
-                    { confidence: 0.85, note: '50 EMA Pullback', timeframe: '1H' }
+                    { confidence: 0.85, note: 'EMA Pullback', timeframe: '1H' }
                 ));
 
-                const stopLoss = current200 * 0.995;
-                const risk = currentPrice - stopLoss;
+                const stopLoss = current200 - (atr * 0.5);
+                annotations.push(new TargetProjection(stopLoss, 'SL', { label: `SL: ${stopLoss.toFixed(2)}` }));
 
-                annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
-                annotations.push(new TargetProjection(currentPrice + (risk * 2), 'TARGET_1', { riskReward: 2.0 }));
-                annotations.push(new TargetProjection(currentPrice + (risk * 4), 'TARGET_2', { riskReward: 4.0 }));
+                const targets = this.generateStandardTargets(currentPrice, stopLoss, marketState.liquidityPools, 'LONG', marketState);
+                targets.forEach((t, idx) => {
+                    annotations.push(new TargetProjection(t.price, `TP${idx + 1}`, {
+                        riskReward: t.riskReward,
+                        label: t.label
+                    }));
+                });
             }
         }
 
@@ -60,19 +67,26 @@ export class EMAAlignment extends StrategyBase {
             const nearEMA50 = Math.abs(currentPrice - current50) / current50 < 0.005;
 
             if (nearEMA50) {
+                const atr = marketState.atr || this.calculateATR(candles);
+                const buffer = atr * 0.2;
+
                 annotations.push(new EntryZone(
-                    current50 * 0.998,
-                    current50 * 1.002,
+                    current50 - buffer,
+                    current50 + buffer,
                     'SHORT',
-                    { confidence: 0.85, note: '50 EMA Pullback', timeframe: '1H' }
+                    { confidence: 0.85, note: 'EMA Pullback', timeframe: '1H' }
                 ));
 
-                const stopLoss = current200 * 1.005;
-                const risk = stopLoss - currentPrice;
+                const stopLoss = current200 + (atr * 0.5);
+                annotations.push(new TargetProjection(stopLoss, 'SL', { label: `SL: ${stopLoss.toFixed(2)}` }));
 
-                annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
-                annotations.push(new TargetProjection(currentPrice - (risk * 2), 'TARGET_1', { riskReward: 2.0 }));
-                annotations.push(new TargetProjection(currentPrice - (risk * 4), 'TARGET_2', { riskReward: 4.0 }));
+                const targets = this.generateStandardTargets(currentPrice, stopLoss, marketState.liquidityPools, 'SHORT', marketState);
+                targets.forEach((t, idx) => {
+                    annotations.push(new TargetProjection(t.price, `TP${idx + 1}`, {
+                        riskReward: t.riskReward,
+                        label: t.label
+                    }));
+                });
             }
         }
 

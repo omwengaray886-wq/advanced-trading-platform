@@ -103,26 +103,26 @@ export class WyckoffAccumulation extends StrategyBase {
                 const isAboveRange = currentPrice > range.resistance;
 
                 if (isAboveRange || currentPrice > (range.support + (range.resistance - range.support) * 0.7)) {
-                    // Entry Zone near resistance breakout or spring retest
-                    const entryTop = range.resistance * 1.01;
-                    const entryBottom = range.resistance * 0.99;
+                    const atr = marketState.atr || this.calculateATR(candles);
+                    const buffer = atr * 0.1;
 
                     annotations.push(new EntryZone(
-                        entryTop,
-                        entryBottom,
+                        range.resistance + buffer,
+                        range.resistance - buffer,
                         'LONG',
-                        { note: isAboveRange ? 'SOS Breakout Entry' : 'Spring Retest Entry' }
+                        { note: isAboveRange ? 'SOS Breakout' : 'Spring Retest' }
                     ));
 
-                    // Targets & Stop Loss
-                    const rangeSize = range.resistance - range.support;
-                    const stopLoss = spring.lowPoint * 0.995;
-                    const t1 = range.resistance + (rangeSize * 1.5);
-                    const t2 = range.resistance + (rangeSize * 3.0);
+                    const stopLoss = spring.lowPoint - (atr * 0.5);
+                    annotations.push(new TargetProjection(stopLoss, 'SL', { label: `SL: ${stopLoss.toFixed(2)}` }));
 
-                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: 'Structural Stop' }));
-                    annotations.push(new TargetProjection(t1, 'TARGET_1', { label: 'TP1: Range Extension' }));
-                    annotations.push(new TargetProjection(t2, 'TARGET_2', { label: 'TP2: Institutional Objective' }));
+                    const targets = this.generateStandardTargets(range.resistance, stopLoss, marketState.liquidityPools, 'LONG', marketState);
+                    targets.forEach((t, idx) => {
+                        annotations.push(new TargetProjection(t.price, `TP${idx + 1}`, {
+                            riskReward: t.riskReward,
+                            label: t.label
+                        }));
+                    });
                 }
             }
         }

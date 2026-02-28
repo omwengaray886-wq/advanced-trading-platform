@@ -56,28 +56,27 @@ export class RangeTrading extends StrategyBase {
             }
 
             if (direction) {
+                const atr = marketState.atr || this.calculateATR(candles);
+                const buffer = atr * 0.15;
+
                 const entryZone = new EntryZone(
-                    entryPrice * 1.001,
-                    entryPrice * 0.999,
+                    entryPrice + (direction === 'LONG' ? -buffer : buffer),
+                    entryPrice + (direction === 'LONG' ? buffer : -buffer),
                     direction,
-                    { confidence: 0.75, timeframe: '1H' }
+                    { confidence: 0.75, timeframe: '1H', note: 'Range Edge' }
                 );
                 annotations.push(entryZone);
 
-                // Targets towards range middle and opposite end
-                const risk = Math.abs(entryPrice - stopPrice);
+                const stopLoss = direction === 'LONG' ? range.low - (atr * 0.5) : range.high + (atr * 0.5);
+                annotations.push(new TargetProjection(stopLoss, 'SL', { label: `SL: ${stopLoss.toFixed(2)}` }));
 
-                annotations.push(new TargetProjection(stopPrice, 'STOP_LOSS'));
-                annotations.push(new TargetProjection(
-                    rangeMiddle,
-                    'TARGET_1',
-                    { riskReward: Math.abs(rangeMiddle - entryPrice) / risk, probability: 0.70 }
-                ));
-                annotations.push(new TargetProjection(
-                    direction === 'LONG' ? range.high * 0.998 : range.low * 1.002,
-                    'TARGET_2',
-                    { riskReward: range.height * 0.9 / risk, probability: 0.45 }
-                ));
+                const targets = this.generateStandardTargets(entryPrice, stopLoss, marketState.liquidityPools, direction, marketState);
+                targets.forEach((t, idx) => {
+                    annotations.push(new TargetProjection(t.price, `TP${idx + 1}`, {
+                        riskReward: t.riskReward,
+                        label: t.label
+                    }));
+                });
             }
         }
 

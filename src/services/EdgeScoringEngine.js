@@ -60,12 +60,15 @@ export class EdgeScoringEngine {
         let trendWeight = 1.0;
         let oscillatorWeight = 1.0;
 
+        // Synchronize minRR with StrategyBase regime multipliers
         if (regime === 'TRENDING') {
             trendWeight = 1.5; // Boost trend alignment points
             oscillatorWeight = 0.5; // Reduce oscillator importance (they fake out in trends)
+            minRR = 3.5; // Institutional benchmark for trends
         } else if (regime === 'RANGING') {
             trendWeight = 0.5; // Reduce trend reliance
             oscillatorWeight = 1.5; // Boost mean reversion signals
+            minRR = 1.5; // Practical benchmark for ranges
         }
 
         // === GOLDEN CONFLUENCE CHECK ===

@@ -102,26 +102,26 @@ export class WyckoffDistribution extends StrategyBase {
                 const isBelowRange = currentPrice < range.support;
 
                 if (isBelowRange || currentPrice < (range.support + (range.resistance - range.support) * 0.3)) {
-                    // Entry Zone near support breakdown or UTAD retest
-                    const entryTop = range.support * 1.01;
-                    const entryBottom = range.support * 0.99;
+                    const atr = marketState.atr || this.calculateATR(candles);
+                    const buffer = atr * 0.1;
 
                     annotations.push(new EntryZone(
-                        entryTop,
-                        entryBottom,
+                        range.support - buffer,
+                        range.support + buffer,
                         'SHORT',
-                        { note: isBelowRange ? 'SOW Breakdown Entry' : 'UTAD Retest Entry' }
+                        { note: isBelowRange ? 'SOW Breakdown' : 'UTAD Retest' }
                     ));
 
-                    // Targets & Stop Loss
-                    const rangeSize = range.resistance - range.support;
-                    const stopLoss = utad.highPoint * 1.005;
-                    const t1 = range.support - (rangeSize * 1.5);
-                    const t2 = range.support - (rangeSize * 3.0);
+                    const stopLoss = utad.highPoint + (atr * 0.5);
+                    annotations.push(new TargetProjection(stopLoss, 'SL', { label: `SL: ${stopLoss.toFixed(2)}` }));
 
-                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: 'Structural Stop' }));
-                    annotations.push(new TargetProjection(t1, 'TARGET_1', { label: 'TP1: Range Extension' }));
-                    annotations.push(new TargetProjection(t2, 'TARGET_2', { label: 'TP2: Institutional Objective' }));
+                    const targets = this.generateStandardTargets(range.support, stopLoss, marketState.liquidityPools, 'SHORT', marketState);
+                    targets.forEach((t, idx) => {
+                        annotations.push(new TargetProjection(t.price, `TP${idx + 1}`, {
+                            riskReward: t.riskReward,
+                            label: t.label
+                        }));
+                    });
                 }
             }
         }
