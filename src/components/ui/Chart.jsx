@@ -436,15 +436,15 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                             <stop offset="100%" stopColor="#EF4444" stopOpacity="0.2" />
                         </linearGradient>
 
-                        {/* Modernized Arrowhead Markers */}
-                        <marker id="arrowhead-long" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-                            <path d="M0,0 L12,6 L0,12 L3,6 Z" fill="#10B981" filter="url(#neon-glow)" />
+                        {/* Institutional Tri-Faceted Arrowhead Markers */}
+                        <marker id="arrowhead-long" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto">
+                            <path d="M 0 2 L 14 7 L 0 12 L 4 7 Z" fill="#10B981" filter="url(#neon-glow)" />
                         </marker>
-                        <marker id="arrowhead-short" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-                            <path d="M0,0 L12,6 L0,12 L3,6 Z" fill="#EF4444" filter="url(#neon-glow)" />
+                        <marker id="arrowhead-short" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto">
+                            <path d="M 0 2 L 14 7 L 0 12 L 4 7 Z" fill="#EF4444" filter="url(#neon-glow)" />
                         </marker>
-                        <marker id="arrowhead-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                            <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+                        <marker id="arrowhead-gray" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                            <path d="M 0 2 L 10 5 L 0 8 L 2 5 Z" fill="#94a3b8" />
                         </marker>
                     </defs>
                     {overlayItems.lines.map((line, i) => (
@@ -631,16 +631,18 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                         </div>
 
                         {/* Arrow */}
-                        <div style={{
-                            width: 0,
-                            height: 0,
-                            borderLeft: '8px solid transparent',
-                            borderRight: '8px solid transparent',
-                            [label.direction === 'down' ? 'borderTop' : 'borderBottom']: `8px solid ${label.color}`,
+                        {/* Institutional SVG Pointer */}
+                        <svg width="16" height="8" style={{
                             marginTop: label.direction === 'down' ? '-1px' : '0',
                             marginBottom: label.direction === 'up' ? '-1px' : '0',
-                            order: label.direction === 'up' ? -1 : 1
-                        }} />
+                            order: label.direction === 'up' ? -1 : 1,
+                            filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.3))'
+                        }}>
+                            <polygon
+                                points={label.direction === 'down' ? "0,0 8,8 16,0" : "0,8 8,0 16,8"}
+                                fill={label.color}
+                            />
+                        </svg>
                     </div>
                 ))}
 
@@ -803,34 +805,60 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                     </div>
                 ))}
 
-                {/* Structure Markers */}
-                {overlayItems.markers.map((marker, i) => (
-                    <div
-                        key={marker.id || i}
-                        style={{
-                            position: 'absolute',
-                            left: marker.x,
-                            top: marker.y,
-                            transform: marker.isBullish ? 'translate(-50%, 4px)' : 'translate(-50%, calc(-100% - 4px))',
-                            zIndex: 15,
-                            pointerEvents: 'none'
-                        }}
-                    >
-                        <div style={{
-                            background: marker.color || 'rgba(30, 41, 59, 0.95)',
-                            color: 'white',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            fontSize: '10px',
-                            fontWeight: '800',
-                            border: `1px solid ${marker.color || 'white'}`,
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.5)',
-                            whiteSpace: 'nowrap'
-                        }}>
-                            {marker.label}
+                {/* Structure Markers with Directional Indicators */}
+                {overlayItems.markers.map((marker, i) => {
+                    const isBullish = marker.isBullish || ['HH', 'HL', 'BOS', 'DB'].includes(marker.label);
+                    const isBearish = marker.isBearish || ['LH', 'LL', 'SOW', 'DT'].includes(marker.label);
+                    const isHighSig = marker.significance === 'high';
+
+                    return (
+                        <div
+                            key={marker.id || i}
+                            style={{
+                                position: 'absolute',
+                                left: marker.x,
+                                top: marker.y,
+                                transform: isBullish ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
+                                display: 'flex',
+                                flexDirection: isBullish ? 'column' : 'column-reverse',
+                                alignItems: 'center',
+                                zIndex: 15,
+                                pointerEvents: 'none'
+                            }}
+                        >
+                            {/* Directional Arrow Head */}
+                            <svg width="10" height="6" viewBox="0 0 10 6">
+                                <path
+                                    d={isBullish ? "M 0 6 L 5 0 L 10 6" : "M 0 0 L 5 6 L 10 0"}
+                                    fill="none"
+                                    stroke={marker.color || '#DDD'}
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                />
+                            </svg>
+
+                            <div style={{
+                                background: marker.color || 'rgba(30, 41, 59, 0.95)',
+                                color: 'white',
+                                padding: '2px 8px',
+                                borderRadius: '3px',
+                                fontSize: '10px',
+                                fontWeight: '900',
+                                letterSpacing: '0.05em',
+                                border: `1px solid rgba(255,255,255,0.2)`,
+                                boxShadow: isHighSig ? `0 0 12px ${marker.color}` : '0 2px 4px rgba(0,0,0,0.5)',
+                                whiteSpace: 'nowrap',
+                                textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}>
+                                {marker.label}
+                                {isHighSig && <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: 'white', animation: 'animate-pulse 1s infinite' }} />}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             {/* Institutional Styles Overlay */}

@@ -50,9 +50,9 @@ async function testStrategy(StrategyClass, name) {
         console.log(`[INFO] No Entry Zone generated for this mock state.`);
     }
 
-    const sl = targets.find(t => t.projectionType === 'STOP_LOSS');
-    const tp1 = targets.find(t => t.projectionType === 'TARGET_1' || t.projectionType === 'TAKE_PROFIT_1');
-    const tp2 = targets.find(t => t.projectionType === 'TARGET_2' || t.projectionType === 'TAKE_PROFIT_2');
+    const sl = targets.find(t => t.projectionType === 'STOP_LOSS' || t.projectionType === 'SL');
+    const tp1 = targets.find(t => t.projectionType === 'TARGET_1' || t.projectionType === 'TAKE_PROFIT_1' || t.projectionType === 'TP1');
+    const tp2 = targets.find(t => t.projectionType === 'TARGET_2' || t.projectionType === 'TAKE_PROFIT_2' || t.projectionType === 'TP2');
 
     if (sl) {
         console.log(`[PASS] Stop Loss found: ${sl.label || sl.price}`);
