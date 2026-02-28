@@ -43,38 +43,30 @@ export class FractalStructure extends StrategyBase {
 
             if (alignment) {
                 const entryType = direction === 'BULLISH' ? 'LONG' : 'SHORT';
+                const atr = marketState.atr || this.calculateATR(candles);
+                const buffer = atr * 0.1;
 
-                annotations.push(new EntryZone(
-                    latestInternal.price * (entryType === 'LONG' ? 1.001 : 0.999),
-                    latestInternal.price * (entryType === 'LONG' ? 0.999 : 1.001),
+                const entryZone = new EntryZone(
+                    latestInternal.price + (entryType === 'LONG' ? buffer : -buffer),
+                    latestInternal.price - (entryType === 'LONG' ? buffer : -buffer),
                     entryType,
-                    { confidence: 0.90, note: 'Fractal Alignment', timeframe: '1H' }
-                ));
+                    { confidence: 0.90, note: 'Fractal Entry', timeframe: '1H' }
+                );
+                annotations.push(entryZone);
 
-                const stopLoss = entryType === 'LONG' ?
-                    latestInternal.price * 0.997 :
-                    latestInternal.price * 1.003;
+                const stopLoss = this.getStructuralInvalidation(candles, entryType, marketState);
 
-                const risk = Math.abs(latestInternal.price - stopLoss);
+                annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
 
-                annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
-
-                // Target the latest major structure high/low
-                annotations.push(new TargetProjection(
-                    latestMajor.price,
-                    'TARGET_1',
-                    { riskReward: Math.abs(latestMajor.price - latestInternal.price) / risk, probability: 0.80 }
-                ));
-
-                const target2 = entryType === 'LONG' ?
-                    latestMajor.price * 1.015 :
-                    latestMajor.price * 0.985;
-
-                annotations.push(new TargetProjection(
-                    target2,
-                    'TARGET_2',
-                    { riskReward: Math.abs(target2 - latestInternal.price) / risk, probability: 0.50 }
-                ));
+                // Standardized Targets using regime-aware logic
+                const targets = this.generateStandardTargets(entryZone.getOptimalEntry(), stopLoss, marketState.liquidityPools, entryType, marketState);
+                targets.forEach((t, i) => {
+                    annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                        label: t.label,
+                        riskReward: t.riskReward,
+                        probability: i === 0 ? 0.75 : 0.50
+                    }));
+                });
             }
         }
 

@@ -18,15 +18,7 @@ export class StructureMarker extends ChartAnnotation {
 
     // Get display label
     getLabel() {
-        const labels = {
-            'HH': 'Higher High',
-            'HL': 'Higher Low',
-            'LH': 'Lower High',
-            'LL': 'Lower Low',
-            'BOS': 'Break of Structure',
-            'CHOCH': 'Change of Character'
-        };
-        return labels[this.markerType] || this.markerType;
+        return this.markerType;
     }
 
     // Get color based on type

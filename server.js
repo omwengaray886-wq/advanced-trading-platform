@@ -101,7 +101,7 @@ class SimpleQueue {
 
 const newsQueue = new SimpleQueue(1, 1000); // 1 request / second
 const coinGeckoQueue = new SimpleQueue(1, 1500); // 1.5s delay to be safe
-const binanceQueue = new SimpleQueue(5, 500);  // 5 concurrent, but 500ms spaced
+const binanceQueue = new SimpleQueue(5, 1200);  // Increased to 1200ms for robustness against 429s
 // ------------------------------------------------
 
 
@@ -638,10 +638,12 @@ app.get('/api/news/calendar', async (req, res) => {
 
         // Phase 55: Robustness - Provide structured error for frontend fallback
         if (status === 403 || status === 404) {
-            return res.status(status).json({
-                error: 'Calendar data restricted',
-                message: 'Your API key may not have access to this endpoint or the tier is restricted.',
-                status
+            console.warn(`[PROXY] FMP Calendar Access Restricted (${status}). Returning empty dataset for UI stability.`);
+            return res.status(200).json({
+                error: 'Restricted Access',
+                message: 'Economic Calendar restricted by API tier. Using technical fallbacks.',
+                isRestricted: true,
+                results: []
             });
         }
 
@@ -746,18 +748,33 @@ app.post('/api/ai/generate', async (req, res) => {
                     await new Promise(r => setTimeout(r, 1000));
                     return fetchWithRetry(retries - 1);
                 }
+                if (err.message?.includes('429') || err.status === 429) {
+                    console.warn('[AI PROXY] Gemini API quota limit reached (429).');
+                    return null;
+                }
                 throw err;
             }
         };
 
         const text = await fetchWithRetry();
 
-        if (!text) {
-            throw new Error('Empty response from Gemini');
+        if (text === null) {
+            return res.json({
+                text: "AI Analysis temporarily unavailable: Daily quota limit reached. Please check back later or upgrade your API key.",
+                status: 'QUOTA_EXCEEDED'
+            });
+        }
+
+        if (!text || text.trim().length === 0) {
+            console.warn('[AI PROXY] Gemini returned empty text. Likely safety block or model limitation.');
+            return res.json({
+                text: "Institutional Analysis Summary Restricted (Safety/Buffer). Reviewing technical structure only...",
+                status: 'SAFETY_RESTRICTED'
+            });
         }
 
         console.log(`[AI SUCCESS] Generated ${text.length} chars of analysis.`);
-        res.json({ text });
+        res.json({ text, status: 'SUCCESS' });
     } catch (error) {
         console.error(`[AI PROXY ERROR] CRITICAL FAILURE`);
         console.error(`[AI PROXY ERROR] Prompt Length: ${req.body.prompt?.length || 0}`);

@@ -58,7 +58,7 @@ export class StructureBreakRetest extends StrategyBase {
             (rangeCandles.length > 0 ? Math.min(...rangeCandles.map(c => c.low)) : currentPrice);
 
         // Entry zone at retest
-        const buffer = this.getVolatilityBuffer(candles, marketState.assetClass || 'FOREX', 0.5);
+        const buffer = this.getVolatilityBuffer(candles, marketState.assetClass || 'FOREX', 0.5, marketState);
 
         const entryTop = direction === 'LONG' ? brokenLevel + buffer : brokenLevel + (buffer * 2);
         const entryBottom = direction === 'LONG' ? brokenLevel - (buffer * 2) : brokenLevel - buffer;
@@ -71,7 +71,7 @@ export class StructureBreakRetest extends StrategyBase {
                 id: `entry-${marketState.timeframe || '1H'}-${direction}`,
                 confidence: 0.82,
                 timeframe: marketState.timeframe || '1H',
-                note: 'Structural Retest Zone',
+                note: 'Retest Zone',
                 startTime: bos.time,
                 endTime: candles[candles.length - 1].time + (3600 * 48)
             }
@@ -82,11 +82,11 @@ export class StructureBreakRetest extends StrategyBase {
         const stopLoss = this.getStructuralInvalidation(candles, direction, marketState);
         annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', {
             id: `sl-${marketState.timeframe || '1H'}-${direction}`,
-            label: `Invalidation: ${stopLoss.toFixed(5)}`
+            label: `SL: ${stopLoss.toFixed(5)}`
         }));
 
-        // Standardized Targets using liquidity awareness
-        const targets = this.generateStandardTargets(entryZone.getOptimalEntry(), stopLoss, marketState.liquidityPools, direction);
+        // Standardized Targets using liquidity awareness and regime-scaled R:R
+        const targets = this.generateStandardTargets(entryZone.getOptimalEntry(), stopLoss, marketState.liquidityPools, direction, marketState);
         targets.forEach((t, i) => {
             annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
                 id: `tp${i + 1}-${marketState.timeframe || '1H'}-${direction}`,

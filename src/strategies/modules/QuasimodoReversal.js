@@ -53,22 +53,29 @@ export class QuasimodoReversal extends StrategyBase {
                         { significance: 'high', direction: 'BEARISH' }
                     ));
 
+                    const atr = marketState.atr || this.calculateATR(candles);
+                    const buffer = atr * 0.1;
+
                     annotations.push(new EntryZone(
-                        h1.price * 1.001,
-                        h1.price * 0.999,
+                        h1.price + buffer,
+                        h1.price - buffer,
                         'SHORT',
-                        { confidence: 0.92, note: 'Quasimodo (Over-Under) Entry', timeframe: '1H' }
+                        { confidence: 0.92, note: 'QM', timeframe: '1H' }
                     ));
 
-                    const stopLoss = hh.price * 1.002;
-                    const risk = stopLoss - h1.price;
-                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
+                    const stopLoss = hh.price + (atr * 0.5);
 
-                    annotations.push(new TargetProjection(
-                        h1.price - (risk * 3.5),
-                        'TARGET_1',
-                        { riskReward: 3.5, probability: 0.70 }
-                    ));
+                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
+
+                    // Standardized Targets using regime-aware logic
+                    const targets = this.generateStandardTargets(h1.price, stopLoss, marketState.liquidityPools, 'SHORT', marketState);
+                    targets.forEach((t, i) => {
+                        annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                            label: t.label,
+                            riskReward: t.riskReward,
+                            probability: i === 0 ? 0.70 : 0.45
+                        }));
+                    });
                     break;
                 }
             }
@@ -90,22 +97,29 @@ export class QuasimodoReversal extends StrategyBase {
                         { significance: 'high', direction: 'BULLISH' }
                     ));
 
+                    const atr = marketState.atr || this.calculateATR(candles);
+                    const buffer = atr * 0.1;
+
                     annotations.push(new EntryZone(
-                        l1.price * 0.999,
-                        l1.price * 1.001,
+                        l1.price - buffer,
+                        l1.price + buffer,
                         'LONG',
-                        { confidence: 0.92, note: 'Quasimodo Entry (Bullish)', timeframe: '1H' }
+                        { confidence: 0.92, note: 'QM', timeframe: '1H' }
                     ));
 
-                    const stopLoss = ll.price * 0.998;
-                    const risk = l1.price - stopLoss;
-                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
+                    const stopLoss = ll.price - (atr * 0.5);
 
-                    annotations.push(new TargetProjection(
-                        l1.price + (risk * 3.5),
-                        'TARGET_1',
-                        { riskReward: 3.5, probability: 0.70 }
-                    ));
+                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
+
+                    // Standardized Targets using regime-aware logic
+                    const targets = this.generateStandardTargets(l1.price, stopLoss, marketState.liquidityPools, 'LONG', marketState);
+                    targets.forEach((t, i) => {
+                        annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                            label: t.label,
+                            riskReward: t.riskReward,
+                            probability: i === 0 ? 0.70 : 0.45
+                        }));
+                    });
                     break;
                 }
             }

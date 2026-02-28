@@ -56,34 +56,32 @@ export class AsianRangeBreakout extends StrategyBase {
         if (isBreakingHigh || isBreakingLow) {
             const direction = isBreakingHigh ? 'LONG' : 'SHORT';
             const entryPrice = isBreakingHigh ? asianHigh : asianLow;
+            const atr = marketState.atr || this.calculateATR(candles);
+            const buffer = atr * 0.1;
 
-            // Entry zone at the breakout level
+            // Entry zone at the breakout level with ATR buffer
             const entryZone = new EntryZone(
-                isBreakingHigh ? asianHigh * 1.0005 : asianLow * 0.9995,
-                isBreakingHigh ? asianHigh * 0.9995 : asianLow * 1.0005,
+                entryPrice + (direction === 'LONG' ? buffer : -buffer),
+                entryPrice - (direction === 'LONG' ? buffer : -buffer),
                 direction,
-                { confidence: 0.85, note: 'Asian Breakout', timeframe: '1H' }
+                { confidence: 0.85, note: 'Asian Brk', timeframe: '1H' }
             );
             annotations.push(entryZone);
 
             // STOP LOSS - mid-range or opposite end
             const stopLoss = isBreakingHigh ? asianHigh - (range * 0.5) : asianLow + (range * 0.5);
-            const risk = Math.abs(entryPrice - stopLoss);
 
-            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
+            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
 
-            // Targets: multiples of range or next major levels
-            annotations.push(new TargetProjection(
-                isBreakingHigh ? asianHigh + range : asianLow - range,
-                'TARGET_1',
-                { riskReward: 2.0, probability: 0.65 }
-            ));
-
-            annotations.push(new TargetProjection(
-                isBreakingHigh ? asianHigh + (range * 2) : asianLow - (range * 2),
-                'TARGET_2',
-                { riskReward: 4.0, probability: 0.40 }
-            ));
+            // Standardized Targets using regime-aware logic
+            const targets = this.generateStandardTargets(entryZone.getOptimalEntry(), stopLoss, marketState.liquidityPools, direction, marketState);
+            targets.forEach((t, i) => {
+                annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                    label: t.label,
+                    riskReward: t.riskReward,
+                    probability: i === 0 ? 0.65 : 0.40
+                }));
+            });
         }
 
         return annotations;

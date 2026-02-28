@@ -57,28 +57,24 @@ export class MitigationBlock extends StrategyBase {
                 targetBlock.high,
                 targetBlock.low,
                 direction,
-                { confidence: 0.78, note: 'Mitigation Entry', timeframe: marketState.timeframe }
+                { confidence: 0.78, note: 'Mitigation', timeframe: marketState.timeframe }
             );
             annotations.push(entryZone);
 
             // STOP LOSS - using professional invalidation logic
             const stopLoss = this.getStructuralInvalidation(candles, direction, marketState);
-            const risk = Math.abs(entryZone.getOptimalEntry() - stopLoss);
 
-            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: 'Thesis Invalidation' }));
+            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
 
-            // Targets
-            annotations.push(new TargetProjection(
-                direction === 'LONG' ? currentPrice + (risk * 2.5) : currentPrice - (risk * 2.5),
-                'TARGET_1',
-                { riskReward: 2.5, probability: 0.70 }
-            ));
-
-            annotations.push(new TargetProjection(
-                direction === 'LONG' ? currentPrice + (risk * 4.0) : currentPrice - (risk * 4.0),
-                'TARGET_2',
-                { riskReward: 4.0, probability: 0.50 }
-            ));
+            // Standardized Targets using regime-aware logic
+            const targets = this.generateStandardTargets(entryZone.getOptimalEntry(), stopLoss, marketState.liquidityPools, direction, marketState);
+            targets.forEach((t, i) => {
+                annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                    label: t.label,
+                    riskReward: t.riskReward,
+                    probability: i === 0 ? 0.70 : 0.50
+                }));
+            });
         }
 
         return annotations;

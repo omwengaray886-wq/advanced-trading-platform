@@ -218,7 +218,17 @@ const SetupDetailView = ({ setup, onClose }) => {
                                                     gap: '6px'
                                                 }}>
                                                     <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-accent-primary)' }}></div>
-                                                    {anno.type.replace(/_/g, ' ')}
+                                                    {(() => {
+                                                        const abbreviations = {
+                                                            'ORDER_BLOCK': 'OB',
+                                                            'LIQUIDITY_ZONE': 'LQ',
+                                                            'CONFLUENCE_ZONE': 'CNF',
+                                                            'FAIR_VALUE_GAP': 'FVG',
+                                                            'LIQUIDITY_SWEEP_ZONE': 'SWEP',
+                                                            'STRUCTURE_BREAK': 'BOS'
+                                                        };
+                                                        return abbreviations[anno.type] || anno.type.replace(/_/g, ' ');
+                                                    })()}
                                                 </div>
                                             )
                                         ))}

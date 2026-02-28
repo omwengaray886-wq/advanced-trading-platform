@@ -1,8 +1,5 @@
-/**
- * Scenario Engine
- * Predicts likely price movements based on MTF alignment, formations, and news.
- */
 import { LiquidityMapService } from './LiquidityMapService.js';
+import { bayesianEngine } from './BayesianInferenceEngine.js';
 
 export class ScenarioEngine {
     /**
@@ -135,13 +132,23 @@ export class ScenarioEngine {
         upProb = Math.min(upProb, 0.75);
         downProb = Math.min(downProb, 0.75);
 
-        // Reality Calibration
-        if (performanceStats && primarySetup) {
-            const stats = performanceStats[primarySetup.name];
-            if (stats && stats.winRate < 0.45) {
-                const isBullish = this._normalizeDirection(primarySetup.direction) === 'BULLISH';
-                if (isBullish) upProb *= (stats.winRate / 0.45);
-                else downProb *= (stats.winRate / 0.45);
+        // Reality Calibration (Bayesian Upgrade)
+        if (primarySetup) {
+            const bayesian = marketState.bayesianStats || {};
+            const credibility = bayesian.probability || 0.55;
+            const isBullish = this._normalizeDirection(primarySetup.direction) === 'BULLISH';
+
+            if (isBullish) upProb *= (credibility / 0.55);
+            else downProb *= (credibility / 0.55);
+
+            // Institutional Momentum Calibration (Phase 50)
+            const cycle = marketState.marketCycle || marketState.amdCycle;
+            if (cycle && cycle.phase === 'MANIPULATION') {
+                // Skew towards manipulation fakeout
+                rangeProb += 0.15;
+            } else if (cycle && cycle.phase === 'EXPANSION') {
+                // Boost directional probability for expansion
+                if (isBullish) upProb += 0.10; else downProb += 0.10;
             }
         }
 
@@ -166,15 +173,19 @@ export class ScenarioEngine {
         // Layer 6: Prediction Expiry
         const expiresAt = Date.now() + (marketState.timeframe === '1H' ? 3600000 : 14400000);
 
+        const cyclePhase = marketState.amdCycle?.phase || 'UNKNOWN';
+        const expansionTiming = cyclePhase === 'EXPANSION' ? 'IMMINENT' : (cyclePhase === 'MANIPULATION' ? 'DELAYED' : 'STANDARD');
+
         const primary = {
             ...scenarios[0],
             type: scenarios[0].direction.toUpperCase(),
             bias: scenarios[0].direction === 'up' ? 'BULLISH' : scenarios[0].direction === 'down' ? 'BEARISH' : 'NEUTRAL',
             label: isWaiting ? `WAITING: ${waitingCondition}` : `Primary: ${scenarios[0].label}`,
-            description: isWaiting ? 'Market is in a waiting state.' : `Highest probability path (${((scenarios[0].probability || 0) * 100).toFixed(0)}%) based on current ${marketState.phase}.`,
+            description: isWaiting ? 'Market is in a waiting state.' : `${scenarios[0].label} (${((scenarios[0].probability || 0) * 100).toFixed(0)}%) with ${expansionTiming} expansion timing.`,
             style: isWaiting ? 'DOTTED' : 'SOLID',
             isWaiting: isWaiting,
-            expiresAt: expiresAt
+            expiresAt: expiresAt,
+            expansionTiming
         };
 
         const secondary = {
@@ -344,9 +355,21 @@ export class ScenarioEngine {
         }
 
         const velocity = marketState.velocity || 1.0;
-        const targetOffset = Math.max(8, Math.min(25, Math.round(15 / velocity)));
+        let targetOffset = Math.max(8, Math.min(25, Math.round(15 / velocity)));
 
-        points.push({ price: target, type: 'TARGET', label: 'Target', barsOffset: targetOffset });
+        // Volume-Weighted Acceleration (Phase 50 Upgrade)
+        if (volProfile) {
+            const distToPOC = Math.abs(currentPrice - volProfile.poc) / currentPrice;
+            if (distToPOC < 0.01) {
+                // High volume area = Slower price action
+                targetOffset *= 1.3;
+            } else {
+                // Low volume area = Faster acceleration
+                targetOffset *= 0.8;
+            }
+        }
+
+        points.push({ price: target, type: 'TARGET', label: 'Target', barsOffset: Math.round(targetOffset) });
 
         return points;
     }

@@ -106,9 +106,10 @@ export class StrategyBase {
      * @param {Array} candles - Candlestick data
      * @param {string} assetClass - Asset class (for multiplier)
      * @param {number} overrideMultiplier - Optional multiplier override
+     * @param {Object} marketState - Optional market state to extract ATR
      */
-    getVolatilityBuffer(candles, assetClass = 'FOREX', overrideMultiplier = null) {
-        const atr = this.calculateATR(candles);
+    getVolatilityBuffer(candles, assetClass = 'FOREX', overrideMultiplier = null, marketState = null) {
+        const atr = marketState?.atr || this.calculateATR(candles);
         const assetParams = AssetClassAdapter.getAssetParameters(assetClass);
         const multiplier = overrideMultiplier !== null ? overrideMultiplier : (assetParams.stopLossMultiplier || 2.0);
         return atr * multiplier;
@@ -126,7 +127,8 @@ export class StrategyBase {
         );
 
         const assetClass = marketState.assetClass || 'FOREX';
-        const buffer = this.getVolatilityBuffer(candles, assetClass);
+        const atr = marketState?.atr || this.calculateATR(candles);
+        const buffer = this.getVolatilityBuffer(candles, assetClass, null, marketState);
 
         if (relevantSwings.length > 0) {
             // Get the most recent one
@@ -150,34 +152,49 @@ export class StrategyBase {
      * @param {number} stopLoss - Stop loss price
      * @param {Array} liquidityPools - Market liquidity pools
      * @param {string} direction - LONG or SHORT
+     * @param {Object} marketState - Current market state for regime awareness
      * @returns {Array} - Array of targets
      */
-    generateStandardTargets(entry, stopLoss, liquidityPools, direction) {
+    generateStandardTargets(entry, stopLoss, liquidityPools, direction, marketState = null) {
         const risk = Math.abs(entry - stopLoss);
+        const regime = marketState?.regime || 'TRENDING';
+
+        // Regime-aware R:R multipliers
+        let rr1 = 1.2;
+        let rr2 = 3.5;
+
+        if (regime === 'TRENDING') {
+            rr1 = 1.5;
+            rr2 = 4.5;
+        } else if (regime === 'RANGING') {
+            rr1 = 1.0;
+            rr2 = 2.5;
+        }
+
         const attractivePools = (liquidityPools || []).filter(p =>
             direction === 'LONG' ? p.price > entry : p.price < entry
         ).sort((a, b) =>
             direction === 'LONG' ? a.price - b.price : b.price - a.price
         );
 
-        // Target 1: First pool or 2.0 R:R
+        // Target 1: First pool or R:R based on regime
         const t1Price = attractivePools[0]?.price ||
-            (direction === 'LONG' ? entry + (risk * 2.0) : entry - (risk * 2.0));
+            (direction === 'LONG' ? entry + (risk * rr1) : entry - (risk * rr1));
 
-        // Target 2: Second pool or 4.0 R:R
+        // Target 2: Second pool or R:R based on regime
         const t2Price = attractivePools[1]?.price ||
-            (direction === 'LONG' ? entry + (risk * 4.0) : entry - (risk * 4.0));
+            (direction === 'LONG' ? entry + (risk * rr2) : entry - (risk * rr2));
 
         return [
             {
                 price: t1Price,
-                riskReward: Math.abs(t1Price - entry) / risk,
-                label: attractivePools[0] ? `Liquidity: ${attractivePools[0].label}` : 'Target (1:2 RR)'
+                riskReward: Math.abs(t1Price - entry) / Math.max(risk, 0.000001),
+                label: attractivePools[0] ? `Liquidity: ${attractivePools[0].label}` : `Target 1 (${rr1.toFixed(1)}R)`
             },
             {
                 price: t2Price,
-                riskReward: Math.abs(t2Price - entry) / risk,
-                label: attractivePools[1] ? `Major Pool: ${attractivePools[1].label}` : 'Trend Extension'
+                riskReward: Math.abs(t2Price - entry) / Math.max(risk, 0.000001),
+                label: attractivePools[1] ? `Major Pool: ${attractivePools[1].label}` : `Trend Extension (${rr2.toFixed(1)}R)`
             }
         ];
     }

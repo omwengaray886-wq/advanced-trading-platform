@@ -42,9 +42,9 @@ export class TargetProjection extends ChartAnnotation {
     // Get display label
     getLabel() {
         if (this.isStopLoss()) {
-            return 'Stop Loss';
+            return 'SL';
         }
         const num = this.getTargetNumber();
-        return `Target ${num}${this.riskReward ? ` (${this.riskReward}R)` : ''}`;
+        return `TP${num}${this.riskReward ? ` (${this.riskReward}R)` : ''}`;
     }
 }

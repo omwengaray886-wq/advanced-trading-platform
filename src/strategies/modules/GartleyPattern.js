@@ -60,17 +60,29 @@ export class GartleyPattern extends StrategyBase {
                 annotations.push(new StructureMarker({ time: c.time, price: c.price }, 'C'));
                 annotations.push(new StructureMarker({ time: d.time, price: d.price }, 'D'));
 
+                const atr = marketState.atr || this.calculateATR(candles);
+                const buffer = atr * 0.1;
+
                 annotations.push(new EntryZone(
-                    d.price * 1.001,
-                    d.price * 0.999,
+                    d.price + buffer,
+                    d.price - buffer,
                     'LONG',
-                    { confidence: 0.88, note: 'Bullish Gartley (D)', timeframe: '1H' }
+                    { confidence: 0.88, note: 'Gartley', timeframe: '1H' }
                 ));
 
-                const stopLoss = x.price * 0.998;
-                const risk = d.price - stopLoss;
-                annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
-                annotations.push(new TargetProjection(d.price + (risk * 2.5), 'TARGET_1', { riskReward: 2.5 }));
+                const stopLoss = x.price - (atr * 0.3);
+
+                annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
+
+                // Standardized Targets using regime-aware logic
+                const targets = this.generateStandardTargets(d.price, stopLoss, marketState.liquidityPools, 'LONG', marketState);
+                targets.forEach((t, i) => {
+                    annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                        label: t.label,
+                        riskReward: t.riskReward,
+                        probability: i === 0 ? 0.70 : 0.45
+                    }));
+                });
             }
         }
 
@@ -99,17 +111,29 @@ export class GartleyPattern extends StrategyBase {
                 annotations.push(new StructureMarker({ time: c.time, price: c.price }, 'C'));
                 annotations.push(new StructureMarker({ time: d.time, price: d.price }, 'D'));
 
+                const atr = marketState.atr || this.calculateATR(candles);
+                const buffer = atr * 0.1;
+
                 annotations.push(new EntryZone(
-                    d.price * 0.999,
-                    d.price * 1.001,
+                    d.price - buffer,
+                    d.price + buffer,
                     'SHORT',
-                    { confidence: 0.88, note: 'Bearish Gartley (D)', timeframe: '1H' }
+                    { confidence: 0.88, note: 'Gartley', timeframe: '1H' }
                 ));
 
-                const stopLoss = x.price * 1.002;
-                const risk = stopLoss - d.price;
-                annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
-                annotations.push(new TargetProjection(d.price - (risk * 2.5), 'TARGET_1', { riskReward: 2.5 }));
+                const stopLoss = x.price + (atr * 0.3);
+
+                annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
+
+                // Standardized Targets using regime-aware logic
+                const targets = this.generateStandardTargets(d.price, stopLoss, marketState.liquidityPools, 'SHORT', marketState);
+                targets.forEach((t, i) => {
+                    annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                        label: t.label,
+                        riskReward: t.riskReward,
+                        probability: i === 0 ? 0.70 : 0.45
+                    }));
+                });
             }
         }
 

@@ -100,19 +100,22 @@ export class ProbabilisticEngine {
     }
 
     /**
-     * Apply modifiers from Phase 6 Engines (Lead-Lag, Patterns)
+     * Apply modifiers from Phase 6 Engines (Lead-Lag, Patterns, GSR, IMV)
      */
     static _applyPredictiveAlpha(baseScore, scenario, marketState) {
         let score = baseScore;
         const leadLag = marketState.leadLag;
         const patterns = marketState.patterns;
+        const gsr = marketState.gsrMatch;
+        const imv = marketState.imv;
+
+        const scDir = (scenario === 'CONTINUATION')
+            ? this._normalizeDirection(marketState.trend?.direction)
+            : (marketState.trend?.direction === 'BULLISH' ? 'BEARISH' : 'BULLISH'); // Reversal is opposite
 
         // 1. Lead-Lag Influence
         if (leadLag && leadLag.detected) {
             const implication = this._normalizeDirection(leadLag.implication);
-            const scDir = (scenario === 'CONTINUATION')
-                ? this._normalizeDirection(marketState.trend?.direction)
-                : (marketState.trend?.direction === 'BULLISH' ? 'BEARISH' : 'BULLISH'); // Reversal is opposite
 
             if (implication !== 'NEUTRAL') {
                 if (implication === scDir) {
@@ -126,15 +129,36 @@ export class ProbabilisticEngine {
         // 2. Fractal Pattern Influence
         if (patterns && patterns.prediction !== 'NEUTRAL') {
             const patDir = this._normalizeDirection(patterns.prediction);
-            const scDir = (scenario === 'CONTINUATION')
-                ? this._normalizeDirection(marketState.trend?.direction)
-                : (marketState.trend?.direction === 'BULLISH' ? 'BEARISH' : 'BULLISH');
 
             if (patDir === scDir) {
                 // Boost by confidence (0.6 to 1.0) * 20
                 score += (patterns.confidence * 20);
             } else {
                 score -= 10;
+            }
+        }
+
+        // 3. Elite Accuracy: Genetic Signature Match (GSR)
+        if (gsr && gsr.rating !== 'NEUTRAL') {
+            if (gsr.rating === 'ELITE_MATCH') {
+                score += 18; // Massive probability boost if morphology is near-perfect
+            } else if (gsr.rating === 'STRONG_MATCH') {
+                score += 10;
+            } else if (gsr.rating === 'POOR_MATCH') {
+                score -= 15; // Penalize probability if structure looks wrong
+            }
+        }
+
+        // 4. Elite Accuracy: Inter-Market Vector (IMV)
+        if (imv && imv.bias !== 'NEUTRAL') {
+            const imvDir = imv.bias.includes('BULLISH') ? 'BULLISH' : 'BEARISH';
+            const isAligned = imvDir === scDir;
+            const strengthFactor = (imv.strength || 50) / 100;
+
+            if (isAligned) {
+                score += (15 * strengthFactor); // Macro vector aligns with this scenario
+            } else {
+                score -= (10 * strengthFactor); // Macro vector fighting
             }
         }
 

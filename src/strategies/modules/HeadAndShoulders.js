@@ -62,18 +62,29 @@ export class HeadAndShoulders extends StrategyBase {
 
                 // Potential Entry on neckline break/retest
                 if (currentPrice < l2.price) {
+                    const atr = marketState.atr || this.calculateATR(candles);
+                    const buffer = atr * 0.1;
+
                     annotations.push(new EntryZone(
-                        l2.price * 1.0005,
-                        l2.price * 0.9995,
+                        l2.price + buffer,
+                        l2.price - buffer,
                         'SHORT',
-                        { confidence: 0.90, note: 'H&S Neckline Break', timeframe: '1H' }
+                        { confidence: 0.90, note: 'H&S', timeframe: '1H' }
                     ));
 
-                    const stopLoss = h3.price;
-                    const headHeight = h2.price - l2.price;
+                    const stopLoss = h3.price + (atr * 0.3);
 
-                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
-                    annotations.push(new TargetProjection(l2.price - headHeight, 'TARGET_MAX', { riskReward: headHeight / (stopLoss - l2.price) }));
+                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
+
+                    // Standardized Targets using regime-aware logic
+                    const targets = this.generateStandardTargets(l2.price, stopLoss, marketState.liquidityPools, 'SHORT', marketState);
+                    targets.forEach((t, i) => {
+                        annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                            label: t.label,
+                            riskReward: t.riskReward,
+                            probability: i === 0 ? 0.70 : 0.45
+                        }));
+                    });
                 }
             }
         }
@@ -105,18 +116,29 @@ export class HeadAndShoulders extends StrategyBase {
                 const currentPrice = candles[candles.length - 1].close;
 
                 if (currentPrice > h2.price) {
+                    const atr = marketState.atr || this.calculateATR(candles);
+                    const buffer = atr * 0.1;
+
                     annotations.push(new EntryZone(
-                        h2.price * 0.9995,
-                        h2.price * 1.0005,
+                        h2.price - buffer,
+                        h2.price + buffer,
                         'LONG',
-                        { confidence: 0.90, note: 'Inverse H&S Break', timeframe: '1H' }
+                        { confidence: 0.90, note: 'Inv H&S', timeframe: '1H' }
                     ));
 
-                    const stopLoss = l3.price;
-                    const headDepth = h2.price - l2.price;
+                    const stopLoss = l3.price - (atr * 0.3);
 
-                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
-                    annotations.push(new TargetProjection(h2.price + headDepth, 'TARGET_MAX', { riskReward: headDepth / (h2.price - stopLoss) }));
+                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
+
+                    // Standardized Targets using regime-aware logic
+                    const targets = this.generateStandardTargets(h2.price, stopLoss, marketState.liquidityPools, 'LONG', marketState);
+                    targets.forEach((t, i) => {
+                        annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                            label: t.label,
+                            riskReward: t.riskReward,
+                            probability: i === 0 ? 0.70 : 0.45
+                        }));
+                    });
                 }
             }
         }

@@ -38,6 +38,8 @@ export class VolumeSpikeExhaustion extends StrategyBase {
         if (lastBodySize > avgBodySize * 3.0) {
             const direction = lastCandle.close > lastCandle.open ? 'BEARISH' : 'BULLISH';
             const entryDir = direction === 'BEARISH' ? 'SHORT' : 'LONG';
+            const atr = marketState.atr || this.calculateATR(candles);
+            const buffer = atr * 0.1;
 
             annotations.push(new StructureMarker(
                 { time: lastCandle.time, price: lastCandle.high },
@@ -46,23 +48,27 @@ export class VolumeSpikeExhaustion extends StrategyBase {
             ));
 
             annotations.push(new EntryZone(
-                lastCandle.close * 1.001,
-                lastCandle.close * 0.999,
+                lastCandle.close + (entryDir === 'LONG' ? buffer : -buffer),
+                lastCandle.close - (entryDir === 'LONG' ? buffer : -buffer),
                 entryDir,
-                { confidence: 0.82, note: 'Climactic Volume Reversal', timeframe: '1H' }
+                { confidence: 0.82, note: 'Vol Climax', timeframe: '1H' }
             ));
 
-            const risk = lastBodySize * 0.5;
             const stopLoss = entryDir === 'LONG' ?
-                lastCandle.low - (risk * 0.2) :
-                lastCandle.high + (risk * 0.2);
+                lastCandle.low - (atr * 0.5) :
+                lastCandle.high + (atr * 0.5);
 
-            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
-            annotations.push(new TargetProjection(
-                entryDir === 'LONG' ? lastCandle.close + (risk * 2) : lastCandle.close - (risk * 2),
-                'TARGET_1',
-                { riskReward: 2.0 }
-            ));
+            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
+
+            // Standardized Targets using regime-aware logic
+            const targets = this.generateStandardTargets(lastCandle.close, stopLoss, marketState.liquidityPools, entryDir, marketState);
+            targets.forEach((t, i) => {
+                annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                    label: t.label,
+                    riskReward: t.riskReward,
+                    probability: i === 0 ? 0.70 : 0.45
+                }));
+            });
         }
 
         return annotations;

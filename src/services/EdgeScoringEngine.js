@@ -162,7 +162,7 @@ export class EdgeScoringEngine {
                     totalPoints += 35; // HUGELY Important signal
                     positives.push(`🌟 SMT Divergence Confirmation (${smt.type} with ${smt.metadata?.sibling || 'Correlated Asset'})`);
                 } else {
-                    totalPoints -= 20;
+                    totalPoints -= 35; // Increased penalty for SMT conflict
                     risks.push(`SMT Divergence Conflict (${smt.type})`);
                 }
             } else {
@@ -459,6 +459,12 @@ export class EdgeScoringEngine {
                 } else if (setupDir === 'BEARISH' && (nearbyTrap.implication === 'BEAR_TRAP' || nearbyTrap.implication === 'SHORT_TRAP')) {
                     totalPoints -= 100; // NUKE IT
                     risks.push(`CRITICAL: Trading into confirmed Bear Trap at ${nearbyTrap.location}`);
+                }
+
+                // Proactive Trap Penalty: Detect "Fake Continuation" before full confirmation
+                if (nearbyTrap.type === 'FAKE_TREND_CONTINUATION') {
+                    totalPoints -= 40;
+                    risks.push(`PROACTIVE: Near unconfirmed ${nearbyTrap.implication} (Fake Trend Continuation)`);
                 }
             }
 

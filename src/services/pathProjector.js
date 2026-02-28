@@ -45,7 +45,21 @@ export class PathProjector {
                 sequence: index + 1
             }));
 
-        return targets;
+        // Add Counter-Trend Targets for robustness
+        const alternatePools = htfBias === 'BULLISH' ? downwardPools : upwardPools;
+        const counterTargets = alternatePools
+            .filter(p => p.strength === 'HIGH')
+            .slice(0, 1)
+            .map(pool => ({
+                price: pool.price,
+                label: `Counter: ${pool.label}`,
+                type: pool.type,
+                probability: 30, // Lower initial probability for counter-trend
+                reason: 'HTF Structure Invalidation Target',
+                sequence: 'ALT'
+            }));
+
+        return [...targets, ...counterTargets];
     }
 
     /**
@@ -64,16 +78,20 @@ export class PathProjector {
 
         const paths = [];
 
-        // Build if-then logic
+        // Build If/Then/Else logic (Phase 50 Upgrade)
         for (let i = 0; i < targets.length; i++) {
             const target = targets[i];
-            const nextTarget = targets[i + 1];
+            const nextTarget = targets.find(t => t.sequence === target.sequence + 1);
+            const alternate = targets.find(t => t.sequence === 'ALT');
 
             const path = {
                 condition: `IF price ${target.price > currentPrice ? 'breaks above' : 'breaks below'} ${(target.price || 0).toFixed(5)}`,
                 then: nextTarget ?
-                    `THEN target ${(nextTarget.price || 0).toFixed(5)} (${nextTarget.label})` :
-                    `THEN monitor for reversal or continuation`,
+                    `THEN Target ${(nextTarget.price || 0).toFixed(5)} (${nextTarget.label})` :
+                    `THEN monitor for expansion towards HTF Draw`,
+                else: alternate ?
+                    `ELSE IF reversal occurs at ${(target.price || 0).toFixed(5)}, then pivot to counter-target ${(alternate.price || 0).toFixed(5)}` :
+                    `ELSE monitor for structural rejection`,
                 probability: target.probability,
                 invalidation: this._getPathInvalidation(target, currentPrice, marketState)
             };
@@ -132,11 +150,21 @@ export class PathProjector {
         let probability = 70; // Base probability
 
         // Reduce for each subsequent target
-        probability -= (sequenceIndex * 15);
+        if (typeof sequenceIndex === 'number') {
+            probability -= (sequenceIndex * 15);
+        }
 
         // Increase if HTF aligned
         if (marketState.mtfBiasAligned) {
             probability += 15;
+        }
+
+        // Institutional Cycle Booster (Phase 50)
+        const cycle = marketState.amdCycle?.phase;
+        if (cycle === 'EXPANSION') {
+            probability += 10; // Expansion increases probability of hitting targets
+        } else if (cycle === 'ACCUMULATION') {
+            probability -= 10; // Ranging makes target hits less certain
         }
 
         // Increase for high-strength pools

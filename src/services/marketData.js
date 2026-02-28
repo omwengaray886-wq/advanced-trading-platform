@@ -181,6 +181,13 @@ export class MarketDataService {
                     low: parseFloat(d[3]),
                     close: parseFloat(d[4]),
                 }));
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log(`[MarketData] Fetch history aborted for ${mappedSymbol}@${binanceInterval}`);
+                } else {
+                    console.error(`[MarketData] Fetch history failed for ${mappedSymbol}:`, error.message);
+                }
+                throw error;
             } finally {
                 // Always clear cache entry after completion (win or lose)
                 // so subsequent calls get fresh data if needed, but parallel calls are deduped
@@ -238,7 +245,11 @@ export class MarketDataService {
                 lastUpdateId: data.lastUpdateId
             };
         } catch (error) {
-            console.error('Failed to fetch Order Book:', error);
+            if (error.name === 'AbortError') {
+                console.log(`[MarketData] Order book fetch aborted for ${symbol}`);
+                return null;
+            }
+            console.error('Failed to fetch Order Book:', error.message);
             return null;
         }
     }

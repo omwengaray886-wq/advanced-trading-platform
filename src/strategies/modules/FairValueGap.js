@@ -60,34 +60,31 @@ export class FairValueGap extends StrategyBase {
 
         if (validFVG) {
             const currentPrice = candles[candles.length - 1].close;
+            const atr = marketState.atr || this.calculateATR(candles);
 
             // Entry zone in FVG (usually 50% equilibrium or open of the gap)
             const entryZone = new EntryZone(
                 validFVG.top,
                 validFVG.bottom,
                 direction,
-                { confidence: 0.75, note: 'FVG Imbalance Entry', timeframe: marketState.timeframe }
+                { confidence: 0.75, note: 'FVG Entry', timeframe: marketState.timeframe }
             );
             annotations.push(entryZone);
 
             // STOP LOSS - using structural invalidation logic
             const stopLoss = this.getStructuralInvalidation(candles, direction, marketState);
-            const risk = Math.abs(entryZone.getOptimalEntry() - stopLoss);
 
-            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: 'Thesis Invalidation' }));
+            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
 
-            // Targets seeking liquidity pools or fixed R:R
-            annotations.push(new TargetProjection(
-                direction === 'LONG' ? currentPrice + (risk * 2.0) : currentPrice - (risk * 2.0),
-                'TARGET_1',
-                { riskReward: 2.0, probability: 0.65 }
-            ));
-
-            annotations.push(new TargetProjection(
-                direction === 'LONG' ? currentPrice + (risk * 3.5) : currentPrice - (risk * 3.5),
-                'TARGET_2',
-                { riskReward: 3.5, probability: 0.40 }
-            ));
+            // Standardized Targets using liquidity awareness and regime-scaled R:R
+            const targets = this.generateStandardTargets(entryZone.getOptimalEntry(), stopLoss, marketState.liquidityPools, direction, marketState);
+            targets.forEach((t, i) => {
+                annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                    label: t.label,
+                    riskReward: t.riskReward,
+                    probability: i === 0 ? 0.65 : 0.40
+                }));
+            });
         }
 
         return annotations;

@@ -69,33 +69,33 @@ export class PriceActionConfirmation extends StrategyBase {
                 ? (trend === 'BULLISH' ? 'LONG' : 'SHORT')
                 : (pattern.direction === 'BULLISH' ? 'LONG' : 'SHORT');
 
-            // Entry Zone
+            // Entry Zone with ATR buffer
+            const atr = marketState.atr || this.calculateATR(candles);
+            const buffer = atr * 0.1;
+
             annotations.push(new EntryZone(
-                pattern.price * (direction === 'LONG' ? 1.0005 : 0.9995),
-                pattern.price * (direction === 'LONG' ? 0.9995 : 1.0005),
+                pattern.price + (direction === 'LONG' ? buffer : -buffer),
+                pattern.price - (direction === 'LONG' ? buffer : -buffer),
                 direction,
-                { confidence: 0.95, timeframe: '1H' }
+                { confidence: 0.95, note: 'PA Conf', timeframe: '1H' }
             ));
 
-            // Standard Risk/Reward (Bible: Minimum 1:2)
+            // STOP LOSS - ATR based
             const stopLoss = direction === 'LONG' ?
-                pattern.price * 0.995 :
-                pattern.price * 1.005;
+                pattern.price - (atr * 1.5) :
+                pattern.price + (atr * 1.5);
 
-            const risk = Math.abs(pattern.price - stopLoss);
-            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
+            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
 
-            annotations.push(new TargetProjection(
-                direction === 'LONG' ? pattern.price + (risk * 2.0) : pattern.price - (risk * 2.0),
-                'TARGET_1',
-                { riskReward: 2.0 }
-            ));
-
-            annotations.push(new TargetProjection(
-                direction === 'LONG' ? pattern.price + (risk * 3.5) : pattern.price - (risk * 3.5),
-                'TARGET_2',
-                { riskReward: 3.5 }
-            ));
+            // Standardized Targets using regime-aware logic
+            const targets = this.generateStandardTargets(pattern.price, stopLoss, marketState.liquidityPools, direction, marketState);
+            targets.forEach((t, i) => {
+                annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                    label: t.label,
+                    riskReward: t.riskReward,
+                    probability: i === 0 ? 0.75 : 0.50
+                }));
+            });
         });
 
         return annotations;

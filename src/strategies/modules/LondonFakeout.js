@@ -59,31 +59,27 @@ export class LondonFakeout extends StrategyBase {
         }
 
         if (setup) {
+            const atr = marketState.atr || this.calculateATR(candles);
+            const buffer = atr * 0.05;
+
             annotations.push(new EntryZone(
-                setup.direction === 'LONG' ? asianLow * 1.0005 : asianHigh * 0.9995,
-                setup.direction === 'LONG' ? asianLow * 0.9995 : asianHigh * 1.0005,
+                setup.direction === 'LONG' ? asianLow + buffer : asianHigh - buffer,
+                setup.direction === 'LONG' ? asianLow - buffer : asianHigh + buffer,
                 setup.direction,
-                { confidence: 0.88, note: 'London Fakeout', timeframe: '1H' }
+                { confidence: 0.88, note: 'Judas', timeframe: '1H' }
             ));
 
-            const risk = Math.abs(setup.entry - setup.stop);
-            annotations.push(new TargetProjection(setup.stop, 'STOP_LOSS'));
+            annotations.push(new TargetProjection(setup.stop, 'STOP_LOSS', { label: `SL: ${setup.stop.toFixed(5)}` }));
 
-            annotations.push(new TargetProjection(
-                setup.target,
-                'TARGET_1',
-                { riskReward: Math.abs(setup.target - setup.entry) / risk, probability: 0.70 }
-            ));
-
-            const target2 = setup.direction === 'LONG' ?
-                asianHigh + (asianHigh - asianLow) :
-                asianLow - (asianHigh - asianLow);
-
-            annotations.push(new TargetProjection(
-                target2,
-                'TARGET_2',
-                { riskReward: Math.abs(target2 - setup.entry) / risk, probability: 0.45 }
-            ));
+            // Standardized Targets using regime-aware logic
+            const targets = this.generateStandardTargets(setup.entry, setup.stop, marketState.liquidityPools, setup.direction, marketState);
+            targets.forEach((t, i) => {
+                annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                    label: t.label,
+                    riskReward: t.riskReward,
+                    probability: i === 0 ? 0.70 : 0.45
+                }));
+            });
         }
 
         return annotations;

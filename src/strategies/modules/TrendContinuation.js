@@ -56,51 +56,35 @@ export class TrendContinuation extends StrategyBase {
         }
 
         // Find demand/supply zone
-        const zone = this.findRetraceZone(recentCandles, direction);
+        const zone = this.findRetraceZone(recentCandles, marketState);
         if (zone) {
             annotations.push(zone);
+            const atr = marketState.atr || this.calculateATR(candles);
+            const buffer = atr * 0.1;
 
-            // Generate entry zone within the demand/supply zone
+            // Generate entry zone within the demand/supply zone with ATR buffer
             const entryZone = new EntryZone(
-                zone.coordinates.top * 1.002,
-                zone.coordinates.bottom * 0.998,
+                zone.coordinates.top + (direction === 'LONG' ? buffer : -buffer),
+                zone.coordinates.bottom - (direction === 'LONG' ? -buffer : buffer),
                 direction === 'LONG' ? 'LONG' : 'SHORT',
-                { confidence: 0.80, timeframe: '1H' }
+                { confidence: 0.80, note: 'Trend Cont', timeframe: '1H' }
             );
             annotations.push(entryZone);
 
             // Precision Stop Loss (Structural Invalidation Point)
             const stopLoss = this.getStructuralInvalidation(candles, direction, marketState);
-            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: 'Structural Invalidation' }));
 
-            // Precision Targets (Institutional Pulls)
-            const pools = marketState.liquidityPools || [];
-            const attractivePools = pools.filter(p =>
-                direction === 'LONG' ? p.price > zone.coordinates.top : p.price < zone.coordinates.bottom
-            ).sort((a, b) =>
-                direction === 'LONG' ? a.price - b.price : b.price - a.price
-            );
+            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
 
-            const optimalEntry = entryZone.getOptimalEntry();
-            const risk = Math.abs(optimalEntry - stopLoss);
-
-            // Target 1: First major liquidity cluster or 2.0 RR pivot
-            const t1Price = attractivePools[0]?.price ||
-                (direction === 'LONG' ? optimalEntry + (risk * 2.2) : optimalEntry - (risk * 2.2));
-
-            annotations.push(new TargetProjection(t1Price, 'TARGET_1', {
-                label: attractivePools[0] ? `Cluster: ${attractivePools[0].label}` : 'Structural Pivot',
-                riskReward: Math.abs(t1Price - optimalEntry) / risk
-            }));
-
-            // Target 2: High-strength pool or trend extension
-            const t2Price = attractivePools[1]?.price ||
-                (direction === 'LONG' ? optimalEntry + (risk * 3.8) : optimalEntry - (risk * 3.8));
-
-            annotations.push(new TargetProjection(t2Price, 'TARGET_2', {
-                label: attractivePools[1] ? `High Conviction: ${attractivePools[1].label}` : 'Trend Extension',
-                riskReward: Math.abs(t2Price - optimalEntry) / risk
-            }));
+            // Standardized Targets using regime-aware logic
+            const targets = this.generateStandardTargets(entryZone.getOptimalEntry(), stopLoss, marketState.liquidityPools, direction, marketState);
+            targets.forEach((t, i) => {
+                annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                    label: t.label,
+                    riskReward: t.riskReward,
+                    probability: i === 0 ? 0.70 : 0.45
+                }));
+            });
         }
 
         return annotations;
@@ -126,13 +110,15 @@ export class TrendContinuation extends StrategyBase {
         return points.slice(-4); // Last 4 swing points
     }
 
-    findRetraceZone(candles, direction) {
+    findRetraceZone(candles, marketState) {
+        const direction = marketState.trend.direction;
         // Find most recent swing point
         const recentSwing = direction === 'BULLISH' ?
             Math.min(...candles.slice(-20).map(c => c.low)) :
             Math.max(...candles.slice(-20).map(c => c.high));
 
-        const zoneHeight = recentSwing * 0.002; // 0.2% zone
+        const atr = marketState.atr || this.calculateATR(candles);
+        const zoneHeight = atr * 0.8; // Use 0.8 ATR for the zone depth
 
         return new SupplyDemandZone(
             recentSwing + (direction === 'BULLISH' ? zoneHeight : 0),

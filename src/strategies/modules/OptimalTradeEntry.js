@@ -58,37 +58,27 @@ export class OptimalTradeEntry extends StrategyBase {
                 {
                     id: `ote-entry-${swing.low.time}`,
                     confidence: 0.85,
-                    note: 'OTE Zone',
+                    note: 'OTE',
                     timeframe: marketState.timeframe,
-                    startTime: swing.low.time // Start at the beginning of the impulsive swing
+                    startTime: swing.low.time
                 }
             );
             annotations.push(entryZone);
 
             // STOP LOSS - using professional invalidation logic
             const stopLoss = this.getStructuralInvalidation(candles, direction, marketState);
-            const entryPrice = fib705;
-            const risk = Math.abs(entryPrice - stopLoss);
 
-            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: 'Thesis Invalidation' }));
+            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
 
-            // Target 1: Swing High/Low (1:1 or dynamic)
-            annotations.push(new TargetProjection(
-                direction === 'LONG' ? swing.high : swing.low,
-                'TARGET_1',
-                { riskReward: Math.abs((direction === 'LONG' ? swing.high : swing.low) - entryPrice) / risk, probability: 0.75 }
-            ));
-
-            // Target 2: Fibonacci Extension (e.g., -27.2%)
-            const target2Price = direction === 'LONG' ?
-                swing.high + (range * 0.272) :
-                swing.low - (range * 0.272);
-
-            annotations.push(new TargetProjection(
-                target2Price,
-                'TARGET_2',
-                { riskReward: Math.abs(target2Price - entryPrice) / risk, probability: 0.50 }
-            ));
+            // Standardized Targets using regime-aware logic
+            const targets = this.generateStandardTargets(entryZone.getOptimalEntry(), stopLoss, marketState.liquidityPools, direction, marketState);
+            targets.forEach((t, i) => {
+                annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                    label: t.label,
+                    riskReward: t.riskReward,
+                    probability: i === 0 ? 0.75 : 0.50
+                }));
+            });
         }
 
         return annotations;

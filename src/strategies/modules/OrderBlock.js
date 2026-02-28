@@ -84,7 +84,7 @@ export class OrderBlock extends StrategyBase {
                     id: `ob-entry-${targetOB.timestamp}`,
                     confidence: targetOB.strength === 'strong' ? 0.9 : 0.75,
                     timeframe: marketState.timeframe || '1H',
-                    note: `Institutional Order Block [${targetOB.strength.toUpperCase()}]`,
+                    note: `OB [${targetOB.strength.substring(0, 3).toUpperCase()}]`,
                     startTime: targetOB.timestamp,
                     endTime: Date.now() / 1000 + (3600 * 48) // Extend visual connection
                 }
@@ -93,17 +93,23 @@ export class OrderBlock extends StrategyBase {
 
             // Precision Stop Loss: Structural Invalidation or just beyond OB
             const structureSL = this.getStructuralInvalidation(candles, direction, marketState);
-            const obFailureLevel = direction === 'LONG' ? targetOB.low - (bodySize * 0.2) : targetOB.high + (bodySize * 0.2);
+
+            // ATR-based buffer scaled by regime
+            const regime = marketState.regime || 'TRENDING';
+            const slMultiplier = regime === 'TRENDING' ? 1.0 : regime === 'RANGING' ? 0.3 : 0.5;
+            const buffer = (marketState.atr || this.calculateATR(candles)) * slMultiplier;
+
+            const obFailureLevel = direction === 'LONG' ? targetOB.low - buffer : targetOB.high + buffer;
 
             // Use the wider of the two for safety
             const stopLoss = direction === 'LONG' ? Math.min(structureSL, obFailureLevel) : Math.max(structureSL, obFailureLevel);
 
             annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', {
-                label: `Invalidation: ${stopLoss.toFixed(5)}`
+                label: `SL: ${stopLoss.toFixed(5)}`
             }));
 
-            // Standardized Targets using liquidity awareness
-            const targets = this.generateStandardTargets(entryZone.getOptimalEntry(), stopLoss, marketState.liquidityPools, direction);
+            // Standardized Targets using liquidity awareness and regime-scaled R:R
+            const targets = this.generateStandardTargets(entryZone.getOptimalEntry(), stopLoss, marketState.liquidityPools, direction, marketState);
             targets.forEach((t, i) => {
                 annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
                     label: t.label,

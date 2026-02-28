@@ -92,19 +92,28 @@ const TradeSetupCard = ({ setup, index = 0, onClick }) => {
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     {Array.from(new Set(setup.annotations.map(a => a.type)))
                         .filter(type => ['ORDER_BLOCK', 'LIQUIDITY_ZONE', 'CONFLUENCE_ZONE', 'FAIR_VALUE_GAP', 'LIQUIDITY_SWEEP_ZONE'].includes(type))
-                        .map(type => (
-                            <span key={type} style={{
-                                fontSize: '9px',
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                background: type === 'CONFLUENCE_ZONE' ? 'rgba(255, 215, 0, 0.2)' : 'var(--color-bg-tertiary)',
-                                color: type === 'CONFLUENCE_ZONE' ? '#b8860b' : 'var(--color-text-secondary)',
-                                border: `1px solid ${type === 'CONFLUENCE_ZONE' ? 'rgba(255, 215, 0, 0.4)' : 'transparent'}`,
-                                fontWeight: '600'
-                            }}>
-                                {type.replace('_ZONE', '').replace('_', ' ')}
-                            </span>
-                        ))
+                        .map(type => {
+                            const abbreviations = {
+                                'ORDER_BLOCK': 'OB',
+                                'LIQUIDITY_ZONE': 'LQ',
+                                'CONFLUENCE_ZONE': 'CNF',
+                                'FAIR_VALUE_GAP': 'FVG',
+                                'LIQUIDITY_SWEEP_ZONE': 'SWEP'
+                            };
+                            return (
+                                <span key={type} style={{
+                                    fontSize: '9px',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    background: type === 'CONFLUENCE_ZONE' ? 'rgba(255, 215, 0, 0.2)' : 'var(--color-bg-tertiary)',
+                                    color: type === 'CONFLUENCE_ZONE' ? '#b8860b' : 'var(--color-text-secondary)',
+                                    border: `1px solid ${type === 'CONFLUENCE_ZONE' ? 'rgba(255, 215, 0, 0.4)' : 'transparent'}`,
+                                    fontWeight: '600'
+                                }}>
+                                    {abbreviations[type] || type.replace('_ZONE', '').replace('_', ' ')}
+                                </span>
+                            );
+                        })
                     }
                 </div>
             )}

@@ -30,10 +30,12 @@ export class LiquiditySweep extends StrategyBase {
 
     generateAnnotations(candles, marketState, direction = 'LONG') {
         const annotations = [];
+        const atr = marketState.atr || this.calculateATR(candles);
+        const tolerance = atr * 0.2; // Use 0.2 ATR as "equal" tolerance
 
         // Use shared SMC detection for Equal Highs/Lows
-        const equalHighs = SmartMoneyConcepts.detectEqualLevels(candles, 'highs');
-        const equalLows = SmartMoneyConcepts.detectEqualLevels(candles, 'lows');
+        const equalHighs = this.detectEqualLevels(candles, 'highs', tolerance);
+        const equalLows = this.detectEqualLevels(candles, 'lows', tolerance);
 
         // Add liquidity zones
         equalHighs.forEach(level => {
@@ -43,8 +45,8 @@ export class LiquiditySweep extends StrategyBase {
                 {
                     liquidity: 'high',
                     timeframe: '1H',
-                    width: level.price * 0.001,
-                    note: `Equal Highs (${level.count} touches) - Liquidity Pool`
+                    width: atr * 0.1,
+                    note: `EQH`
                 }
             );
             annotations.push(zone);
@@ -57,69 +59,60 @@ export class LiquiditySweep extends StrategyBase {
                 {
                     liquidity: 'high',
                     timeframe: '1H',
-                    width: level.price * 0.001,
-                    note: `Equal Lows (${level.count} touches) - Liquidity Pool`
+                    width: atr * 0.1,
+                    note: `EQL`
                 }
             );
             annotations.push(zone);
         });
 
         // Find most recent untouched liquidity in the requested direction
-        // If direction is LONG, we look for EQUAL_LOWS to sweep
-        // If direction is SHORT, we look for EQUAL_HIGHS to sweep
         const targetLiquidity = this.findTargetLiquidity(annotations, candles, direction);
 
         if (targetLiquidity) {
-            // Entry after sweep
-            const expectedDirection = direction; // Use the requested direction
             const currentPrice = candles[candles.length - 1].close;
+            const regime = marketState.regime || 'TRENDING';
+
+            // ATR-based proximity for entry
+            const proximity = atr * 0.1;
+            const entryTop = direction === 'LONG' ? targetLiquidity.coordinates.price - proximity : targetLiquidity.coordinates.price + (proximity * 2);
+            const entryBottom = direction === 'LONG' ? targetLiquidity.coordinates.price - (proximity * 2) : targetLiquidity.coordinates.price + proximity;
 
             const entryZone = new EntryZone(
-                targetLiquidity.coordinates.price * (direction === 'LONG' ? 0.998 : 1.002),
-                targetLiquidity.coordinates.price * (direction === 'LONG' ? 0.995 : 1.005),
+                entryTop,
+                entryBottom,
                 direction,
                 {
                     confidence: 0.70,
                     timeframe: '1H',
-                    note: 'Liquidity Sweep Entry Zone: Wait for wick rejection'
+                    note: 'Sweep Entry'
                 }
             );
             annotations.push(entryZone);
 
-            // Targets relative to Optimal Entry
+            // Stop Loss relative to Optimal Entry, using ATR
             const optimalEntry = entryZone.getOptimalEntry();
-            const stopLoss = direction === 'LONG' ?
-                targetLiquidity.coordinates.price * 0.993 :
-                targetLiquidity.coordinates.price * 1.007;
+            const slMultiplier = regime === 'TRENDING' ? 1.0 : regime === 'RANGING' ? 0.3 : 0.5;
+            const slBuffer = atr * slMultiplier;
 
-            const risk = Math.abs(optimalEntry - stopLoss);
+            const stopLoss = direction === 'LONG' ?
+                targetLiquidity.coordinates.price - slBuffer :
+                targetLiquidity.coordinates.price + slBuffer;
 
             annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', {
                 timeframe: '1H',
-                label: `Invalidation: ${stopLoss.toFixed(2)} (Below/Above Sweep)`
+                label: `SL: ${stopLoss.toFixed(2)}`
             }));
 
-            annotations.push(new TargetProjection(
-                direction === 'LONG' ? optimalEntry + (risk * 2) : optimalEntry - (risk * 2),
-                'TARGET_1',
-                {
-                    riskReward: 2,
-                    probability: 0.55,
-                    timeframe: '1H',
-                    label: 'Target 1 (2R): Initial expansion'
-                }
-            ));
-
-            annotations.push(new TargetProjection(
-                direction === 'LONG' ? optimalEntry + (risk * 3) : optimalEntry - (risk * 3),
-                'TARGET_2',
-                {
-                    riskReward: 3,
-                    probability: 0.35,
-                    timeframe: '1H',
-                    label: 'Target 2 (3R): Extended liquidity run'
-                }
-            ));
+            // Standardized Targets using regime-aware logic
+            const targets = this.generateStandardTargets(optimalEntry, stopLoss, marketState.liquidityPools, direction, marketState);
+            targets.forEach((t, i) => {
+                annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                    label: t.label,
+                    riskReward: t.riskReward,
+                    probability: i === 0 ? 0.65 : 0.40
+                }));
+            });
         }
 
         return annotations;
@@ -129,12 +122,11 @@ export class LiquiditySweep extends StrategyBase {
      * Detect equal highs or lows
      * @param {Array} candles - Candlestick data
      * @param {string} type - 'highs' or 'lows'
+     * @param {number} tolerance - Price tolerance for "equal"
      * @returns {Array} - Equal levels
      */
-    detectEqualLevels(candles, type) {
+    detectEqualLevels(candles, type, tolerance) {
         const levels = [];
-        const tolerance = 0.0015; // 0.15% tolerance for "equal"
-
         const prices = type === 'highs' ?
             candles.map(c => c.high) :
             candles.map(c => c.low);
@@ -151,7 +143,7 @@ export class LiquiditySweep extends StrategyBase {
                 // Check if equal to previous swing
                 const lastLevel = levels[levels.length - 1];
                 if (lastLevel) {
-                    const diff = Math.abs(currentPrice - lastLevel.price) / lastLevel.price;
+                    const diff = Math.abs(currentPrice - lastLevel.price);
                     if (diff < tolerance) {
                         lastLevel.count++;
                         continue;

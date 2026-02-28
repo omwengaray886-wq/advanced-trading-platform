@@ -1527,7 +1527,7 @@ export class AnalysisOrchestrator {
                 // Phase 53: Structure Validation Gate
                 // Reject trade if a CHoCH against direction happened within last 5 bars
                 // This prevents "catching a falling knife" right after structure breaks
-                const recentCandles = candles.slice(-5);
+                const recentCandles = candles.slice(-7);
                 const opposingChoch = marketState.structuralEvents.find(c => {
                     if (!c.metadata) return false;
                     // Normalize directions
@@ -1540,7 +1540,7 @@ export class AnalysisOrchestrator {
                     return false;
                 }
 
-                const minScore = 48; // Relaxed from 55 for increased alpha visibility
+                const minScore = 55; // Tightened from 48 to ensure institutional quality
                 if (s.quantScore < minScore) {
                     console.log(`[FILTER] Dropped ${s.name} for ${symbol} due to low conviction score: ${s.quantScore} (Min: ${minScore})`);
                     return false;
@@ -1568,7 +1568,7 @@ export class AnalysisOrchestrator {
 
             // Filter out low-confidence setups (< 50% confidence for Phase 73)
             const preFilterCount = setups.length;
-            setups = setups.filter(s => s.directionalConfidence >= 0.50);
+            setups = setups.filter(s => s.directionalConfidence >= 0.55);
 
             if (setups.length < preFilterCount) {
                 console.log(`[CONFIDENCE GATE] Filtered ${preFilterCount - setups.length} low-confidence setups`);
@@ -2078,9 +2078,15 @@ export class AnalysisOrchestrator {
 
         const clusters = LiquidityMapService.findClusters(orderBook);
 
+        // Dynamic buffer: use ATR-based offset instead of a fixed tick size
+        // This adapts to current market volatility so we don't get noise-spiked through
+        const atr = marketState.volatility?.atr || (riskParams.entry?.optimal * 0.002);
+        const entryBuffer = atr * 0.1;  // 10% of ATR as front-run offset (replaces fixed 0.05 tick)
+        const wallBuffer = atr * 0.15; // 15% of ATR for SL/TP wall buffers (replaces fixed 0.1%)
+
         // ENTRY Refinement: Front-Run a Wall
-        // If we are longing, and there is a massive Buy Wall at 100, we want to enter at 100.01
-        // If we are shorting, and there is a massive Sell Wall at 100, we want to enter at 99.99
+        // If we are longing, and there is a massive Buy Wall at 100, we want to enter just above it.
+        // If we are shorting, and there is a massive Sell Wall at 100, we want to enter just below it.
         if (riskParams.entry) {
             const protectiveWalls = direction === 'LONG' ? clusters.buyClusters : clusters.sellClusters;
 
@@ -2090,16 +2096,14 @@ export class AnalysisOrchestrator {
                 .sort((a, b) => b.quantity - a.quantity)[0]; // Largest wall
 
             if (nearestWall) {
-                const tickSize = 0.05; // Ideally fetch from asset adapter per symbol
-                // LONG: Wall @ 100 -> Entry @ 100 + tick
-                // SHORT: Wall @ 100 -> Entry @ 100 - tick
+                // LONG: Wall @ 100 -> Entry @ 100 + entryBuffer
+                // SHORT: Wall @ 100 -> Entry @ 100 - entryBuffer
                 const adjustedEntry = direction === 'LONG'
-                    ? nearestWall.price + tickSize
-                    : nearestWall.price - tickSize;
+                    ? nearestWall.price + entryBuffer
+                    : nearestWall.price - entryBuffer;
 
-                // Only adjust if it improves our position or safety significantly
                 riskParams.entry.optimal = adjustedEntry;
-                riskParams.entry.reason = `Front-running ${nearestWall.quantity ? nearestWall.quantity.toFixed(0) : '0'} lot wall @ ${nearestWall.price}`;
+                riskParams.entry.note = `Front-running ${nearestWall.quantity ? nearestWall.quantity.toFixed(0) : '0'} lot wall @ ${nearestWall.price} (ATR buffer: ${entryBuffer.toFixed(4)})`;
             }
         }
 
@@ -2108,16 +2112,16 @@ export class AnalysisOrchestrator {
             riskParams.targets.forEach(t => {
                 const opposingWalls = direction === 'LONG' ? clusters.sellClusters : clusters.buyClusters;
                 // Find nearest wall in the direction of TP
-                // For LONG, wall price > entry, find sell walls < TP price but > entry
                 const wallBeforeTarget = opposingWalls
                     .filter(w => direction === 'LONG' ? (w.price < t.price && w.price > riskParams.entry?.optimal) : (w.price > t.price && w.price < riskParams.entry?.optimal))
                     .sort((a, b) => direction === 'LONG' ? b.price - a.price : a.price - b.price)[0];
 
                 if (wallBeforeTarget) {
-                    // Pull TP back to be 0.1% before the wall
-                    const adjustment = wallBeforeTarget.price * 0.001;
-                    t.price = direction === 'LONG' ? wallBeforeTarget.price - adjustment : wallBeforeTarget.price + adjustment;
-                    t.note = "Liquidity Aligned Target";
+                    // Pull TP back by wallBuffer distance so we don't walk into the wall's absorption
+                    t.price = direction === 'LONG'
+                        ? wallBeforeTarget.price - wallBuffer
+                        : wallBeforeTarget.price + wallBuffer;
+                    t.note = `Liquidity Aligned Target (ATR buffer: ${wallBuffer.toFixed(4)})`;
                 }
 
                 // Phase 66: Market Obligation Alignment
@@ -2128,29 +2132,28 @@ export class AnalysisOrchestrator {
                         (direction === 'SHORT' && primaryMagnet.price < riskParams.entry?.optimal);
 
                     if (isMagnetDirection) {
-                        // If magnet is further than current target, potentially extend
                         if (direction === 'LONG' ? primaryMagnet.price > t.price : primaryMagnet.price < t.price) {
                             t.price = primaryMagnet.price;
-                            t.note = "Obligation Reaching Target";
+                            t.note = 'Obligation Reaching Target';
                         }
                     }
                 }
             });
         }
 
-        // SL Refinement: HIDE behind a wall
+        // SL Refinement: HIDE behind a protective wall using ATR buffer
         if (riskParams.stopLoss) {
             const protectiveWalls = direction === 'LONG' ? clusters.buyClusters : clusters.sellClusters;
-            // Find nearest wall BEHIND SL
             const wallBehindSL = protectiveWalls
                 .filter(w => direction === 'LONG' ? (w.price < riskParams.entry?.optimal) : (w.price > riskParams.entry?.optimal))
                 .sort((a, b) => direction === 'LONG' ? b.price - a.price : a.price - b.price)
                 .find(w => direction === 'LONG' ? w.price < riskParams.stopLoss : w.price > riskParams.stopLoss);
 
             if (wallBehindSL) {
-                // Push SL to be 0.1% BEHIND the protective wall
-                const adjustment = wallBehindSL.price * 0.001;
-                riskParams.stopLoss = direction === 'LONG' ? wallBehindSL.price - adjustment : wallBehindSL.price + adjustment;
+                // Place SL wallBuffer behind the wall so institutional buyers absorb stop-hunts
+                riskParams.stopLoss = direction === 'LONG'
+                    ? wallBehindSL.price - wallBuffer
+                    : wallBehindSL.price + wallBuffer;
             }
         }
     }
@@ -2535,26 +2538,46 @@ export class AnalysisOrchestrator {
      * Perform deep geometry verification on trade levels
      * @private
      */
-    static _verifyTargetGeometry(riskParams, direction, atr) {
+    static _verifyTargetGeometry(riskParams, direction, atr, marketState = null) {
         if (!riskParams || !riskParams.entry || !riskParams.stopLoss) return riskParams;
 
         const entry = riskParams.entry.optimal;
         const safeAtr = atr || (entry * 0.005); // Fallback to 0.5% if ATR missing
 
-        // 1. Correct Stop Loss direction
-        if (direction === 'LONG') {
-            if (riskParams.stopLoss >= entry) {
-                riskParams.stopLoss = entry - (safeAtr * 0.5); // Set SL below entry
+        // Regime-Based Volatility Scaling
+        let atrMultiplier = 0.5; // Default SL buffer = 0.5 ATR
+        let minRR = 1.2;
+
+        if (marketState) {
+            const regime = marketState.regime || 'TRENDING';
+            const volLevel = marketState.volatility?.level || 'MEDIUM';
+
+            if (regime === 'TRENDING') {
+                minRR = 1.5; // Need higher RR in trends
+                atrMultiplier = 1.0; // Wider stops to absorb pullbacks
+            } else if (regime === 'RANGING') {
+                minRR = 1.0; // Lower RR acceptable in chop
+                atrMultiplier = 0.3; // Tighter stops behind range edges
             }
-        } else {
-            if (riskParams.stopLoss <= entry) {
-                riskParams.stopLoss = entry + (safeAtr * 0.5); // Set SL above entry
+
+            if (volLevel === 'HIGH' || volLevel === 'EXTREME') {
+                atrMultiplier *= 1.5; // Widen stops in chaos
             }
         }
 
-        // 2. Correct Take Profit direction
+        // 1. Correct Stop Loss direction & apply ATR buffer
+        if (direction === 'LONG') {
+            if (riskParams.stopLoss >= entry) {
+                riskParams.stopLoss = entry - (safeAtr * atrMultiplier); // Set SL below entry
+            }
+        } else {
+            if (riskParams.stopLoss <= entry) {
+                riskParams.stopLoss = entry + (safeAtr * atrMultiplier); // Set SL above entry
+            }
+        }
+
+        // 2. Correct Take Profit direction & enforce dynamic RR
         const risk = Math.abs(entry - riskParams.stopLoss);
-        const minRR = 1.2;
 
         if (riskParams.targets && riskParams.targets.length > 0) {
             riskParams.targets.forEach((t, i) => {
@@ -2565,18 +2588,18 @@ export class AnalysisOrchestrator {
                     if (t.price <= entry) {
                         t.price = entry + minTargetDistance;
                     }
-                    // Ensure minimum RR
+                    // Enforce minimum RR
                     t.price = Math.max(t.price, entry + minTargetDistance);
                 } else {
                     // TP must be below entry
                     if (t.price >= entry) {
                         t.price = entry - minTargetDistance;
                     }
-                    // Ensure minimum RR
+                    // Enforce minimum RR
                     t.price = Math.min(t.price, entry - minTargetDistance);
                 }
 
-                // Final safety: RiskReward property
+                // Final safety recalculation
                 t.riskReward = Math.abs(t.price - entry) / Math.max(risk, 0.000001);
             });
         }

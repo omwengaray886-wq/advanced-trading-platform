@@ -26,7 +26,7 @@ export class AMDEngine {
         // 1. Accumulation (Asian Session / Range / Compression)
         // Characterized by low volatility and lack of directional conviction
         const isAsian = sessionInfo.session === 'ASIAN';
-        const isCompressed = volatility < 0.0015 && range < 0.008; // Tune thresholds based on asset
+        const isCompressed = volatility < 0.0015 && range < 0.006; // Tightened from 0.008 for higher precision zones
 
         if (isAsian || isCompressed) {
             return {
@@ -90,20 +90,16 @@ export class AMDEngine {
         // Price breaks High, but closes back inside OR OBV makes lower high
         if (current.high > high) {
             // Check for potential SFP (Swing Failure Pattern)
-            const closedBackInside = current.close < high;
-
-            // Check OBV Divergence (Price Higher High, OBV Lower High)
-            // Simplistic check: compare current OBV peak to previous OBV peak
-            // This requires a more robust peak detector, but we'll use a slope proxy
             const priceSlope = (current.high - candles[len - 5].high);
             const obvSlope = (obv[obv.length - 1] - obv[obv.length - 5]);
-
+            const isClimaxVolume = current.volume > (this._calculateAverageVolume(candles.slice(-20)) * 2.5);
+            const closedBackInside = current.close < high;
             const divergence = priceSlope > 0 && obvSlope < 0;
 
-            if (closedBackInside || divergence) {
+            if (closedBackInside || divergence || isClimaxVolume) {
                 return {
                     detected: true,
-                    type: divergence ? 'Volume Divergence' : 'Swing Failure',
+                    type: isClimaxVolume ? 'Climax Volume Reversal' : (divergence ? 'Volume Divergence' : 'Swing Failure'),
                     direction: 'BEARISH' // The real move is likely Bearish
                 };
             }
@@ -111,17 +107,16 @@ export class AMDEngine {
 
         // 2. Bullish Trap (Bearish fakeout)
         if (current.low < low) {
-            const closedBackInside = current.close > low;
-
             const priceSlope = (current.low - candles[len - 5].low);
             const obvSlope = (obv[obv.length - 1] - obv[obv.length - 5]);
-
+            const isClimaxVolume = current.volume > (this._calculateAverageVolume(candles.slice(-20)) * 2.5);
+            const closedBackInside = current.close > low;
             const divergence = priceSlope < 0 && obvSlope > 0;
 
-            if (closedBackInside || divergence) {
+            if (closedBackInside || divergence || isClimaxVolume) {
                 return {
                     detected: true,
-                    type: divergence ? 'Volume Divergence' : 'Swing Failure',
+                    type: isClimaxVolume ? 'Climax Volume Reversal' : (divergence ? 'Volume Divergence' : 'Swing Failure'),
                     direction: 'BULLISH' // Real move is Bullish
                 };
             }
@@ -158,5 +153,10 @@ export class AMDEngine {
         const highs = candles.map(c => c.high);
         const lows = candles.map(c => c.low);
         return (Math.max(...highs) - Math.min(...lows)) / candles[0].close;
+    }
+
+    static _calculateAverageVolume(candles) {
+        if (!candles || candles.length === 0) return 0;
+        return candles.reduce((sum, c) => sum + (c.volume || 0), 0) / candles.length;
     }
 }

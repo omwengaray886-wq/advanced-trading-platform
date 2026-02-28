@@ -1814,7 +1814,11 @@ export default function Markets() {
                                                 <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'rgba(255,255,255,0.7)' }}>QUANT AUDIT v4.2</span>
                                             </div>
                                             <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-accent-primary)' }}>
-                                                SCORE: {analysis.setups?.find(s => s.id === activeSetupId)?.quantScore || analysis.setups?.[0]?.quantScore}%
+                                                SCORE: {(() => {
+                                                    const setup = analysis.setups?.find(s => s.id === activeSetupId) || analysis.setups?.[0];
+                                                    if (!setup) return 'CALCULATING...';
+                                                    return `${Math.round(setup.quantScore || 0)}%`;
+                                                })()}
                                                 {analysis.setups?.find(s => s.id === activeSetupId)?.strategy && (
                                                     <span style={{ fontSize: '9px', opacity: 0.6, marginLeft: '6px' }}>
                                                         ({analysis.performanceWeights?.[analysis.setups.find(s => s.id === activeSetupId).strategy]?.toFixed(1) || '1.0'}x)
@@ -1832,7 +1836,7 @@ export default function Markets() {
                                                 color: analysis.marketState?.amdCycle?.phase === 'MANIPULATION' ? '#ef4444' :
                                                     analysis.marketState?.amdCycle?.phase === 'ACCUMULATION' ? '#f59e0b' : '#10b981'
                                             }}>
-                                                {analysis.marketState?.amdCycle?.phase || 'PENDING'}
+                                                {analysis.marketState?.amdCycle?.phase || 'DETECTION...'}
                                             </div>
                                             <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>
                                                 {analysis.marketState?.amdCycle?.note || 'Detecting institutional fingerprints...'}
@@ -1863,7 +1867,7 @@ export default function Markets() {
                                             <div style={{ position: 'relative', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
                                                 <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>CONFIDENCE</div>
                                                 <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#3b82f6', cursor: 'help' }} className="confidence-trigger">
-                                                    {analysis.prediction?.confidence || 0}%
+                                                    {Math.round(analysis.prediction?.confidence || 0)}%
                                                 </div>
                                                 {/* Detailed Breakdown Tooltip */}
                                                 <div className="confidence-tooltip-container" style={{

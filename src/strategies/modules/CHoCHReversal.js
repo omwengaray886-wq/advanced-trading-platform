@@ -49,37 +49,32 @@ export class CHoCHReversal extends StrategyBase {
             ));
 
             const currentPrice = candles[candles.length - 1].close;
-
-            // Find retracement zone for entry (around the CHOCH level with ATR buffer)
-            const atr = this.calculateATR(candles);
+            const atr = marketState.atr || this.calculateATR(candles);
             const buffer = atr * 0.2;
 
+            // Find retracement zone for entry (around the CHOCH level with ATR buffer)
             const entryZone = new EntryZone(
                 latestChoch.price + (direction === 'LONG' ? buffer : -buffer),
                 latestChoch.price - (direction === 'LONG' ? buffer : -buffer),
                 direction,
-                { confidence: 0.82, note: 'CHOCH Institutional Entry', timeframe: marketState.timeframe }
+                { confidence: 0.82, note: 'CHoCH Entry', timeframe: marketState.timeframe }
             );
             annotations.push(entryZone);
 
             // STOP LOSS - at the structural low/high that preceded the CHOCH
             const stopLoss = this.getStructuralInvalidation(candles, direction, marketState);
-            const risk = Math.abs(latestChoch.price - stopLoss);
 
-            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
+            annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
 
-            // Targets based on fixed R:R for CHoCH reversals
-            annotations.push(new TargetProjection(
-                direction === 'LONG' ? currentPrice + (risk * 2.5) : currentPrice - (risk * 2.5),
-                'TARGET_1',
-                { riskReward: 2.5, probability: 0.65 }
-            ));
-
-            annotations.push(new TargetProjection(
-                direction === 'LONG' ? currentPrice + (risk * 4.0) : currentPrice - (risk * 4.0),
-                'TARGET_2',
-                { riskReward: 4.0, probability: 0.45 }
-            ));
+            // Standardized Targets using liquidity awareness and regime-scaled R:R
+            const targets = this.generateStandardTargets(entryZone.getOptimalEntry(), stopLoss, marketState.liquidityPools, direction, marketState);
+            targets.forEach((t, i) => {
+                annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                    label: t.label,
+                    riskReward: t.riskReward,
+                    probability: i === 0 ? 0.65 : 0.45
+                }));
+            });
         }
 
         return annotations;

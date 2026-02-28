@@ -51,17 +51,29 @@ export class ThreeDrivePattern extends StrategyBase {
                         { significance: 'high', direction: 'BEARISH' }
                     ));
 
+                    const atr = marketState.atr || this.calculateATR(candles);
+                    const buffer = atr * 0.1;
+
                     annotations.push(new EntryZone(
-                        d3.price * 1.0005,
-                        d3.price * 0.9995,
+                        d3.price + buffer,
+                        d3.price - buffer,
                         'SHORT',
-                        { confidence: 0.84, note: 'Three-Drive Exhaustion', timeframe: '1H' }
+                        { confidence: 0.84, note: '3-Drive', timeframe: '1H' }
                     ));
 
-                    const stopLoss = d3.price + (move2 * 0.5);
-                    const risk = stopLoss - d3.price;
-                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
-                    annotations.push(new TargetProjection(d3.price - (risk * 3), 'TARGET_1', { riskReward: 3.0 }));
+                    const stopLoss = d3.price + (atr * 0.5);
+
+                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
+
+                    // Standardized Targets using regime-aware logic
+                    const targets = this.generateStandardTargets(d3.price, stopLoss, marketState.liquidityPools, 'SHORT', marketState);
+                    targets.forEach((t, i) => {
+                        annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                            label: t.label,
+                            riskReward: t.riskReward,
+                            probability: i === 0 ? 0.70 : 0.45
+                        }));
+                    });
                 }
             }
         }
@@ -85,17 +97,29 @@ export class ThreeDrivePattern extends StrategyBase {
                         { significance: 'high', direction: 'BULLISH' }
                     ));
 
+                    const atr = marketState.atr || this.calculateATR(candles);
+                    const buffer = atr * 0.1;
+
                     annotations.push(new EntryZone(
-                        d3.price * 0.9995,
-                        d3.price * 1.0005,
+                        d3.price - buffer,
+                        d3.price + buffer,
                         'LONG',
-                        { confidence: 0.84, note: 'Three-Drive Bottom', timeframe: '1H' }
+                        { confidence: 0.84, note: '3-Drive', timeframe: '1H' }
                     ));
 
-                    const stopLoss = d3.price - (move2 * 0.5);
-                    const risk = d3.price - stopLoss;
-                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS'));
-                    annotations.push(new TargetProjection(d3.price + (risk * 3), 'TARGET_1', { riskReward: 3.0 }));
+                    const stopLoss = d3.price - (atr * 0.5);
+
+                    annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', { label: `SL: ${stopLoss.toFixed(5)}` }));
+
+                    // Standardized Targets using regime-aware logic
+                    const targets = this.generateStandardTargets(d3.price, stopLoss, marketState.liquidityPools, 'LONG', marketState);
+                    targets.forEach((t, i) => {
+                        annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                            label: t.label,
+                            riskReward: t.riskReward,
+                            probability: i === 0 ? 0.70 : 0.45
+                        }));
+                    });
                 }
             }
         }

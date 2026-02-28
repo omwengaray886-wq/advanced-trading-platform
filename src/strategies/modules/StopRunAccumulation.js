@@ -84,7 +84,7 @@ export class StopRunAccumulation extends StrategyBase {
             {
                 id: `stop-run-${Date.now()}`,
                 confidence: 0.85,
-                note: `Stop Run of ${sweep.levelType || 'Liquidity'}`,
+                note: 'Stop Run',
                 startTime: Date.now() / 1000,
                 endTime: Date.now() / 1000 + 3600 * 4
             }
@@ -98,17 +98,18 @@ export class StopRunAccumulation extends StrategyBase {
             : sweep.high + buffer; // Wick high
 
         annotations.push(new TargetProjection(stopLoss, 'STOP_LOSS', {
-            label: `Invalidation`
+            label: `SL: ${stopLoss.toFixed(5)}`
         }));
 
-        // Targets: Return to range mean or opposite liquidity
-        const risk = Math.abs(entryZone.getOptimalEntry() - stopLoss);
-        const t1 = direction === 'LONG' ? entryZone.getOptimalEntry() + (risk * 3) : entryZone.getOptimalEntry() - (risk * 3);
-
-        annotations.push(new TargetProjection(t1, 'TARGET_1', {
-            label: 'Range Reversion (3R)',
-            riskReward: 3.0
-        }));
+        // Standardized Targets using regime-aware logic
+        const targets = this.generateStandardTargets(entryZone.getOptimalEntry(), stopLoss, marketState.liquidityPools, direction, marketState);
+        targets.forEach((t, i) => {
+            annotations.push(new TargetProjection(t.price, `TARGET_${i + 1}`, {
+                label: t.label,
+                riskReward: t.riskReward,
+                probability: i === 0 ? 0.75 : 0.50
+            }));
+        });
 
         return annotations;
     }
