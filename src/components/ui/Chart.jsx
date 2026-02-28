@@ -490,6 +490,14 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                         const finalStrokeWidth = strokeWidth * convictionScale;
                         const isHighConviction = conviction > 85;
 
+                        // Prediction-Visual Integration (Phase 45)
+                        const timing = path.timing || 'STANDARD';
+                        const isHighVol = path.volatility?.level === 'HIGH';
+                        const flowDuration = timing === 'IMMINENT' ? '1.5s' : (timing === 'DELAYED' ? '8s' : '4s');
+
+                        // Ensure dashArray is set for flow animation even on solid paths
+                        const activeDashArray = dashArray === 'none' ? '12,6' : dashArray;
+
                         return (
                             <g key={path.id || i}>
                                 {/* Path Shadow/Outer Glow */}
@@ -509,13 +517,17 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                                     fill="none"
                                     stroke={path.color || (normDir === 'BULLISH' ? 'url(#long-gradient)' : 'url(#short-gradient)')}
                                     strokeWidth={finalStrokeWidth}
-                                    strokeDasharray={dashArray}
-                                    opacity={opacity}
+                                    strokeDasharray={activeDashArray}
+                                    opacity={opacity * (conviction / 100)}
                                     markerEnd={`url(#${arrowId})`}
                                     filter={isHighConviction ? 'url(#neon-glow)' : 'none'}
                                     style={{
                                         transition: 'all 0.3s ease-out',
-                                        animation: isHighConviction ? 'pulse 2s infinite ease-in-out' : 'none'
+                                        animation: [
+                                            `flow-path ${flowDuration} linear infinite`,
+                                            isHighVol ? 'volatility-flicker 0.15s infinite ease-in-out' : '',
+                                            isHighConviction ? 'pulse 2s infinite ease-in-out' : ''
+                                        ].filter(Boolean).join(', ')
                                     }}
                                 />
                                 {/* Path Labels */}
@@ -880,12 +892,20 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                     opacity: 0.6;
                     border-style: dashed !important;
                 }
+                 @keyframes flow-path {
+                    to { stroke-dashoffset: -18; }
+                }
+                @keyframes volatility-flicker {
+                    0% { opacity: 0.7; }
+                    50% { opacity: 1; }
+                    100% { opacity: 0.7; }
+                }
                 .animate-pulse {
                     animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
                 }
                 @keyframes pulse {
-                    0%, 100% { opacity: 1; }
-                    50% { opacity: .5; }
+                    0%, 100% { opacity: 1; filter: brightness(1); }
+                    50% { opacity: 0.7; filter: brightness(1.3); }
                 }
             `}</style>
 

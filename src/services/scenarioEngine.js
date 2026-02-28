@@ -266,6 +266,8 @@ export class ScenarioEngine {
                 points: this.generatePathway(marketState, scenarios.primary, annotations, volProfile, primarySetup, orderBook),
                 label: scenarios.primary.label,
                 probability: scenarios.primary.probability,
+                timing: scenarios.primary.expansionTiming,
+                volatility: marketState.volatility,
                 isWaiting: scenarios.isWaiting
             });
         }
@@ -278,7 +280,9 @@ export class ScenarioEngine {
                 direction: scenarios.alternate.bias,
                 points: this.generatePathway(marketState, scenarios.alternate, annotations, volProfile, secondarySetup, orderBook),
                 label: scenarios.alternate.label,
-                probability: scenarios.alternate.probability
+                probability: scenarios.alternate.probability,
+                timing: 'STANDARD', // Alternates usually follow standard timing
+                volatility: marketState.volatility
             });
         }
 
