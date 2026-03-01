@@ -331,7 +331,9 @@ export class AnnotationMapper {
                     style: anno.style || 'SOLID', // Pass SOLID/DASHED/DOTTED
                     direction: anno.direction,
                     isWaiting: anno.isWaiting,
-                    probability: anno.probability || anno.metadata?.probability || 70 // Pass conviction for visual scaling
+                    probability: anno.probability || anno.metadata?.probability || 70, // Pass conviction for visual scaling
+                    timing: anno.timing, // Preserve expansion timing (IMMINENT, DELAYED)
+                    volatility: anno.volatility // Preserve volatility context
                 });
 
                 // DEBUG: Log scenario paths
