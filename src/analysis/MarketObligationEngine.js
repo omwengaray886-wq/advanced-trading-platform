@@ -102,48 +102,45 @@ export class MarketObligationEngine {
 
         // 1. Distance Factor (Closer = Higher Score)
         const distPercent = Math.abs(currentPrice - pool.price) / currentPrice * 100;
-        if (distPercent < 0.5) score += 25;       // Immediate proximity
+        if (distPercent < 0.3) score += 35;       // Immediate proximity (Magnet lock)
+        else if (distPercent < 0.8) score += 20;
         else if (distPercent < 2.0) score += 10;
-        else if (distPercent > 5.0) score -= 20;  // Too far
+        else if (distPercent > 5.0) score -= 25;  // Too far
 
-        // 2. Engineering (Equal Highs/Lows are engineered inducements)
-        // CRITICAL WEIGHT: These are primary institutional targets
+        // 2. Structural Significance (Phase 75 Upgrade)
+        // HTF levels and Session Highs/Lows are primary institutional targets
+        if (pool.isHTF) score += 25;
+        if (pool.isSessionLevel) score += 20;
+        if (pool.isPreviousDayLevel) score += 15;
+
+        // 3. Engineering (Equal Highs/Lows are engineered inducements)
         if (pool.isEqualHighs || pool.isEqualLows) {
-            score += 45; // Boosted from 35 for Phase 73
+            score += 45;
         }
 
-        // 2.2 Symmetry Detection (Phase 73 Upgrade)
-        // If a sweep has occurred on the opposite side, this side becomes a magnetized target.
+        // 4. Symmetry Detection
         const lastSweep = marketState.liquiditySweep;
         if (lastSweep) {
             const isOppositeSide = (lastSweep.side === 'ABOVE' && pool.type === 'SELL_SIDE') ||
                 (lastSweep.side === 'BELOW' && pool.type === 'BUY_SIDE');
             if (isOppositeSide) {
-                // If top was swept, bottom is a 'Market Obligation' to maintain symmetry
-                score += 30;
+                score += 30; // Magnetized to maintain symmetry
             }
         }
 
-        // 2.5 Time Pressure (Aging)
-        // Pools that persist for many candles become "Obvious" magnets
-        const age = pool.age || 0;
-        if (age > 200) score += 15;
-        else if (age > 50) score += 5;
-
-        // 3. Trend Compatibility (Easier to take liquidity WITH trend)
+        // 5. Trend & Momentum Compatibility
         const trend = marketState.trend?.direction || 'NEUTRAL';
         const isWithTrend = (trend === 'BULLISH' && pool.type === 'BUY_SIDE') ||
             (trend === 'BEARISH' && pool.type === 'SELL_SIDE');
 
         if (isWithTrend) score += 15;
-        else score -= 15; // Harder to take counter-trend liquidity without a reversal setup
+        else score -= 10;
 
-        // 4. Volume Profile / Cluster Confluence (Layer 3)
-        // If a pool sits right at a Naked POC or High Volume Node, its magnet strength is massive
-        const hasCluster = marketState.nPOCs?.some(npoc => Math.abs(npoc.price - pool.price) / pool.price < 0.001) ||
-            marketState.hvns?.some(hvn => Math.abs(hvn.price - pool.price) / pool.price < 0.001);
+        // 6. Volume Profile Confluence
+        const hasCluster = marketState.nPOCs?.some(npoc => Math.abs(npoc.price - pool.price) / pool.price < 0.0005) ||
+            marketState.hvns?.some(hvn => Math.abs(hvn.price - pool.price) / pool.price < 0.0005);
 
-        if (hasCluster) score += 20;
+        if (hasCluster) score += 25;
 
         return Math.min(Math.max(score, 0), 100);
     }

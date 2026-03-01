@@ -556,15 +556,24 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                     const isHTF = zone.isHTF;
                     const role = zone.role || 'NEUTRAL'; // DEFENSE, BREAKTHROUGH, REACTION, INVALIDATION_FLIP
 
+                    const isLiquidity = zone.isLiquidity;
+                    const isGhost = zone.isGhost || isLiquidity;
+
                     // Dynamic Border Logic based on Role
-                    let borderStyle = '1px solid';
+                    let borderStyle = isGhost ? '0.5px solid' : '1px solid';
                     if (role === 'INVALIDATION_FLIP') borderStyle = '1px dashed';
                     else if (role === 'DEFENSE') borderStyle = '2px solid';
                     else if (isHTF) borderStyle = '4px double';
 
-                    // Opacity Override
-                    const bg = role === 'BREAKTHROUGH' ? 'transparent' : zone.color;
                     const borderColor = zone.borderColor || zone.color;
+
+                    // Ghost/Professional Background: Fading gradient to keep chart clean
+                    const isBSL = zone.label?.includes('BSL');
+                    const isSSL = zone.label?.includes('SSL');
+                    const gradientDir = isBSL ? 'to bottom' : 'to top';
+                    const bg = isGhost
+                        ? `linear-gradient(${gradientDir}, ${zone.color}, transparent)`
+                        : (role === 'BREAKTHROUGH' ? 'transparent' : zone.color);
 
                     return (
                         <div
@@ -574,31 +583,39 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                                 ...zone.style,
                                 background: bg,
                                 border: `${borderStyle} ${borderColor}`,
+                                borderLeft: 'none',
+                                borderRight: 'none',
                                 boxShadow: isConfluence ? `0 0 15px ${borderColor}, inset 0 0 10px ${borderColor}` : 'none',
-                                animation: isConfluence ? 'pulse-confluence 2s infinite ease-in-out' : 'none',
+                                animation: isLiquidity ? 'magnet-pulse 3s infinite ease-in-out' : (isConfluence ? 'pulse-confluence 2s infinite ease-in-out' : 'none'),
                                 display: 'flex',
-                                alignItems: 'flex-start',
-                                justifyContent: 'center',
+                                alignItems: 'center',
+                                justifyContent: 'flex-end', // Anchor labels to the right
                                 zIndex: 1,
-                                borderRadius: '2px',
-                                transition: 'all 0.3s ease'
+                                borderRadius: '0px',
+                                transition: 'all 0.3s ease',
+                                opacity: isGhost ? 0.4 : 1
                             }}
                         >
                             {(zone.label || role !== 'NEUTRAL') && (
                                 <span style={{
-                                    background: borderColor,
-                                    color: 'white',
-                                    padding: '2px 6px',
+                                    background: 'rgba(15, 23, 42, 0.8)',
+                                    color: borderColor,
+                                    padding: '1px 6px',
                                     fontSize: '9px',
-                                    fontWeight: '700',
-                                    borderRadius: '0 0 4px 4px',
+                                    fontWeight: '800',
+                                    borderRadius: '4px',
                                     whiteSpace: 'nowrap',
                                     display: 'flex',
                                     gap: '4px',
-                                    alignItems: 'center'
+                                    alignItems: 'center',
+                                    marginRight: '-10px', // Pull towards right edge
+                                    border: `1px solid ${borderColor}`,
+                                    backdropFilter: 'blur(4px)',
+                                    zIndex: 2,
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
                                 }}>
                                     <span>{zone.label}</span>
-                                    {role !== 'NEUTRAL' && role !== 'REACTION' && (
+                                    {role !== 'NEUTRAL' && role !== 'REACTION' && !isGhost && (
                                         <span style={{ opacity: 0.8, fontSize: '8px', textTransform: 'uppercase' }}>
                                             | {role.replace('_', ' ')}
                                         </span>
@@ -606,7 +623,7 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                                 </span>
                             )}
                         </div>
-                    )
+                    );
                 })}
 
                 {/* Render Labels/Callouts */}
@@ -875,6 +892,11 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
 
             {/* Institutional Styles Overlay */}
             <style>{`
+                @keyframes magnet-pulse {
+                    0% { opacity: 0.3; filter: saturate(1); }
+                    50% { opacity: 0.6; filter: saturate(2) brightness(1.2); }
+                    100% { opacity: 0.3; filter: saturate(1); }
+                }
                 @keyframes pulse-confluence {
                     0% { box-shadow: 0 0 10px rgba(255, 215, 0, 0.4); }
                     50% { box-shadow: 0 0 25px rgba(255, 215, 0, 0.8), inset 0 0 15px rgba(255, 215, 0, 0.4); }

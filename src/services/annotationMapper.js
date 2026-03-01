@@ -77,6 +77,15 @@ export class AnnotationMapper {
                     config.background = 'rgba(167, 139, 250, 0.1)';
                     config.borderColor = '#a78bfa';
                     break;
+                case 'BUY_SIDE_LIQUIDITY':
+                case 'SELL_SIDE_LIQUIDITY':
+                    const isBSL = anno.type === 'BUY_SIDE_LIQUIDITY';
+                    config.background = isBSL ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)';
+                    config.borderColor = isBSL ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+                    config.icon = isBSL ? '⇡ BSL' : '⇣ SSL';
+                    config.isGhost = true; // Flag for minimalist rendering
+                    config.isLiquidity = true;
+                    break;
                 case 'CONFLUENCE_ZONE':
                     config.icon = '🎯';
                     config.borderColor = '#f472b6'; // Pink
@@ -136,7 +145,7 @@ export class AnnotationMapper {
                 'ORDER_BLOCK', 'FAIR_VALUE_GAP', 'LIQUIDITY_ZONE', 'LIQUIDITY_SWEEP_ZONE',
                 'STRUCTURE_ZONE', 'CONFLUENCE_ZONE', 'PREMIUM_DISCOUNT_ZONE', 'CHOCH_ZONE', 'FVG', 'TRAP_ZONE',
                 'DARK_POOL', 'VOLATILITY_CORRIDOR', 'ORDER_BOOK_WALL', 'NEWS_IMPACT_ZONE', 'INVALIDATION_ZONE',
-                'LIQUIDITY_HEATMAP_BLOCK'
+                'LIQUIDITY_HEATMAP_BLOCK', 'BUY_SIDE_LIQUIDITY', 'SELL_SIDE_LIQUIDITY'
             ].includes(anno.type)) {
 
 
@@ -150,6 +159,12 @@ export class AnnotationMapper {
                     const halfWidth = (coords.width || 0.001) / 2;
                     y1 = coords.price - halfWidth;
                     y2 = coords.price + halfWidth;
+                } else if (anno.type.includes('LIQUIDITY') && (anno.price || coords.price)) {
+                    // Phase 75: Native Obligation Support
+                    const p = anno.price || coords.price;
+                    const halfWidth = (coords.width || p * 0.0005); // Tiny ultra-thin zone
+                    y1 = p - halfWidth;
+                    y2 = p + halfWidth;
                 } else if (anno.type === 'STRUCTURE_ZONE' && coords.center) {
                     y1 = coords.bottom;
                     y2 = coords.top;
@@ -163,11 +178,14 @@ export class AnnotationMapper {
                     y2: y2,
                     color: visuals.background,
                     borderColor: visuals.borderColor,
-                    label: anno.type === 'ENTRY_ZONE' ? visuals.icon : `${visuals.icon} ${anno.type.replace('_ZONE', '').replace('_', ' ')}`,
+                    label: anno.type.includes('LIQUIDITY') ? visuals.icon : (anno.type === 'ENTRY_ZONE' ? visuals.icon : `${visuals.icon} ${anno.type.replace('_ZONE', '').replace('_', ' ')}`),
                     isHTF: visuals.isHTF,
+                    isGhost: visuals.isGhost,
+                    isLiquidity: visuals.isLiquidity,
                     isConfluence: anno.type === 'CONFLUENCE_ZONE',
                     state: anno.state,
-                    role: anno.type === 'TRAP_ZONE' ? 'INVALIDATION_FLIP' : (anno.role || anno.intent || 'NEUTRAL') // Trap zones use dashed border
+                    urgency: anno.urgency,
+                    role: anno.type === 'TRAP_ZONE' ? 'INVALIDATION_FLIP' : (anno.role || anno.intent || 'NEUTRAL')
                 });
 
                 // DEBUG: Log entry zones

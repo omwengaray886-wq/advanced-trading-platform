@@ -345,7 +345,14 @@ export class ScenarioEngine {
 
         let target = setup?.targets?.[0]?.price || (isBullish ? currentPrice * 1.02 : currentPrice * 0.98);
 
-        if (orderBook) {
+        // Phase 75: Institutional Liquidity Targeting
+        const obligation = marketState.obligations?.primaryObligation;
+        if (obligation && (obligation.type === 'BUY_SIDE_LIQUIDITY' || obligation.type === 'SELL_SIDE_LIQUIDITY')) {
+            const obDir = obligation.price > currentPrice ? 'BULLISH' : 'BEARISH';
+            if (obDir === normalizedBias) {
+                target = obligation.price;
+            }
+        } else if (orderBook) {
             const clusters = LiquidityMapService.findClusters(orderBook);
             const relevantWalls = isBullish ? clusters.sellClusters : clusters.buyClusters;
             const biggestWall = relevantWalls.sort((a, b) => b.quantity - a.quantity)[0];
@@ -361,19 +368,24 @@ export class ScenarioEngine {
         const velocity = marketState.velocity || 1.0;
         let targetOffset = Math.max(8, Math.min(25, Math.round(15 / velocity)));
 
-        // Volume-Weighted Acceleration (Phase 50 Upgrade)
+        // Phase 50: Volume-Weighted Acceleration
         if (volProfile) {
             const distToPOC = Math.abs(currentPrice - volProfile.poc) / currentPrice;
-            if (distToPOC < 0.01) {
-                // High volume area = Slower price action
-                targetOffset *= 1.3;
-            } else {
-                // Low volume area = Faster acceleration
-                targetOffset *= 0.8;
-            }
+            if (distToPOC < 0.01) targetOffset *= 1.3;
+            else targetOffset *= 0.8;
         }
 
-        points.push({ price: target, type: 'TARGET', label: 'Target', barsOffset: Math.round(targetOffset) });
+        const targetLabel = (obligation && obligation.price === target)
+            ? (obligation.type === 'BUY_SIDE_LIQUIDITY' ? 'BSL Raid' : 'SSL Raid')
+            : 'Target';
+
+        points.push({
+            price: target,
+            type: 'TARGET',
+            label: targetLabel,
+            barsOffset: Math.round(targetOffset),
+            isLiquidityRaid: !!(obligation && obligation.price === target)
+        });
 
         return points;
     }
