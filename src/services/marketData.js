@@ -134,6 +134,8 @@ export class MarketDataService {
         this.isClosing = false;
         this.pendingClose = false;
         this.requestCache = new Map(); // Phase 42: Request deduplication
+        this.depthRequestCache = new Map(); // Phase 75: Order Book deduplication
+        this.lastDepthFetch = new Map(); // Phase 75: Throttling
     }
 
     /**
@@ -228,30 +230,60 @@ export class MarketDataService {
     /**
      * Fetch Order Book Snapshot (REST)
      */
-    async fetchOrderBook(symbol, limit = 20) {
-        try {
-            const mappedSymbol = mapSymbol(symbol);
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
-            const res = await fetch(`${BINANCE_REST_BASE}/depth?symbol=${mappedSymbol}&limit=${limit}`, {
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-            if (!res.ok) throw new Error(`Binance Depth API error: ${res.statusText}`);
-            const data = await res.json();
-            return {
-                bids: data.bids.map(b => ({ price: parseFloat(b[0]), quantity: parseFloat(b[1]) })),
-                asks: data.asks.map(a => ({ price: parseFloat(a[0]), quantity: parseFloat(a[1]) })),
-                lastUpdateId: data.lastUpdateId
-            };
-        } catch (error) {
-            if (error.name === 'AbortError') {
-                console.log(`[MarketData] Order book fetch aborted for ${symbol}`);
-                return null;
-            }
-            console.error('Failed to fetch Order Book:', error.message);
+    fetchOrderBook(symbol, limit = 20) {
+        const mappedSymbol = mapSymbol(symbol);
+        const cacheKey = `${mappedSymbol}_${limit}`;
+
+        // 1. Deduplicate inflight requests
+        if (this.depthRequestCache.has(cacheKey)) {
+            return this.depthRequestCache.get(cacheKey);
+        }
+
+        // 2. Throttle: Don't fetch the same symbol depth more than once every 2 seconds
+        const now = Date.now();
+        const lastFetch = this.lastDepthFetch.get(cacheKey) || 0;
+        if (now - lastFetch < 2000) {
+            // console.log(`[MarketData] Throttling depth fetch for ${symbol}`);
             return null;
         }
+
+        const requestPromise = (async () => {
+            try {
+                this.lastDepthFetch.set(cacheKey, now);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+
+                const res = await fetch(`${BINANCE_REST_BASE}/depth?symbol=${mappedSymbol}&limit=${limit}`, {
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!res.ok) throw new Error(`Binance Depth API error: ${res.statusText}`);
+
+                const data = await res.json();
+                const formatted = {
+                    bids: data.bids.map(b => ({ price: parseFloat(b[0]), quantity: parseFloat(b[1]) })),
+                    asks: data.asks.map(a => ({ price: parseFloat(a[0]), quantity: parseFloat(a[1]) })),
+                    lastUpdateId: data.lastUpdateId
+                };
+
+                return formatted;
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    // console.log(`[MarketData] Order book fetch aborted for ${symbol}`);
+                    return null;
+                }
+                console.error('Failed to fetch Order Book:', error.message);
+                return null;
+            } finally {
+                // Clear from inflight cache
+                this.depthRequestCache.delete(cacheKey);
+            }
+        })();
+
+        this.depthRequestCache.set(cacheKey, requestPromise);
+        return requestPromise;
     }
 
     connect(symbol = 'btcusdt', interval = '1h') {

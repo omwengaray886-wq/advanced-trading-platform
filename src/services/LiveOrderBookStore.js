@@ -2,68 +2,90 @@ import { marketData } from './marketData.js';
 
 /**
  * Live Order Book Store
- * Maintains a persistent, zero-latency WebSocket depth stream for analysis.
+ * Maintains persistent, zero-latency WebSocket depth streams for analysis.
+ * Now supports multi-symbol tracking to prevent thrashering during background scans.
  */
 class LiveOrderBookStore {
     constructor() {
-        this.currentSymbol = null;
-        this.unsubscribe = null;
-        this.lastSnapshot = null;
-        this.lastUpdateTime = 0;
-        this.latency = 0;
+        this.subscriptions = new Map(); // symbol -> { unsubscribe, lastSnapshot, lastUpdateTime, latency }
+        this.maxSymbols = 5;
     }
 
     /**
      * Start tracking a symbol's depth
      */
     track(symbol) {
-        if (this.currentSymbol === symbol) return;
+        if (this.subscriptions.has(symbol)) return;
 
-        // Cleanup existing
-        this.stop();
+        // FIFO Cleanup if we exceed max symbols
+        if (this.subscriptions.size >= this.maxSymbols) {
+            const firstSymbol = this.subscriptions.keys().next().value;
+            this.stop(firstSymbol);
+        }
 
-        this.currentSymbol = symbol;
-        console.log(`LiveOrderBookStore: Tracking ${symbol} (100ms frequency)`);
+        console.log(`LiveOrderBookStore: Initializing stream for ${symbol} (100ms frequency)`);
 
-        this.unsubscribe = marketData.subscribeToDepth(symbol, (depth) => {
-            this.latency = Date.now() - this.lastUpdateTime;
-            this.lastSnapshot = depth;
-            this.lastUpdateTime = Date.now();
+        const subData = {
+            unsubscribe: null,
+            lastSnapshot: null,
+            lastUpdateTime: 0,
+            latency: 0
+        };
+
+        subData.unsubscribe = marketData.subscribeToDepth(symbol, (depth) => {
+            subData.latency = Date.now() - subData.lastUpdateTime;
+            subData.lastSnapshot = depth;
+            subData.lastUpdateTime = Date.now();
         });
+
+        this.subscriptions.set(symbol, subData);
     }
 
     /**
      * Get the current instant snapshot for analysis
      */
-    getSnapshot() {
+    getSnapshot(symbol) {
+        const sub = this.subscriptions.get(symbol);
+        if (!sub) return null;
+
         // If data is older than 5 seconds, consider it stale
-        if (Date.now() - this.lastUpdateTime > 5000) {
+        if (Date.now() - sub.lastUpdateTime > 5000) {
             return null;
         }
-        return this.lastSnapshot;
+        return sub.lastSnapshot;
     }
 
     /**
-     * Get real-time health stats
+     * Get real-time health stats for a symbol
      */
-    getStats() {
+    getStats(symbol) {
+        const sub = this.subscriptions.get(symbol);
+        if (!sub) return { isLive: false };
+
         return {
-            latency: this.latency,
-            lastUpdate: this.lastUpdateTime,
-            isLive: !!this.lastSnapshot && (Date.now() - this.lastUpdateTime < 2000)
+            latency: sub.latency,
+            lastUpdate: sub.lastUpdateTime,
+            isLive: !!sub.lastSnapshot && (Date.now() - sub.lastUpdateTime < 2000)
         };
     }
 
     /**
-     * Stop tracking
+     * Stop tracking a specific symbol or all
      */
-    stop() {
-        if (this.unsubscribe) {
-            this.unsubscribe();
-            this.unsubscribe = null;
+    stop(symbol = null) {
+        if (symbol) {
+            const sub = this.subscriptions.get(symbol);
+            if (sub && sub.unsubscribe) {
+                sub.unsubscribe();
+            }
+            this.subscriptions.delete(symbol);
+        } else {
+            // Stop all
+            this.subscriptions.forEach(sub => {
+                if (sub.unsubscribe) sub.unsubscribe();
+            });
+            this.subscriptions.clear();
         }
-        this.lastSnapshot = null;
-        this.currentSymbol = null;
     }
 }
 

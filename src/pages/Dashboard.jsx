@@ -163,7 +163,9 @@ export default function Dashboard() {
                                 await addDoc(collection(db, "tradeSetups"), result);
                                 console.log(`[BackgroundScanner] Successfully scanned ${sym}`);
                             }
-                        }
+                        },
+                        10000,
+                        true // isLight: Phase 75 Optimization
                     );
                 }
             } catch (e) {

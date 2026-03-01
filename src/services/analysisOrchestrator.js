@@ -441,14 +441,12 @@ export class AnalysisOrchestrator {
             if (!isLight) {
                 try {
                     // Use instant snapshot from Live Store instead of REST polling
-                    let depth = liveOrderBookStore.getSnapshot();
+                    let depth = liveOrderBookStore.getSnapshot(symbol);
 
                     // Phase 3 Stability: Fallback to REST if WS is still connecting/warming up
                     if (!depth) {
                         console.log(`[Orchestrator] WS Depth for ${symbol} unavailable. Falling back to REST...`);
                         depth = await marketData.fetchOrderBook(symbol);
-                        // Optional: Feed back to store to keep it warm
-                        if (depth) liveOrderBookStore.lastSnapshot = depth;
                     }
 
                     if (depth) {

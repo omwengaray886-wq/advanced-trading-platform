@@ -20,11 +20,15 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
  * @param {string} symbol - Trading pair
  * @param {string} timeframe - Chart timeframe
  * @param {string} manualStrategyName - Optional manual strategy override
+ * @param {string} mode - Analysis mode (ADVANCED, SIMPLE)
+ * @param {function} onPartialResult - Callback for streaming updates
+ * @param {number} accountSize - Risk calculation base
+ * @param {boolean} isLight - If true, skips Stage 2 Deep-Dive and AI (Phase 75 Optimization)
  * @returns {Object} - Complete analysis with annotations and explanations
  */
-export async function generateTradeAnalysis(chartData, symbol, timeframe = '1H', manualStrategyName = null, mode = 'ADVANCED', onPartialResult = null, accountSize = 10000) {
+export async function generateTradeAnalysis(chartData, symbol, timeframe = '1H', manualStrategyName = null, mode = 'ADVANCED', onPartialResult = null, accountSize = 10000, isLight = false) {
     try {
-        console.log(`Starting analysis for ${symbol} (${timeframe}) with ${chartData.length} candles...`);
+        console.log(`Starting ${isLight ? 'LIGHT' : 'FULL'} analysis for ${symbol} (${timeframe}) with ${chartData.length} candles...`);
 
         const buildResponse = (analysisObj, exp) => {
             const primarySetup = analysisObj.setups?.[0] || { strategy: 'N/A', direction: 'NEUTRAL', suitability: 0 };
@@ -113,6 +117,11 @@ export async function generateTradeAnalysis(chartData, symbol, timeframe = '1H',
 
         if (onPartialResult) {
             onPartialResult(buildResponse(fastAnalysis, fastExplanation));
+        }
+
+        // Optimization: Return Stage 1 results if in light mode
+        if (isLight) {
+            return buildResponse(fastAnalysis, fastExplanation);
         }
 
         // Stage 2: Full Deep-Dive Pass (Enriched)
