@@ -2366,7 +2366,7 @@ export class AnalysisOrchestrator {
      */
     async calculateOverallConfidence(marketState, strategySuitability, setup = null) {
         const regimeConfidence = marketState.confidence || 0.5;
-        const trendStrength = marketState.trend.strength || 0.5;
+        const trendStrength = marketState.trend?.strength || 0.5;
 
         let score = (regimeConfidence * 0.3 + strategySuitability * 0.5 + trendStrength * 0.2);
 
@@ -2380,11 +2380,14 @@ export class AnalysisOrchestrator {
         }
 
         // Phase 17: Portfolio Risk Validation
-        if (setup && setup.entry && setup.stopLoss) {
+        const symbol = marketState.symbol || 'UNKNOWN';
+        const entry = setup?.entryZone?.optimal || setup?.entry;
+
+        if (setup && entry && setup.stopLoss) {
             try {
                 const validation = await portfolioRiskService.validateTrade({
                     symbol: symbol,
-                    entry: setup.entry,
+                    entry: entry,
                     stopLoss: setup.stopLoss
                 });
 
@@ -2393,17 +2396,12 @@ export class AnalysisOrchestrator {
                 if (!validation.approved) {
                     console.log(`[Risk] Trade Rejected for ${symbol}: ${validation.reason}`);
                     // Downgrade confidence or invalidate
-                    score = 0;
+                    score = 0.05; // 5% floor to show *something* was analyzed
                     marketState.signal = 'NEUTRAL'; // Force clear signal
 
                     // Add annotation explaining rejection
-                    baseAnnotations.push({
-                        type: 'RISK_REJECTION',
-                        id: `risk-reject-${Date.now()}`,
-                        coordinates: { time: candles[candles.length - 1].time, price: setup.entry },
-                        metadata: { reason: validation.reason, code: validation.code },
-                        getLabel: () => `⛔ RISK REJECT: ${validation.reason}`
-                    });
+                    // (Assuming baseAnnotations is available in scope or needs to be handled differently)
+                    // In this context, it might be better to just return the score and let the caller handle UI
                 } else if (validation.sizing) {
                     setup.suggestedPositionSize = validation.sizing;
                 }
@@ -2412,8 +2410,9 @@ export class AnalysisOrchestrator {
             }
         }
 
-        return score;
+        return Math.max(0.1, score);
     }
+
 
     /**
      * Phase 40: Timeframe Stacking Logic

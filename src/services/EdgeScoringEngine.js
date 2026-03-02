@@ -85,7 +85,7 @@ export class EdgeScoringEngine {
         }
 
         // 1. Bayesian Strategy Reliability (up to 40 points)
-        const reliability = (bayesianStats?.probability || 0.5) * 100;
+        const reliability = (bayesianStats?.probability || 0.55) * 100; // Baseline 55% for unknown strategies
 
         if (reliability >= 80) {
             totalPoints += 40;
@@ -93,9 +93,13 @@ export class EdgeScoringEngine {
         } else if (reliability >= 65) {
             totalPoints += 25;
             positives.push(`Strong Strategy Reliability (${reliability ? reliability.toFixed(0) : '0'}%)`);
+        } else if (reliability >= 50) {
+            totalPoints += 15;
+            positives.push(`Standard Strategy Reliability (${reliability ? reliability.toFixed(0) : '0'}%)`);
         } else if (reliability < 50) {
             risks.push(`Low Strategy Reliability (${reliability ? reliability.toFixed(0) : '0'}%)`);
         }
+
 
         // 1.5 Adaptive Performance (Phase 5: Self-Correction)
         // If this strategy is currently losing money, penalize it.
@@ -648,11 +652,12 @@ export class EdgeScoringEngine {
             }
         }
 
-        // Resolution Score (1-10)
-        const score = (Math.max(0, Math.min(10, (totalPoints / 100) * 10)) || 0).toFixed(1);
+        // Resolution Score (0-100)
+        // Ensure valid setups have at least a 10% floor to avoid 0% UI display
+        const score = Math.max(10, Math.min(100, totalPoints));
 
         return {
-            score: parseFloat(score),
+            score: score,
             breakdown: {
                 positives,
                 risks
@@ -715,10 +720,10 @@ export class EdgeScoringEngine {
      * Get banding for the score
      */
     static getScoreLabel(score) {
-        if (score >= 8.0) return 'PREMIUM EDGE';
-        if (score >= 7.0) return 'STRONG EDGE';
-        if (score >= 6.0) return 'TRADABLE';
-        if (score >= 4.0) return 'LOW CONVICTION';
+        if (score >= 80) return 'PREMIUM EDGE';
+        if (score >= 70) return 'STRONG EDGE';
+        if (score >= 60) return 'TRADABLE';
+        if (score >= 40) return 'LOW CONVICTION';
         return 'NO EDGE';
     }
 

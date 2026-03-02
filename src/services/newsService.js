@@ -159,18 +159,10 @@ export class NewsService {
                 }
 
                 if (res.status === 503 || res.status === 429 || res.status === 403 || res.status === 404) {
-                    console.warn(`[NEWS] Calendar proxy unavailable or restricted (${res.status}). Using simulated fallback.`);
-                    return [
-                        new EconomicEvent({
-                            timestamp: Math.floor(Date.now() / 1000) + 3600,
-                            type: 'FOMC (Simulated)',
-                            impact: 'HIGH',
-                            asset: 'USD',
-                            bias: 'NEUTRAL',
-                            description: 'Simulated High Impact Event (Fallback)'
-                        })
-                    ];
+                    console.warn(`[NEWS] Calendar proxy unavailable or restricted (${res.status}). Returning cached data or empty.`);
+                    return cached ? cached.data : [];
                 }
+
                 return cached ? cached.data : [];
             }
 
