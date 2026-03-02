@@ -578,7 +578,23 @@ export default function Markets() {
             });
         });
 
+        // 1.3 Setup Specific Indicators (Arrows for each identified setup)
+        if (analysis.setups) {
+            analysis.setups.forEach(setup => {
+                const entryTime = setup.entryTime || (chartData[chartData.length - 1]?.time);
+                markers.push({
+                    time: entryTime,
+                    position: setup.direction === 'LONG' ? 'belowBar' : 'aboveBar',
+                    color: setup.direction === 'LONG' ? 'var(--color-success)' : 'var(--color-error)',
+                    shape: setup.direction === 'LONG' ? 'arrowUp' : 'arrowDown',
+                    text: `${setup.direction === 'LONG' ? 'BUY' : 'SELL'} ${setup.quantScore ? setup.quantScore.toFixed(0) : '0'}%`,
+                    size: 2
+                });
+            });
+        }
+
         // 2. Active Setup Price Lines
+
         if (activeSetup) {
             if (activeSetup.stopLoss) {
                 lines.push({
