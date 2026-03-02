@@ -259,13 +259,13 @@ export class ScenarioEngine {
 
         if (scenarios.primary) {
             visual.push({
-                id: `scenario_primary_${Date.now()}`,
+                id: `scenario_primary_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
                 type: 'SCENARIO_PATH',
                 style: scenarios.primary.style || 'BOLD',
                 direction: scenarios.primary.bias,
                 points: this.generatePathway(marketState, scenarios.primary, annotations, volProfile, primarySetup, orderBook),
                 label: scenarios.primary.label,
-                probability: scenarios.primary.probability,
+                probability: Math.round(scenarios.primary.probability * 100),
                 timing: scenarios.primary.expansionTiming,
                 volatility: marketState.volatility,
                 isWaiting: scenarios.isWaiting
@@ -274,13 +274,13 @@ export class ScenarioEngine {
 
         if (scenarios.alternate) {
             visual.push({
-                id: `scenario_alternate_${Date.now()}`,
+                id: `scenario_alternate_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
                 type: 'SCENARIO_PATH',
                 style: scenarios.alternate.style || 'DASHED',
                 direction: scenarios.alternate.bias,
                 points: this.generatePathway(marketState, scenarios.alternate, annotations, volProfile, secondarySetup, orderBook),
                 label: scenarios.alternate.label,
-                probability: scenarios.alternate.probability,
+                probability: Math.round(scenarios.alternate.probability * 100),
                 timing: 'STANDARD', // Alternates usually follow standard timing
                 volatility: marketState.volatility
             });

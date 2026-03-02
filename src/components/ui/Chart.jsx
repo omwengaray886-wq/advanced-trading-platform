@@ -485,7 +485,8 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                         const arrowId = normDir === 'BULLISH' ? 'arrowhead-long' : normDir === 'BEARISH' ? 'arrowhead-short' : 'arrowhead-gray';
 
                         // Conviction Scaling (High probability = bolder, brighter)
-                        const conviction = path.probability || 70;
+                        const rawProb = path.probability || 70;
+                        const conviction = rawProb <= 1.0 ? rawProb * 100 : rawProb;
                         const convictionScale = 0.5 + (conviction / 200); // 0.85 to 1.0 approx
                         const finalStrokeWidth = strokeWidth * convictionScale;
                         const isHighConviction = conviction > 85;
