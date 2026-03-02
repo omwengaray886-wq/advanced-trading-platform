@@ -594,12 +594,12 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                                 zIndex: 1,
                                 borderRadius: '0px',
                                 transition: 'all 0.3s ease',
-                                opacity: isGhost ? 0.4 : 1
+                                opacity: isGhost ? 0.2 : 1
                             }}
                         >
                             {(zone.label || role !== 'NEUTRAL') && (
                                 <span style={{
-                                    background: 'rgba(15, 23, 42, 0.8)',
+                                    background: isGhost ? 'rgba(15, 23, 42, 0.2)' : 'rgba(15, 23, 42, 0.5)',
                                     color: borderColor,
                                     padding: '1px 6px',
                                     fontSize: '9px',
@@ -745,7 +745,7 @@ export const Chart = ({ data, markers = [], lines = [], overlays = { zones: [], 
                             width: `${strip.intensity * 100}%`,
                             height: '2px',
                             background: strip.side === 'BID' ? '#10b981' : '#ef4444',
-                            opacity: 0.1 + (strip.intensity * 0.7),
+                            opacity: 0.05 + (strip.intensity * 0.4),
                             boxShadow: strip.intensity > 0.8 ? `0 0 8px ${strip.side === 'BID' ? '#10b981' : '#ef4444'}` : 'none',
                             transition: 'all 0.3s'
                         }} />

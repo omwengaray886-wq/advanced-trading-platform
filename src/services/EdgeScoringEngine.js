@@ -148,6 +148,37 @@ export class EdgeScoringEngine {
         const inKillzone = !!marketState.session?.killzone;
         const targetsObligation = marketState.obligations?.primaryObligation?.urgency > 70;
 
+        // Phase 16: Supply Dynamics (Whale Alerts & Exchange Flows)
+        const supplyDynamics = marketState.supplyDynamics;
+        if (supplyDynamics) {
+            const { whaleAlerts, exchangeFlows } = supplyDynamics;
+            if (setupDir === 'BULLISH' && exchangeFlows.netFlow < -1000) {
+                totalPoints += 15;
+                positives.push('🐳 Institutional Outflow (Supply Shock)');
+            } else if (setupDir === 'BEARISH' && exchangeFlows.netFlow > 1000) {
+                totalPoints += 15;
+                positives.push('🐳 Institutional Inflow (Liquidity Exit)');
+            }
+            if (whaleAlerts?.length > 0 && whaleAlerts[0].isReal) {
+                totalPoints += 10;
+                positives.push(`🐋 Active Whale Activity Detect (${whaleAlerts[0].from} -> ${whaleAlerts[0].to})`);
+            }
+        }
+
+        // Phase 5: COT Alignment (Institutional Positioning)
+        if (marketState.cot) {
+            const cot = marketState.cot;
+            const isAligned =
+                (setupDir === 'BULLISH' && (cot.interpretation === 'CONTRARIAN_BULLISH' || cot.interpretation === 'CONSENSUS_BULLISH')) ||
+                (setupDir === 'BEARISH' && (cot.interpretation === 'CONTRARIAN_BEARISH' || cot.interpretation === 'CONSENSUS_BEARISH'));
+
+            if (isAligned) {
+                const bonus = cot.interpretation.includes('CONTRARIAN') ? 15 : 10;
+                totalPoints += Math.floor(bonus * (cot.confidence || 0.5));
+                positives.push(`📈 COT Alignment: ${cot.interpretation}`);
+            }
+        }
+
         if (hasInstitutionalVolume) {
             totalPoints += 10;
             positives.push('Institutional volume participation');
@@ -156,20 +187,18 @@ export class EdgeScoringEngine {
             risks.push('Low Volume in Tracking Phase (Validation Risk)');
         }
         if (hasSMT) {
-            const smt = marketState.smtDivergence; // The specific divergence found
+            const smt = marketState.smtDivergence;
             const smtStrength = marketState.smtConfluence || 50;
-
             if (smt) {
                 const smtDir = normalizeDirection(smt.type);
                 if (smtDir === setupDir) {
-                    totalPoints += 35; // HUGELY Important signal
+                    totalPoints += 35;
                     positives.push(`🌟 SMT Divergence Confirmation (${smt.type} with ${smt.metadata?.sibling || 'Correlated Asset'})`);
                 } else {
-                    totalPoints -= 35; // Increased penalty for SMT conflict
+                    totalPoints -= 35;
                     risks.push(`SMT Divergence Conflict (${smt.type})`);
                 }
             } else {
-                // Fallback if we just have the array but no specific dominant one assigned
                 const smtBonus = smtStrength >= 80 ? 25 : 15;
                 totalPoints += smtBonus;
                 positives.push(`Inter-market divergence (SMT) ${smtStrength >= 80 ? 'PREMIUM' : 'DETECTED'}`);

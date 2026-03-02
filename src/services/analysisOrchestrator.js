@@ -543,14 +543,14 @@ export class AnalysisOrchestrator {
                 // Parallelize all advanced data fetching
                 const results = await Promise.all([
                     analyzeSentiment(symbol).catch(() => null),
-                    assetClass === 'CRYPTO' ? getOnChainMetrics(symbol).catch(() => null) : Promise.resolve(null),
-                    (assetClass === 'EQUITY' || assetClass === 'FOREX') ? analyzeOptionsFlow(symbol).catch(() => null) : Promise.resolve(null),
+                    assetClass === 'CRYPTO' ? getOnChainMetrics(symbol, candles).catch(() => null) : Promise.resolve(null),
+                    (assetClass === 'EQUITY' || assetClass === 'FOREX') ? analyzeOptionsFlow(symbol, candles).catch(() => null) : Promise.resolve(null),
                     getSeasonalityEdge(symbol, new Date()),
                     marketData.fetchOrderBook(symbol, 40).catch(() => null),
                     institutionalFlow.getAlphaScore(symbol).catch(() => null),
                     // New Phase 16 Data
-                    assetClass === 'CRYPTO' ? onChainService.getWhaleAlerts(symbol).catch(() => []) : Promise.resolve([]),
-                    assetClass === 'CRYPTO' ? onChainService.getRealExchangeFlows(symbol).catch(() => ({ netFlow: 0 })) : Promise.resolve({ netFlow: 0 })
+                    assetClass === 'CRYPTO' ? onChainService.getWhaleAlerts(symbol, candles).catch(() => []) : Promise.resolve([]),
+                    assetClass === 'CRYPTO' ? onChainService.getRealExchangeFlows(symbol, candles).catch(() => ({ netFlow: 0 })) : Promise.resolve({ netFlow: 0 })
                 ]);
 
                 [sentiment, onChain, optionsFlow, seasonality, orderBook, alphaFlow, whaleAlerts, exchangeFlows] = results;
@@ -1390,7 +1390,7 @@ export class AnalysisOrchestrator {
                         price: mag.price,
                         urgency: mag.urgency,
                         magnetType: mag.type,
-                        label: `🧲 ${mag.type.replace('_', ' ')} (${mag.urgency})`,
+                        label: `🧲 ${mag.type.includes('BUY') ? 'BSL' : 'SSL'} (${mag.urgency})`,
                         color: mag.type.includes('BULLISH') || mag.type.includes('BUY') ? '#00ff00' : '#ff0000',
                         style: 'DASHED',
                         visible: true

@@ -73,17 +73,19 @@ export class AnnotationMapper {
                     config.icon = '🔲';
                     break;
                 case 'LIQUIDITY_ZONE':
-                    config.icon = '🧲';
-                    config.background = 'rgba(167, 139, 250, 0.1)';
-                    config.borderColor = '#a78bfa';
+                    config.icon = '🧲 LIQ';
+                    config.background = 'rgba(167, 139, 250, 0.15)';
+                    config.borderColor = 'rgba(167, 139, 250, 0.4)';
+                    config.isGhost = true;
                     break;
                 case 'BUY_SIDE_LIQUIDITY':
                 case 'SELL_SIDE_LIQUIDITY':
-                    const isBSL = anno.type === 'BUY_SIDE_LIQUIDITY';
+                case 'MAGNET_LINE': // Also treat as liquidity for ghosting
+                    const isBSL = anno.type === 'BUY_SIDE_LIQUIDITY' || (anno.magnetType && anno.magnetType.includes('BUY'));
                     config.background = isBSL ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)';
-                    config.borderColor = isBSL ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+                    config.borderColor = isBSL ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)';
                     config.icon = isBSL ? '⇡ BSL' : '⇣ SSL';
-                    config.isGhost = true; // Flag for minimalist rendering
+                    config.isGhost = true;
                     config.isLiquidity = true;
                     break;
                 case 'CONFLUENCE_ZONE':
@@ -143,10 +145,10 @@ export class AnnotationMapper {
             if ([
                 'ENTRY_ZONE', 'SUPPLY_DEMAND_ZONE', 'CONSOLIDATION_ZONE',
                 'ORDER_BLOCK', 'FAIR_VALUE_GAP', 'LIQUIDITY_ZONE', 'LIQUIDITY_SWEEP_ZONE',
-                'STRUCTURE_ZONE', 'CONFLUENCE_ZONE', 'PREMIUM_DISCOUNT_ZONE', 'CHOCH_ZONE', 'FVG', 'TRAP_ZONE',
-                'DARK_POOL', 'VOLATILITY_CORRIDOR', 'ORDER_BOOK_WALL', 'NEWS_IMPACT_ZONE', 'INVALIDATION_ZONE',
-                'LIQUIDITY_HEATMAP_BLOCK', 'BUY_SIDE_LIQUIDITY', 'SELL_SIDE_LIQUIDITY'
+                'LIQUIDITY_HEATMAP_BLOCK', 'BUY_SIDE_LIQUIDITY', 'SELL_SIDE_LIQUIDITY', 'LIQUIDITY_SWEEP_ZONE'
             ].includes(anno.type)) {
+
+                if (anno.type === 'LIQUIDITY_SWEEP_ZONE') visuals.isGhost = true;
 
 
                 const startTime = coords.startTime || coords.time || (lastCandleTime - (interval * 10));

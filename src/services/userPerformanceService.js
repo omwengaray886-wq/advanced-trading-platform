@@ -78,64 +78,20 @@ export class UserPerformanceService {
             };
         }
 
-        // Bridge Tracker Stats to Performance View
+        // Combined real stats from PredictionTracker
         return {
             totalTrades: stats.total,
             winRate: stats.accuracy?.toFixed(1) || '0.0',
-            profitFactor: '1.85', // Derived from avgRR in tracker
-            totalReturn: '4.20',
-            sharpe: 2.1,
-            maxDrawdown: 4.1,
-            finalBalance: 10420,
-            equityCurve: [10000, 10100, 10050, 10200, 10420], // Simplified extraction
-            edgeAttribution: stats.edgeAttribution || { premium: 75, strong: 62, tradable: 55 },
-            byStrategy: [
-                { name: 'SMC/ICT', setups: 12, avgRR: 3.2 },
-                { name: 'Scalper Engine', setups: 8, avgRR: 2.1 }
-            ],
-            byMarket: [
-                { name: 'BTC/USDT', setups: 15 },
-                { name: 'EUR/USD', setups: 5 }
-            ]
+            profitFactor: stats.profitFactor?.toFixed(2) || '1.00',
+            totalReturn: stats.totalReturn?.toFixed(2) || '0.00',
+            sharpe: stats.sharpe || 0,
+            maxDrawdown: stats.maxDrawdown || 0,
+            finalBalance: 10000 + (stats.totalReturn || 0),
+            equityCurve: stats.equityCurve || [10000],
+            edgeAttribution: stats.edgeAttribution || { premium: 0, strong: 0, tradable: 0 },
+            byStrategy: stats.byStrategy || [],
+            byMarket: stats.byMarket || []
         };
-    }
-
-    /**
-     * Generate realistic mock trade history
-     */
-    _generateMockTrades() {
-        const trades = [];
-        let balance = 10000;
-        const now = Date.now();
-        const oneDay = 86400000;
-
-        for (let i = 0; i < 50; i++) {
-            // Randomized outcome based on a decent strategy (55% WR)
-            const isWin = Math.random() > 0.45;
-            const risk = 100; // $100 risk per trade
-            const reward = risk * (1.5 + Math.random()); // 1.5R to 2.5R
-
-            const pnl = isWin ? reward : -risk;
-
-            // Introduce some "execution errors" (slippage/tilt) occasionally
-            const isError = Math.random() > 0.9;
-            const finalPnl = isError && !isWin ? pnl * 1.2 : pnl; // Fat finger loss
-
-            balance += finalPnl;
-
-            trades.push({
-                id: `trade-${i}`,
-                symbol: Math.random() > 0.5 ? 'BTC/USDT' : 'ETH/USDT',
-                side: Math.random() > 0.5 ? 'LONG' : 'SHORT',
-                entryTime: now - ((50 - i) * oneDay),
-                closeTime: now - ((50 - i) * oneDay) + 14400000,
-                entryPrice: 50000 + (Math.random() * 10000),
-                pnl: finalPnl,
-                status: 'CLOSED',
-                strategy: Math.random() > 0.3 ? 'SMC' : 'Scalper'
-            });
-        }
-        return trades;
     }
 }
 

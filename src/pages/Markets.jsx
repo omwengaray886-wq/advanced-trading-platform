@@ -565,6 +565,19 @@ export default function Markets() {
             });
         }
 
+        // 1.2 Global Signals (Buy/Sell Arrows)
+        const currentSymbol = resolveSymbol(selectedPair);
+        globalSignals.filter(sig => sig.symbol === currentSymbol).forEach(sig => {
+            markers.push({
+                time: Math.floor(sig.timestamp / 1000),
+                position: sig.direction === 'BULLISH' ? 'belowBar' : 'aboveBar',
+                color: sig.direction === 'BULLISH' ? '#10b981' : '#ef4444',
+                shape: sig.direction === 'BULLISH' ? 'arrowUp' : 'arrowDown',
+                text: `${sig.direction === 'BULLISH' ? 'BUY' : 'SELL'} @ ${sig.entry.toFixed(getPrecision(selectedPair))}`,
+                size: 2
+            });
+        });
+
         // 2. Active Setup Price Lines
         if (activeSetup) {
             if (activeSetup.stopLoss) {
@@ -760,7 +773,7 @@ export default function Markets() {
         });
 
         return { markers, lines, overlays };
-    }, [analysis, chartData, activeSetupId, indicators]);
+    }, [analysis, chartData, activeSetupId, indicators, globalSignals]);
 
 
     const [health, setHealth] = useState({ isConnected: false, latency: 0 });
