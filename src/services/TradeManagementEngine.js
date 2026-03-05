@@ -41,13 +41,69 @@ export class TradeManagementEngine {
 
         if (dist === 0) return 0;
 
+        const units = riskAmount / dist;
+
+        // Phase 75: Lot size warning for small accounts
+        let warning = context.eventRisk && context.eventRisk.score > 50
+            ? `Reduced size due to High Event Risk (${context.eventRisk.closestEvent?.title})`
+            : null;
+
+        if (account.equity < 500 && units < 0.01) {
+            warning = "⚠️ Position too small for standard 0.01 lot size. Consider tighter SL or higher risk %.";
+        }
+
         return {
-            units: riskAmount / dist,
+            units: units,
             riskAmount: riskAmount,
             riskPercent: riskPercent,
-            warning: context.eventRisk && context.eventRisk.score > 50
-                ? `Reduced size due to High Event Risk (${context.eventRisk.closestEvent?.title})`
-                : null
+            warning: warning
+        };
+    }
+
+    /**
+     * Phase 75: Calculate Capital Friendliness Score
+     * Determines how suitable a setup is for accounts in the $100-$1000 range.
+     * @param {Object} account - { equity }
+     * @param {Object} setup - { entryZone, stopLoss }
+     * @returns {Object} Score (0-100) and rationale
+     */
+    static calculateCapitalFriendliness(account, setup) {
+        const equity = account?.equity || 10000;
+        const entry = setup.entryZone?.optimal || setup.entry;
+        const sl = setup.stopLoss;
+
+        if (!entry || !sl || equity > 5000) return { score: 100, label: 'Institutional' };
+
+        const riskPerUnit = Math.abs(entry - sl);
+        const riskAtMinLot = riskPerUnit * 0.01; // Cost of 0.01 microlot
+        const riskPercentAtMinLot = (riskAtMinLot / equity) * 100;
+
+        let score = 100;
+        const considerations = [];
+
+        // 1. Microlot Capability (Most important for $100 accounts)
+        if (riskPercentAtMinLot > 5.0) {
+            score -= 60;
+            considerations.push('High margin impact for 0.01 lot');
+        } else if (riskPercentAtMinLot > 2.0) {
+            score -= 30;
+            considerations.push('Moderate margin pressure');
+        } else {
+            considerations.push('Perfect microlot fit');
+        }
+
+        // 2. SL Tightness (Relativity to price)
+        const slPercent = (riskPerUnit / entry) * 100;
+        if (slPercent > 2.0) {
+            score -= 20;
+            considerations.push('Loose SL requires high capital');
+        }
+
+        return {
+            score: Math.max(0, score),
+            riskAtMinLot: riskAtMinLot.toFixed(2),
+            label: score > 80 ? 'Small Account Friendly' : score > 50 ? 'Moderate Capital Required' : 'High Capital Required',
+            considerations
         };
     }
 

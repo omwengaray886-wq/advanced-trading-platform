@@ -102,19 +102,44 @@ export class PredictionTracker {
 
     /**
      * Get performance stats for a symbol
+     * Optimistically return cached data (even if stale) to prevent analysis hang (Phase 6)
      */
     static async getStats(symbol) {
-        // Phase 55: Robustness - Use caching to prevent Firestore rate limiting and analysis lag
         const cached = statsCache.get(symbol);
+
+        // 1. If we have fresh data, return immediately
         if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
             return cached.data;
         }
 
+        // 2. If we have stale data, return it but trigger background refresh
+        if (cached) {
+            // FIRE AND FORGET refresh to update cache for NEXT call
+            this._fetchAndCacheStats(symbol).catch(err =>
+                console.warn(`[PredictionTracker] Background refresh failed for ${symbol}:`, err.message)
+            );
+            return cached.data;
+        }
+
+        // 3. No cache at all - must wait for first-time fetch
+        return await this._fetchAndCacheStats(symbol);
+    }
+
+    /**
+     * Internal helper to fetch and cache stats
+     * @private
+     */
+    static async _fetchAndCacheStats(symbol) {
         try {
+            const start = Date.now();
             const trades = await db.getPredictions(symbol, null, 100);
 
             const completed = trades.filter(t => t.outcome !== 'PENDING' && t.outcome !== 'EXPIRED');
-            if (completed.length === 0) return { accuracy: 0, total: 0 };
+            if (completed.length === 0) {
+                const emptyStats = { accuracy: 0, total: 0 };
+                statsCache.set(symbol, { data: emptyStats, timestamp: Date.now() });
+                return emptyStats;
+            }
 
             const hits = completed.filter(t => t.outcome === 'HIT').length;
             const accuracy = (hits / completed.length) * 100;
@@ -140,7 +165,7 @@ export class PredictionTracker {
                 strategyPerformance[strat.toLowerCase()] = {
                     accuracy: Math.round((stratHits / stratTrades.length) * 100),
                     total: stratTrades.length,
-                    score: stratHits // simple score for sorting
+                    score: stratHits
                 };
             });
 
@@ -151,23 +176,21 @@ export class PredictionTracker {
                 fails: completed.length - hits,
                 last10: trades.slice(0, 10).map(t => t.outcome),
                 edgeAttribution: attribution,
-                strategyPerformance, // NEW: Granular stats for Bayesian Engine
-                recentHistory: trades.slice(0, 20) // For the "Audit Receipt" table
+                strategyPerformance,
+                recentHistory: trades.slice(0, 20),
+                fetchedAt: Date.now()
             };
 
             statsCache.set(symbol, { data: stats, timestamp: Date.now() });
-            console.log(`[PredictionTracker] Cached stats updated for ${symbol}. Total: ${stats.total}, Accuracy: ${stats.accuracy}%`);
+            const duration = Date.now() - start;
+            console.log(`[PredictionTracker] Cache updated for ${symbol} (${duration}ms). Total: ${stats.total}, Accuracy: ${stats.accuracy}%`);
             return stats;
         } catch (e) {
-            console.error(`[PredictionTracker] Error getting stats for ${symbol}:`, e);
-            // Phase 55: Return stale if exists on error
-            if (cached) {
-                console.warn(`[PredictionTracker] Returning STALE stats for ${symbol} due to error.`);
-                return cached.data;
-            }
-            return { accuracy: 0, total: 0, error: true };
+            console.error(`[PredictionTracker] Fetch failed for ${symbol}:`, e);
+            throw e; // Let the caller deal with it (getStats will handle it via cached fallback)
         }
     }
+
 
     /**
      * Warm the cache for a symbol (Phase 74)

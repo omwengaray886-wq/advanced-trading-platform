@@ -941,10 +941,10 @@ export class AnalysisOrchestrator {
                     }
 
 
-                    // --- RISK & SIZING LOGIC ---
-                    const capitalScore = this.calculateCapitalFriendliness(marketState, assetParams);
-                    const capitalTag = capitalScore > 0.8 ? 'Institutional / Low Margin' :
-                        capitalScore > 0.5 ? 'Moderate Capital Required' : 'High Margin / Advanced';
+                    // --- RISK & SIZING LOGIC (Phase 75) ---
+                    const capitalAdvice = TradeManagementEngine.calculateCapitalFriendliness({ equity: accountSize }, riskParams);
+                    const capitalScore = capitalAdvice.score / 100;
+                    const capitalTag = capitalAdvice.label;
 
                     const hasRiskParams = riskParams && riskParams.entry && riskParams.stopLoss;
                     const stopDistance = hasRiskParams ? Math.abs(riskParams.entry.optimal - riskParams.stopLoss) : 0;
@@ -1005,8 +1005,41 @@ export class AnalysisOrchestrator {
                         c.rationale += ` | NEWS SHOCK: Imminent Institutional Volatility (-${(newsShockPenalty * 100).toFixed(0)}%)`;
                     }
 
-                    const finalSuitability = Math.max(0.1, c.suitability - newsPenalty);
-                    const finalQuantScore = Math.max(0, quantScore - (newsPenalty * 100));
+                    let finalQuantScore = quantScore;
+                    let finalSuitability = Math.max(0, edgeAnalysis.score - newsPenalty);
+
+                    // Phase 75: Inject Capital Friendliness for Small Timeframes
+                    const isSmallTimeframe = ['1m', '5m', '15m'].includes(timeframe.toLowerCase());
+                    if (isSmallTimeframe) {
+                        if (capitalAdvice.score >= 80) {
+                            finalSuitability = Math.min(1.0, finalSuitability * 1.2);
+                            finalQuantScore = Math.min(100, finalQuantScore + 10);
+                        } else if (capitalAdvice.score < 40) {
+                            finalSuitability *= 0.7;
+                            finalQuantScore = Math.max(0, finalQuantScore - 15);
+                        }
+                    }
+
+                    // Calculate Rationale before returning object
+                    let finalRationale = (newsAdvice && ((newsAdvice === 'BUY' && direction === 'SHORT') || (newsAdvice === 'SELL' && direction === 'LONG')))
+                        ? `[NEWS CONFLICT] ${direction} opportunity detected via ${c.strategy.name} despite fundamental headwinds. Trend: ${marketState.mtf.globalBias}.`
+                        : `${direction} opportunity detected via ${c.strategy.name}. Trend: ${marketState.mtf.globalBias}. Institutional Volume: ${marketState.volumeAnalysis.isInstitutional ? 'DETECTED' : 'LOW'}.`;
+
+                    // Apply Macro Bias Veto/Boost Rationale (Phase 2)
+                    if (marketState.macroBias) {
+                        const setupProxy = { direction, suitability: finalSuitability, rationale: '' };
+                        macroBiasEngine.applyVeto(setupProxy, marketState.macroBias);
+                        if (setupProxy.rationale) {
+                            finalRationale = `${setupProxy.rationale} | ${finalRationale}`;
+                        }
+                    }
+
+                    // Phase 75: Inject Capital Friendliness for Small Timeframes
+                    if (isSmallTimeframe && capitalAdvice.score >= 80) {
+                        finalRationale = `[SMALL ACCOUNT FRIENDLY] ${finalRationale}`;
+                    } else if (isSmallTimeframe && capitalAdvice.score < 50) {
+                        finalRationale = `[HIGH MARGIN REQ] ${finalRationale}`;
+                    }
 
                     // Fractal guards
                     const fractalHandshake = verifyFractalHandshake(marketState, direction);
@@ -1034,21 +1067,7 @@ export class AnalysisOrchestrator {
                         sizingWarning,
                         executionPrecision,
                         annotations,
-                        rationale: (() => {
-                            let baseRationale = (newsAdvice && ((newsAdvice === 'BUY' && direction === 'SHORT') || (newsAdvice === 'SELL' && direction === 'LONG')))
-                                ? `[NEWS CONFLICT] ${direction} opportunity detected via ${c.strategy.name} despite fundamental headwinds. Trend: ${marketState.mtf.globalBias}.`
-                                : `${direction} opportunity detected via ${c.strategy.name}. Trend: ${marketState.mtf.globalBias}. Institutional Volume: ${marketState.volumeAnalysis.isInstitutional ? 'DETECTED' : 'LOW'}.`;
-
-                            // Apply Macro Bias Veto/Boost Rationale (Phase 2)
-                            if (marketState.macroBias) {
-                                const setupProxy = { direction, suitability: finalSuitability, rationale: '' };
-                                macroBiasEngine.applyVeto(setupProxy, marketState.macroBias);
-                                if (setupProxy.rationale) {
-                                    baseRationale = `${setupProxy.rationale} | ${baseRationale}`;
-                                }
-                            }
-                            return baseRationale;
-                        })(),
+                        rationale: finalRationale,
                         monteCarlo: !isLight ? monteCarloService.runSimulation({
                             winRate: winRate ? (winRate * 100).toFixed(0) : '0',
                             profitFactor: riskReward,
@@ -2012,30 +2031,8 @@ export class AnalysisOrchestrator {
      * @param {Object} assetParams - Asset properties (swing size etc)
      * @returns {number} - Score (0-1)
      */
-    calculateCapitalFriendliness(riskParams, assetParams) {
-        if (!riskParams || !riskParams.stopLoss || !riskParams.entry) return 0;
-
-        const stopDistance = Math.abs(riskParams.entry.optimal - riskParams.stopLoss);
-        const price = riskParams.entry.optimal;
-        const stopPercent = (stopDistance / price) * 100;
-
-        // Small Account Logic:
-        // 1. Tighter stops (percentage wise) are better because they allow for larger position sizes with fixed risk
-        // 2. High RR (>3) allows for compounding even with small wins
-
-        let score = 0.5;
-
-        // Tighter stops = Higher Score
-        if (stopPercent < 0.5) score += 0.3;      // Very tight stop (<0.5%)
-        else if (stopPercent < 1.0) score += 0.15; // Tight stop (<1.0%)
-        else if (stopPercent > 3.0) score -= 0.2;  // Wide stop (>3.0%) - requires more margin / smaller size
-
-        // High RR Bonus
-        const rr = riskParams.targets[0]?.riskReward || 0;
-        if (rr > 3.5) score += 0.2; // Excellent R:R
-        else if (rr > 2.0) score += 0.1;
-
-        return Math.min(1.0, Math.max(0, score));
+    calculateCapitalFriendliness(riskParams, setup) {
+        return TradeManagementEngine.calculateCapitalFriendliness(riskParams, setup);
     }
 
     /**

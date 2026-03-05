@@ -28,7 +28,7 @@ async function runPrecisionTests() {
             expectedShow: false // 70% < 80% threshold for Free Roaming
         },
         {
-            name: "Test 3: Magnet-Driven Prediction (65% Prob, OBLIGATED)",
+            name: "Test 3: Magnet-Driven Prediction (75% Prob, OBLIGATED)",
             marketState: {
                 currentPrice: 50000,
                 trend: { direction: 'BULLISH' },
@@ -36,8 +36,8 @@ async function runPrecisionTests() {
                 regime: 'TRENDING',
                 obligations: { state: 'OBLIGATED', primaryObligation: { price: 51000, urgency: 85 } }
             },
-            probabilities: { continuation: 65, reversal: 10, consolidation: 25 },
-            expectedShow: true // 65% > 60% threshold for Obligated
+            probabilities: { continuation: 75, reversal: 10, consolidation: 15 },
+            expectedShow: true // 75% > 70% threshold for Obligated
         },
         {
             name: "Test 4: Trap Zone Suppression",
@@ -58,7 +58,8 @@ async function runPrecisionTests() {
     for (const test of tests) {
         process.stdout.write(`Checking: ${test.name} ... `);
 
-        const shouldShow = PredictionCompressor.shouldShowPrediction(test.marketState, test.probabilities);
+        const diagnostic = PredictionCompressor.shouldShowPrediction(test.marketState, test.probabilities);
+        const shouldShow = diagnostic.show;
 
         if (shouldShow === test.expectedShow) {
             console.log("✅ PASS");

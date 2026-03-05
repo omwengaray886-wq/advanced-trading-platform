@@ -223,6 +223,32 @@ export class OrderFlowAnalyzer {
     }
 
     /**
+     * Detect Dark Pool Activity (Hidden institutional volume)
+     * Heuristic: Price remains stagnant while volume is EXCEPTIONALLY high.
+     * @param {Array} candles - Recent price action
+     */
+    static detectDarkPool(candles) {
+        if (!candles || candles.length < 10) return null;
+        const lastCandle = candles[candles.length - 1];
+        const range = lastCandle.high - lastCandle.low;
+        const avgVolume = candles.slice(-20).reduce((sum, c) => sum + (c.volume || 0), 0) / 20;
+
+        // Dark Pool Logic: Volume > 3.5x average AND price range < 0.1% of price
+        const priceThreshold = lastCandle.close * 0.001;
+        if (lastCandle.volume > avgVolume * 3.5 && range < priceThreshold) {
+            return {
+                type: 'DARK_POOL_SIGNATURE',
+                price: lastCandle.close,
+                intensity: parseFloat((lastCandle.volume / avgVolume).toFixed(1)),
+                timestamp: lastCandle.time,
+                note: 'Significant hidden volume detected. Institutional accumulation/distribution likely.'
+            };
+        }
+        return null;
+    }
+
+
+    /**
      * Calculate Cumulative Volume Delta (CVD)
      * Tracks the "Tape" sentiment over time.
      */

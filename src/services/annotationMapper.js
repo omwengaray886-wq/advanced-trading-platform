@@ -196,6 +196,35 @@ export class AnnotationMapper {
                 }
             }
 
+            // 1.5 Volatility Corridors (Phase 6)
+            else if (anno.type === 'VOLATILITY_CORRIDOR') {
+                overlays.zones.push({
+                    id: anno.id,
+                    x1: Math.floor(coords.time),
+                    x2: Math.floor(coords.endTime || futureTime),
+                    y1: coords.bottom,
+                    y2: coords.top,
+                    color: visuals.background,
+                    borderColor: visuals.borderColor,
+                    label: `${visuals.icon} ${anno.properties?.label || 'VOL CORRIDOR'}`,
+                    isGhost: true,
+                    role: 'MEAN_REVERSION'
+                });
+
+                if (coords.center) {
+                    overlays.lines.push({
+                        id: `${anno.id}-center`,
+                        start: { time: Math.floor(coords.time), price: coords.center },
+                        end: { time: Math.floor(coords.endTime || futureTime), price: coords.center },
+                        color: visuals.borderColor,
+                        width: 1,
+                        dashed: true,
+                        opacity: 0.5
+                    });
+                }
+            }
+
+
             // 2. Trendlines (Diagonal)
             else if (anno.type === 'TRENDLINE') {
                 overlays.lines.push({
