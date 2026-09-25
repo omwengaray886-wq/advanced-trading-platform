@@ -63,7 +63,7 @@ const limiter = rateLimit({
 });
 
 // Apply global rate limiter to all requests
-app.use(limiter);
+// app.use(limiter); // TEMPORARILY DISABLED to prevent chunk loading issues
 
 // Specific stricter limiter for Auth endpoints
 const authLimiter = rateLimit({
