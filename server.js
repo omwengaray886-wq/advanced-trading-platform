@@ -1604,13 +1604,22 @@ app.post('/api/admin/reject/:paymentId', requireAdmin, async (req, res) => {
 // ========================================================
 // STATIC FRONTEND SERVING (For Unified Deployment on Render)
 // ========================================================
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const distPath = path.join(process.cwd(), 'dist');
+console.log('[STATIC] Serving frontend from:', distPath);
 
-app.use(express.static(path.join(__dirname, 'dist')));
+app.use(express.static(distPath, {
+    maxAge: '1y',
+    etag: true
+}));
 
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    const indexPath = path.join(distPath, 'index.html');
+    res.sendFile(indexPath, (err) => {
+        if (err) {
+            console.error('[STATIC ERROR] Failed to send index.html:', err.message);
+            res.status(500).send('Server Error: ' + err.message);
+        }
+    });
 });
 
 // ========================================================
