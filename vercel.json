@@ -1,0 +1,16 @@
+{
+    "version": 2,
+    "regions": [
+        "fra1"
+    ],
+    "rewrites": [
+        {
+            "source": "/api/(.*)",
+            "destination": "/api/proxy.js"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ]
+}

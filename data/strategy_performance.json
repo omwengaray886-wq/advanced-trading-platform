@@ -1,0 +1,28 @@
+{
+  "Institutional Continuation": {
+    "wins": 3,
+    "losses": 6,
+    "streak": -6,
+    "winRate": 0.3333333333333333,
+    "recentResults": [
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "lastUpdated": 1771153647873
+  },
+  "Market Maker Reversal": {
+    "wins": 0,
+    "losses": 0,
+    "streak": 0,
+    "winRate": 0.5,
+    "recentResults": [],
+    "lastUpdated": 1771153647861
+  }
+}
